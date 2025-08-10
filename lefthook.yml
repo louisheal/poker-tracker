@@ -1,0 +1,8 @@
+pre-commit:
+  parallel: true
+  jobs:
+    - name: eslint
+      run: cd ui && npx eslint src --cache --cache-strategy content --report-unused-disable-directives
+
+    - name: prettier
+      run: cd ui && npx prettier --write src --cache --cache-location .prettiercache --cache-strategy content
