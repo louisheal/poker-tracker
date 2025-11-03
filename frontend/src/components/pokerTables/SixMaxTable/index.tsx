@@ -1,16 +1,16 @@
-import Seat from "./Seat";
-import Table from "./Table";
+import Seat from "../Seat";
+import Layout from "./Layout";
 
 const SixMaxTable = () => {
   return (
-    <Table>
+    <Layout>
       <Seat label="" />
       <Seat label="" />
       <Seat label="" />
       <Seat label="" />
       <Seat label="" />
       <Seat label="" />
-    </Table>
+    </Layout>
   );
 };
 

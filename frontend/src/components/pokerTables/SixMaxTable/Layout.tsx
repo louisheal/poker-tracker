@@ -11,7 +11,7 @@ const seatPositions = [
   { top: "50%", left: "6%", transform: "translate(-50%, -50%)" },
 ];
 
-const Table = ({ children }: Props) => {
+const Layout = ({ children }: Props) => {
   return (
     <div
       style={{
@@ -52,4 +52,4 @@ const Table = ({ children }: Props) => {
   );
 };
 
-export default Table;
+export default Layout;
