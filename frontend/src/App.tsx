@@ -1,18 +1,8 @@
 import "./App.css";
-import Seat from "./components/Seat";
-import Table from "./components/Table";
+import SixMaxTable from "./components/pokerTables/SixMaxTable";
 
 function App() {
-  return (
-    <Table>
-      <Seat label="UTG" />
-      <Seat label="HJ" />
-      <Seat label="CO" />
-      <Seat label="BTN" />
-      <Seat label="SB" />
-      <Seat label="BB" />
-    </Table>
-  );
+  return <SixMaxTable />;
 }
 
 export default App;
