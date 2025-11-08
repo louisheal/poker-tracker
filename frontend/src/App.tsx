@@ -5,8 +5,8 @@ import HandContainer from "./components/Hand";
 function App() {
   return (
     <>
-      <SixMaxTable />
       <HandContainer />
+      <SixMaxTable />
     </>
   );
 }

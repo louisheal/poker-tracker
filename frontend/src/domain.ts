@@ -23,4 +23,4 @@ export type Rank =
   | "K"
   | "A";
 
-export type Suit = "Hearts" | "Diamonds" | "Spades" | "Clubs";
+export type Suit = "H" | "D" | "S" | "C";

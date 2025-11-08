@@ -10,8 +10,7 @@ const HandDisplay = (props: Props) => {
       <h2>
         {props.hand.FstCard.Rank}
         {props.hand.FstCard.Suit}
-      </h2>
-      <h2>
+        //
         {props.hand.SndCard.Rank}
         {props.hand.SndCard.Suit}
       </h2>
