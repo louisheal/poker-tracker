@@ -44,6 +44,11 @@ class Card():
             "Suit": self.suit.value
         }
     
+    def __lt__(self, other):
+        if not isinstance(other, Card):
+            return NotImplemented
+        return self.rank < other.rank
+    
 
 class Deck():
 

@@ -13,9 +13,9 @@ class PokerHand():
             fst_card (Card): The first card dealt to the player.
             snd_card (Card): The second card dealt to the player.
         """
-        if fst_card.rank < snd_card.rank:
+        if fst_card < snd_card:
             fst_card, snd_card = snd_card, fst_card
-            
+
         self.fst_card = fst_card
         self.snd_card = snd_card
 
