@@ -14,11 +14,6 @@ class PokerHand():
         self.snd_card = snd_card
 
     def to_json(self):
-        """
-        Serialize the PokerHand to a JSON-compatible dictionary.
-        Returns:
-            dict: Dictionary with keys 'FstCard' and 'SndCard'.
-        """
         return {
             "FstCard": self.fst_card.to_json(),
             "SndCard": self.snd_card.to_json()
@@ -33,7 +28,7 @@ class PokerPhase(Enum):
 
 
 class PokerDealer():
-    
+
     def __init__(self, deck: Deck) -> None:
         self.deck = deck
         self.deck.shuffle()
