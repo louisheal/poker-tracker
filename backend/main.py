@@ -18,8 +18,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# need to create a service layer - this should be the controller layer only
+# 
+
 @app.get("/hand")
 def get_hand():
+    dealer = PokerDealer(Deck())
+    hands = dealer.deal_preflop(num_players=6)
+    return hands[0].to_json()
+
+@app.post("/fold")
+def fold_hand():
+    dealer = PokerDealer(Deck())
+    hands = dealer.deal_preflop(num_players=6)
+    return hands[0].to_json()
+
+@app.post("/raise")
+def fold_hand():
     dealer = PokerDealer(Deck())
     hands = dealer.deal_preflop(num_players=6)
     return hands[0].to_json()
