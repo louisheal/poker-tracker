@@ -3,7 +3,11 @@ import HandDisplay from "./HandDisplay";
 import type { HandDto } from "../../domain";
 import { fetchHand, foldHand, raiseHand } from "../../api";
 
-const HandContainer = () => {
+interface Props {
+  nextHand: () => void;
+}
+
+const HandContainer = (props: Props) => {
   const [hand, setHand] = useState<HandDto | undefined>(undefined);
 
   const getHand = async () => {
@@ -21,11 +25,13 @@ const HandContainer = () => {
 
   const raise = async () => {
     await raiseHand(hand.Id);
+    props.nextHand();
     await getHand();
   };
 
   const fold = async () => {
     await foldHand(hand.Id);
+    props.nextHand();
     await getHand();
   };
 
@@ -35,6 +41,7 @@ const HandContainer = () => {
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
+        position: "relative",
       }}
     >
       <HandDisplay hand={hand} />
