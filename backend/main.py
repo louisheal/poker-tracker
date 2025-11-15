@@ -1,8 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
-from playing_cards_lib import Deck
-from playing_cards_lib.poker import PokerDealer
+from routes import router
 
 app = FastAPI()
 
@@ -18,8 +16,4 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/hand")
-def get_hand():
-    dealer = PokerDealer(Deck())
-    hands = dealer.deal_preflop(num_players=6)
-    return hands[0].to_json()
+app.include_router(router)
