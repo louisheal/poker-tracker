@@ -1,4 +1,5 @@
 export interface HandDto {
+  Id: string;
   FstCard: Card;
   SndCard: Card;
 }
