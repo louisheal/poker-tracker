@@ -3,15 +3,19 @@ import SixMaxTable from "./components/pokerTables/SixMaxTable";
 import HandContainer from "./components/Hand";
 import { useState } from "react";
 import RangeContainer from "./components/ranges/RangeContainer";
-import { Box, Dialog, DialogTitle } from "@mui/material";
+import { Box, Dialog } from "@mui/material";
 
 function App() {
-  const [btnPos, setBtnPos] = useState(0);
+  const [btnPos, setBtnPos] = useState(1);
   const [isOpen, setIsOpen] = useState(false);
   const [correct, setCorrect] = useState<boolean | undefined>(undefined);
 
   const nextHand = (correct: boolean) => {
-    setBtnPos((prev) => (prev + 1) % 6);
+    let nextPos = (btnPos + 1) % 6;
+    if (nextPos === 0) {
+      nextPos = 1;
+    }
+    setBtnPos(nextPos);
     setCorrect(correct);
   };
 
@@ -40,7 +44,6 @@ function App() {
           },
         }}
       >
-        <DialogTitle>Player Ranges</DialogTitle>
         <RangeContainer />
       </Dialog>
     </>
