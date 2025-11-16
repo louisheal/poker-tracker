@@ -18,6 +18,10 @@ class PokerHand():
             "FstCard": self.fst_card.to_json(),
             "SndCard": self.snd_card.to_json()
         }
+    
+    def to_key(self):
+        suffix = '' if self.fst_card.rank == self.snd_card.rank else 's' if self.fst_card.suit == self.snd_card.suit else 'o'
+        return f"{self.fst_card.rank.value}{self.snd_card.rank.value}{suffix}"
 
 
 class PokerPhase(Enum):

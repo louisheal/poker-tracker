@@ -25,3 +25,14 @@ export type Rank =
   | "A";
 
 export type Suit = "H" | "D" | "S" | "C";
+
+export interface HandData {
+  key: string;
+  folds: number;
+  raises: number;
+}
+
+export interface Ranges {
+  played: HandData[][];
+  gto: HandData[][];
+}

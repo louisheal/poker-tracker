@@ -5,6 +5,7 @@ import { fetchHand, foldHand, raiseHand } from "../../api";
 
 interface Props {
   nextHand: () => void;
+  pos: number;
 }
 
 const HandContainer = (props: Props) => {
@@ -24,13 +25,13 @@ const HandContainer = (props: Props) => {
   }
 
   const raise = async () => {
-    await raiseHand(hand.Id);
+    await raiseHand(hand.Id, props.pos);
     props.nextHand();
     await getHand();
   };
 
   const fold = async () => {
-    await foldHand(hand.Id);
+    await foldHand(hand.Id, props.pos);
     props.nextHand();
     await getHand();
   };
