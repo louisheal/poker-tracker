@@ -7,7 +7,7 @@ interface Props {
 const HandDisplay = (props: Props) => {
   return (
     <>
-      <h2>
+      <h2 style={{ margin: 0 }}>
         {props.hand.FstCard.Rank}
         {props.hand.FstCard.Suit}
         //

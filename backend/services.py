@@ -52,7 +52,6 @@ class HandTracker():
         return result
     
 class GtoRanges():
-
     paths = [
         "ranges/sb_open.json",
         "ranges/sb_open.json",
@@ -63,7 +62,7 @@ class GtoRanges():
     ]
 
     def __init__(self):
-        self.ranges = []
+        self.ranges: list[dict[str, str]] = []
         for path in self.paths:
             with open(path, "r") as f:
                 data = f.read()
@@ -81,9 +80,12 @@ class GtoRanges():
                 range_row.append(entry)
             result.append(range_row)
         return result
+    
+    def is_correct(self, pos: int, hand: PokerHand, action: str):
+        expected = self.ranges[pos].get(hand.to_key(), "Fold")
+        return expected == action
 
 class PokerService():
-
     def __init__(self, dealer: PokerDealer, tracker: HandTracker, gto: GtoRanges):
         self.dealer = dealer
         self.tracker = tracker
@@ -102,12 +104,14 @@ class PokerService():
         if not hand:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Hand not found")
         self.tracker.fold(pos, hand)
+        return self.gto.is_correct(pos, hand, "Fold")
 
     def raise_hand(self, id: str, pos: int):
         hand = self.hands.pop(id, None)
         if not hand:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Hand not found")
         self.tracker.raise_(pos, hand)
+        return self.gto.is_correct(pos, hand, "Raise")
 
     def get_ranges(self, pos: int):
         return {

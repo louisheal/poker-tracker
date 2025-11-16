@@ -4,7 +4,7 @@ import type { HandDto } from "../../domain";
 import { fetchHand, foldHand, raiseHand } from "../../api";
 
 interface Props {
-  nextHand: () => void;
+  nextHand: (correct: boolean) => void;
   pos: number;
 }
 
@@ -25,14 +25,14 @@ const HandContainer = (props: Props) => {
   }
 
   const raise = async () => {
-    await raiseHand(hand.Id, props.pos);
-    props.nextHand();
+    const result = await raiseHand(hand.Id, props.pos);
+    props.nextHand(result);
     await getHand();
   };
 
   const fold = async () => {
-    await foldHand(hand.Id, props.pos);
-    props.nextHand();
+    const result = await foldHand(hand.Id, props.pos);
+    props.nextHand(result);
     await getHand();
   };
 
@@ -46,7 +46,7 @@ const HandContainer = (props: Props) => {
       }}
     >
       <HandDisplay hand={hand} />
-      <div style={{ display: "flex" }}>
+      <div style={{ display: "flex", gap: "6px", marginTop: "6px" }}>
         <button onClick={raise}>Raise</button>
         <button onClick={fold}>Fold</button>
       </div>

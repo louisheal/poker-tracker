@@ -6,25 +6,38 @@ export const fetchHand = async (): Promise<HandDto> => {
   return hand;
 };
 
-export const raiseHand = async (id: string, pos: number) => {
-  console.log(JSON.stringify({ pos: pos }));
-  await fetch(`http://localhost:8000/hand/${id}/raise`, {
+export const raiseHand = async (id: string, pos: number): Promise<boolean> => {
+  interface RaiseResult {
+    correct: boolean;
+  }
+
+  const response = await fetch(`http://localhost:8000/hand/${id}/raise`, {
     method: "POST",
     body: JSON.stringify({ pos: pos }),
     headers: {
       "Content-Type": "application/json",
     },
   });
+
+  const result: RaiseResult = await response.json();
+  return result.correct;
 };
 
-export const foldHand = async (id: string, pos: number) => {
-  await fetch(`http://localhost:8000/hand/${id}/fold`, {
+export const foldHand = async (id: string, pos: number): Promise<boolean> => {
+  interface FoldResult {
+    correct: boolean;
+  }
+
+  const response = await fetch(`http://localhost:8000/hand/${id}/fold`, {
     method: "POST",
     body: JSON.stringify({ pos: pos }),
     headers: {
       "Content-Type": "application/json",
     },
   });
+
+  const result: FoldResult = await response.json();
+  return result.correct;
 };
 
 export const fetchRange = async (pos: number): Promise<Ranges> => {

@@ -22,13 +22,13 @@ def get_hand_controller():
 
 @router.post("/hand/{id}/fold")
 def fold_hand_controller(id: str, req: PositionRequest):
-    poker_service.fold_hand(id, req.pos)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    correct = poker_service.fold_hand(id, req.pos)
+    return {"correct": correct}
 
 @router.post("/hand/{id}/raise")
 def raise_hand_controller(id: str, req: PositionRequest):
-    poker_service.raise_hand(id, req.pos)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    correct = poker_service.raise_hand(id, req.pos)
+    return {"correct": correct}
 
 @router.post("/range")
 def get_range_controller(req: RangeRequest):

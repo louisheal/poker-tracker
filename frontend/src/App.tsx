@@ -3,26 +3,33 @@ import SixMaxTable from "./components/pokerTables/SixMaxTable";
 import HandContainer from "./components/Hand";
 import { useState } from "react";
 import RangeContainer from "./components/ranges/RangeContainer";
-import { Dialog, DialogTitle } from "@mui/material";
+import { Box, Dialog, DialogTitle } from "@mui/material";
 
 function App() {
   const [btnPos, setBtnPos] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
+  const [correct, setCorrect] = useState<boolean | undefined>(undefined);
 
-  const nextHand = () => {
+  const nextHand = (correct: boolean) => {
     setBtnPos((prev) => (prev + 1) % 6);
+    setCorrect(correct);
   };
 
   return (
     <>
-      <button
-        style={{ position: "relative", zIndex: 1 }}
-        onClick={() => setIsOpen(true)}
-      >
-        Show Range
-      </button>
-      <SixMaxTable btnPos={btnPos} />
-      <HandContainer nextHand={nextHand} pos={btnPos} />
+      <Box gap="6px" display="flex" flexDirection="column" alignItems="center">
+        <SixMaxTable correct={correct} btnPos={btnPos} />
+        <HandContainer
+          nextHand={(correct: boolean) => nextHand(correct)}
+          pos={btnPos}
+        />
+        <button
+          style={{ position: "relative", zIndex: 1 }}
+          onClick={() => setIsOpen(true)}
+        >
+          Show Ranges
+        </button>
+      </Box>
       <Dialog
         open={isOpen}
         onClose={() => setIsOpen(false)}

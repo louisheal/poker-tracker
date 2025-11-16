@@ -29,7 +29,7 @@ const Box = (props: BoxProps) => {
         aspectRatio: "1",
         display: "flex",
         justifyContent: "center",
-        border: "1px solid #333",
+        border: "1px solid #242424",
       }}
     >
       <p style={{ margin: 0 }}>{props.data.key}</p>

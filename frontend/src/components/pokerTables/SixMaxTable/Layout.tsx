@@ -1,6 +1,7 @@
 interface Props {
   btnPos: number;
   children?: React.ReactNode[];
+  correct: boolean | undefined;
 }
 
 const seatPositions = [
@@ -40,7 +41,7 @@ const Layout = (props: Props) => {
           display: "flex",
           justifyContent: "center",
           alignItems: "center",
-          backgroundColor: "darkgreen",
+          backgroundColor: props.correct ? "darkgreen" : "darkred",
           width: "90%",
           height: "60%",
           borderRadius: "43%",
