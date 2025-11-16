@@ -11,15 +11,13 @@ interface BoxProps {
 const Box = (props: BoxProps) => {
   const { folds, raises } = props.data;
   const total = folds + raises;
-  let gradient = "linear-gradient(to bottom, green 0%, green 100%)";
+  let gradient = "";
   if (total > 0) {
     const foldPercent = Math.round((folds / total) * 100);
     const raisePercent = 100 - foldPercent;
     gradient = `linear-gradient(to bottom, green 0%, green ${raisePercent}%, red ${
       raisePercent + 1
     }%, red 100%)`;
-  } else {
-    gradient = "linear-gradient(to bottom, red 0%, red 100%)";
   }
   return (
     <div

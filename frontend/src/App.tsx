@@ -34,7 +34,7 @@ function App() {
         }}
       >
         <DialogTitle>Player Ranges</DialogTitle>
-        <RangeContainer pos={btnPos} />
+        <RangeContainer />
       </Dialog>
     </>
   );

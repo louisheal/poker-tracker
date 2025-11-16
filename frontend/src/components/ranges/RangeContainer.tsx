@@ -4,30 +4,37 @@ import RangeDisplay from "./RangeDisplay";
 import type { Ranges } from "../../domain";
 import { Box } from "@mui/material";
 
-interface Props {
-  pos: number;
-}
+const rangeNames = ["Small Blind", "Button", "Cutoff", "Hijack", "Lojack"];
 
-const RangeContainer = (props: Props) => {
-  const [ranges, setRanges] = useState<Ranges | undefined>();
+const RangeContainer = () => {
+  const [ranges, setRanges] = useState<Record<number, Ranges> | undefined>();
 
   useEffect(() => {
     const getRanges = async () => {
-      const data = await fetchRange(props.pos);
-      setRanges(data);
+      for (let i = 1; i < 6; i++) {
+        const data = await fetchRange(i);
+        setRanges((prev) => ({ ...prev, [i]: data }));
+      }
     };
 
     getRanges();
-  }, [props.pos]);
+  }, []);
 
   if (ranges === undefined) {
     return <></>;
   }
 
   return (
-    <Box display="flex" margin="16px" gap="16px">
-      <RangeDisplay range={ranges.played} />
-      <RangeDisplay range={ranges.gto} />
+    <Box display="flex" flexDirection="column" margin="16px" gap="16px">
+      {Object.values(ranges).map((range, index) => (
+        <Box key={index}>
+          <h2>{rangeNames[index]}</h2>
+          <Box display="flex" gap="16px">
+            <RangeDisplay range={range.played} />
+            <RangeDisplay range={range.gto} />
+          </Box>
+        </Box>
+      ))}
     </Box>
   );
 };
