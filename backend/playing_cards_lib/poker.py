@@ -1,10 +1,9 @@
-from typing import List
 from enum import Enum
 
-from .core import Deck, Card
+from .core import Card
 
 
-class PokerHand():
+class HoleCards():
 
     def __init__(self, fst_card: Card, snd_card: Card):
         if fst_card < snd_card:
@@ -24,62 +23,83 @@ class PokerHand():
         return f"{self.fst_card.rank.value}{self.snd_card.rank.value}{suffix}"
 
 
-class PokerPhase(Enum):
-    PREFLOP = "Preflop"
-    FLOP = "Flop"
-    TURN = "Turn"
-    RIVER = "River"
+class PokerPosition(Enum):
+    IP = "In Position"
+    OOP = "Out of Position"
 
 
-class PokerDealer():
+class BetAmount(Enum):
+    SMALL_BET = 1/3
+    MEDIUM_BET = 1/2
+    LARGE_BET = 3/4
+    POT_BET = 1
+    OVERBET = 4/3
 
-    def __init__(self, deck: Deck) -> None:
-        self.deck = deck
-        self.deck.shuffle()
-        self.next_phase = PokerPhase.PREFLOP
 
-    def reset(self) -> None:
-        self.deck.reset()
-        self.deck.shuffle()
-        self.next_phase = PokerPhase.PREFLOP
+class RaiseMultiplier(Enum):
+    THREE_X = 3
+    FOUR_X = 4
 
-    def deal_preflop(self, num_players: int) -> List[PokerHand]:
-        if self.next_phase != PokerPhase.PREFLOP:
-            raise ValueError("Cannot deal preflop in current phase")
 
-        if num_players > 9 or num_players < 2:
-            raise ValueError("Number of players must be between 2 and 9")
-        
-        fst_pass_cards = [self.deck.draw_one() for _ in range(num_players)]
-        snd_pass_cards = [self.deck.draw_one() for _ in range(num_players)]
-        hands = zip(fst_pass_cards, snd_pass_cards)
+class PokerAction:
+    def __init__(self, player: PokerPosition):
+        self.player = player
 
-        self.next_phase = PokerPhase.FLOP
-        return [PokerHand(cards[0], cards[1]) for cards in hands]
-    
-    def deal_flop(self) -> List[Card]:
-        if self.next_phase != PokerPhase.FLOP:
-            raise ValueError("Cannot deal flop in current phase")
-        
-        self.deck.draw_one()
 
-        self.next_phase = PokerPhase.TURN
-        return self.deck.draw(3)
-    
-    def deal_turn(self) -> Card:
-        if self.next_phase != PokerPhase.TURN:
-            raise ValueError("Cannot deal turn in current phase")
-        
-        self.deck.draw_one()
+class Fold(PokerAction):
+    pass
 
-        self.next_phase = PokerPhase.RIVER
-        return self.deck.draw_one()
-    
-    def deal_river(self) -> Card:
-        if self.next_phase != PokerPhase.RIVER:
-            raise ValueError("Cannot deal river in current phase")
-        
-        self.deck.draw_one()
+class Check(PokerAction):
+    pass
 
-        self.next_phase = None
-        return self.deck.draw_one()
+
+class Bet(PokerAction):
+    def __init__(self, amount_bb: BetAmount):
+        self.amount_bb = amount_bb
+
+
+class Call(PokerAction):
+    pass
+
+
+class Raise(PokerAction):
+    def __init__(self, raise_multiplier: RaiseMultiplier):
+        self.raise_multiplier = raise_multiplier
+
+
+class Flop:
+
+    def __init__(self, card1: Card, card2: Card, card3: Card, actions: list[PokerAction]):
+        self.card1 = card1
+        self.card2 = card2
+        self.card3 = card3
+        self.actions = actions
+
+
+class Turn:
+
+    def __init__(self, card: Card, actions: list[PokerAction]):
+        self.card = card
+        self.actions = actions
+
+
+class River:
+
+    def __init__(self, card: Card, actions: list[PokerAction]):
+        self.card = card
+        self.actions = actions
+
+class PokerHand:
+
+    def __init__(
+            self,
+            hero_position: PokerPosition,
+            hole_cards: HoleCards,
+            flop: Flop,
+            turn: Turn | None,
+            river: River | None):
+        self.hero_position = hero_position
+        self.hole_cards = hole_cards
+        self.flop = flop
+        self.turn = turn
+        self.river = river

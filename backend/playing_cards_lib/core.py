@@ -1,6 +1,4 @@
 from enum import Enum
-from typing import List
-import random
 
 
 class Rank(Enum):
@@ -48,30 +46,3 @@ class Card():
         if not isinstance(other, Card):
             return NotImplemented
         return self.rank < other.rank
-    
-
-class Deck():
-
-    def __init__(self):
-        self.cards = self.__create_deck()
-
-    def reset(self) -> None:
-        self.cards = self.__create_deck()
-
-    def shuffle(self) -> None:
-        random.shuffle(self.cards)
-
-    def draw(self, x: int) -> List[Card]:
-        if x > len(self.cards):
-            raise ValueError("Not enough cards in the deck to draw the requested number.")
-        return [self.draw_one() for _ in range(x)]
-    
-    def draw_one(self) -> Card:
-        if not self.cards:
-            raise ValueError("No cards left in the deck to draw.")
-        return self.cards.pop()
-
-    @staticmethod
-    def __create_deck() -> List[Card]:
-        return [Card(rank, suit) for suit in Suit for rank in Rank]
-    
