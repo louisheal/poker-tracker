@@ -62,9 +62,13 @@ class Deck():
         random.shuffle(self.cards)
 
     def draw(self, x: int) -> List[Card]:
+        if x > len(self.cards):
+            raise ValueError("Not enough cards in the deck to draw the requested number.")
         return [self.draw_one() for _ in range(x)]
     
     def draw_one(self) -> Card:
+        if not self.cards:
+            raise ValueError("No cards left in the deck to draw.")
         return self.cards.pop()
 
     @staticmethod
