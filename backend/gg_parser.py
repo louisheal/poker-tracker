@@ -6,13 +6,16 @@ from playing_cards_lib.poker import HoleCards
 
 DEALT_RE = re.compile(r"Dealt to\s+Hero\s*\[([2-9TJQKA][shdc])\s+([2-9TJQKA][shdc])\]", re.IGNORECASE)
 SUMMARY_RE = re.compile(r"^\*\*\*\s*SUMMARY\s*\*\*\*")
+FLOP_RE = re.compile(r"^\*\*\* FLOP \*\*\*\s*\[([^\]]+)\]", re.IGNORECASE)
+
 
 
 class Parser:
 
 	def __init__(self):
-		self.hands: list[HoleCards] = []
+		self.hands: list[dict] = []
 		self.current_hole_cards: HoleCards | None = None
+		self.current_flop_cards: list[Card] | None = None
 
 	def next(self, line: str) -> None:
 		text = line.strip()
@@ -25,11 +28,28 @@ class Parser:
 			snd_card = self._token_to_card(match.group(2))
 			self.current_hole_cards = HoleCards(fst_card, snd_card)
 			return
+
+		flop_m = FLOP_RE.search(text)
+		if flop_m:
+			cards_text = flop_m.group(1)
+			toks = re.split(r"[\s,]+", cards_text.strip())
+			cards = []
+			for tok in toks:
+				if not tok:
+					continue
+				cards.append(self._token_to_card(tok))
+			self.current_flop_cards = cards
+			return
 		
 		if SUMMARY_RE.match(text):
 			if self.current_hole_cards is not None:
-				self.hands.append(self.current_hole_cards)
+				hand = {
+					'hole': self.current_hole_cards,
+					'flop': self.current_flop_cards if self.current_flop_cards is not None else []
+				}
+				self.hands.append(hand)
 			self.current_hole_cards = None
+			self.current_flop_cards = None
 
 	def _token_to_card(self, token: str) -> Card:
 		t = token.strip()
@@ -54,11 +74,14 @@ def main():
 		print('Sample file not found:', sample)
 		return
 
-	print(f'Parsed {len(p.hands)} hero hole cards:')
-	for i, hc in enumerate(p.hands, 1):
+	print(f'Parsed {len(p.hands)} hands:')
+	for i, hand in enumerate(p.hands, 1):
+		hc = hand['hole']
+		flop = hand['flop']
 		fst = hc.fst_card.to_json()
 		snd = hc.snd_card.to_json()
-		print(f'{i}: {fst["Rank"]}{fst["Suit"]} {snd["Rank"]}{snd["Suit"]}')
+		flop_str = ' '.join(f"{c.rank.value}{c.suit.value}" for c in flop) if flop else '(no flop)'
+		print(f'{i}: {fst["Rank"]}{fst["Suit"]} {snd["Rank"]}{snd["Suit"]}  |  Flop: {flop_str}')
 
 
 if __name__ == '__main__':
