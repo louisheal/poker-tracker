@@ -58,12 +58,10 @@ class Parser:
 			self._handle_flop(flop_cards)
 			return
 
-
 		turn_cards = TURN_RE.search(text)
 		if turn_cards:
 			self._handle_turn(turn_cards)
 			return
-
 
 		river_m = RIVER_RE.search(text)
 		if river_m:

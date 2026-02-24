@@ -1,16 +1,12 @@
 import "./App.css";
 
 import { ThemeProvider } from "@/components/theme-provider";
-import { AppSidebar } from "./components/app-sidebar";
-import { SidebarInset, SidebarProvider } from "./components/ui/sidebar";
+import { Ranges } from "./views/Ranges";
 
 function App() {
   return (
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
-      <SidebarProvider>
-        <AppSidebar />
-        <SidebarInset></SidebarInset>
-      </SidebarProvider>
+      <Ranges />
     </ThemeProvider>
   );
 }
