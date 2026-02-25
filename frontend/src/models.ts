@@ -4,7 +4,7 @@ export interface Stats {
 }
 
 export interface RangeHands {
-  hands: { [handKey: string]: Stats };
+  [handKey: string]: Stats;
 }
 
-export type RangeResponse = { [position: string]: RangeHands };
+export type RfiRanges = { [position: string]: RangeHands };

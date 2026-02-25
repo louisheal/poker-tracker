@@ -1,10 +1,6 @@
 import type { Stats } from "@/models";
 import { GridCell } from "./GridCell";
 
-interface RangeGridProps {
-  hands: { [handKey: string]: Stats };
-}
-
 const generateKeys = () => {
   const ranks = [
     "A",
@@ -38,7 +34,11 @@ const generateKeys = () => {
   return keys;
 };
 
-export const RangeGrid = (props: RangeGridProps) => {
+interface Props {
+  hands: { [handKey: string]: Stats };
+}
+
+export const RangeGrid = (props: Props) => {
   const keys = generateKeys();
 
   return (

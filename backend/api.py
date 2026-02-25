@@ -1,7 +1,7 @@
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from rush_and_cash_parser import POSITIONS, Parser, Range
+from parser import parse_histories
 
 app = FastAPI()
 
@@ -19,22 +19,17 @@ app.add_middleware(
 
 @app.get("/")
 def get_ranges():
-    ranges: dict[str, Range] = {}
-    for position in POSITIONS:
-        ranges[position] = Range()
-        
-    parser = Parser(ranges)
 
     base = os.path.dirname(__file__)
     histories_dir = os.path.normpath(os.path.join(base, '..', 'hand_histories'))
 
+    paths = []
     if os.path.isdir(histories_dir):
         for filename in os.listdir(histories_dir):
-            sample = os.path.join(histories_dir, filename)
-            if not os.path.isfile(sample):
+            path = os.path.join(histories_dir, filename)
+            if not os.path.isfile(path):
                 continue
-            with open(sample, 'r', encoding='utf-8') as f:
-                for line in f:
-                    parser.next(line)
-            
-    return ranges
+            paths.append(path)
+    
+    rfi_ranges = parse_histories(paths)
+    return rfi_ranges.to_json()
