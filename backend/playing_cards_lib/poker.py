@@ -35,8 +35,12 @@ class HoleCards:
 
 
 class PokerPosition(Enum):
-    IP = "In Position"
-    OOP = "Out of Position"
+    LJ = 0
+    HJ = 1
+    CO = 2
+    BTN = 3
+    SB = 4
+    BB = 5
 
 
 class BetAmount(Enum):
