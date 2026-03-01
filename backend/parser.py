@@ -1,8 +1,9 @@
 import re
+from typing import Generator
 
 from playing_cards_lib.core import Card, Rank, Suit
-from playing_cards_lib.poker import HoleCards, PokerPosition
-from models import RfiRanges
+from playing_cards_lib.poker import HoleCards, PokerPosition, PotType, PokerAction
+from models import Ranges
 
 START_RE = re.compile(r"Poker Hand #(.*): .*")
 DEALT_HERO_RE = re.compile(r"Dealt to\s+Hero\s*\[([2-9TJQKA][shdc])\s+([2-9TJQKA][shdc])\]", re.IGNORECASE)
@@ -22,19 +23,20 @@ def to_hole_cards(fst: str, snd: str) -> HoleCards:
 	snd_card = to_card(snd)
 	return HoleCards(fst_card, snd_card)
 
-def parse_histories(files: list[str]) -> RfiRanges:
-	ranges = RfiRanges()
+def parse_histories(files: list[str]) -> Ranges:
+	ranges = Ranges()
 
 	for file in files:
-		for hand in parse_hands(file):
-			hole_cards, position, action, rfi = parse_hand(hand)
-			if not rfi or position == PokerPosition.BB:
+		for hand in group_hands(file):
+			hole_cards, position, actions = parse_hand(hand)
+			if not hole_cards:
 				continue
-			ranges.add_hand(hole_cards.to_key(), position, action)
+			for action, pot_type, villain in actions:
+				ranges.add_hand(hole_cards.key(), position, action, pot_type, villain)
 	
 	return ranges
 
-def parse_hands(file):
+def group_hands(file):
 	curr_hand = []
 	in_hand = True
 
@@ -60,19 +62,51 @@ def parse_hands(file):
 def parse_hand(lines: list[str]):
 	hole_cards = parse_hero_hole_cards(lines)
 	position = parse_hero_position(lines)
-	action = parse_hero_action(lines)
-	rfi = is_hand_rfi_decision(lines)
+	hero_actions = parse_hero_actions(lines)
+	return hole_cards, position, hero_actions
 
-	return hole_cards, position, action, rfi
+def parse_hero_actions(lines: list[str]) -> Generator[tuple[PokerAction, PotType, PokerPosition | None]]:
+	pot_type = PotType.SRP
+	v_pos = 0
+	villain = None
 
-def is_hand_rfi_decision(lines: list[str]):
 	for line in lines:
+		if "*** FLOP ***" in line:
+			return
+
 		action = ACTION_RE.search(line)
 		if not action:
 			continue
-		if action.group(2) != "folds":
-			return action.group(1) == "Hero"
-	return True
+
+		if action.group(1) == "Hero" and action.group(2) == "checks":
+			return
+
+		if action.group(1) != "Hero" and action.group(2) == "folds":
+			v_pos += 1
+			continue
+
+		if pot_type == PotType.SRP:
+			if action.group(1) == "Hero":
+				yield (action.group(2), pot_type, None)
+				pot_type == PotType.FOUR_BET
+				continue
+			else:
+				villain = PokerPosition(v_pos)
+				pot_type = PotType.THREE_BET
+				continue
+
+		if pot_type == PotType.THREE_BET:
+			if action.group(1) == "Hero":
+				yield (action.group(2), pot_type, villain)
+				return
+			if action.group(2) == "raises":
+				pot_type = PotType.FOUR_BET
+				continue
+
+		if pot_type == PotType.FOUR_BET:
+			if action.group(1) == "Hero":
+				yield (action.group(2), pot_type, None)
+				return
 
 def parse_hero_hole_cards(lines: list[str]):
 	for line in lines:
@@ -93,11 +127,3 @@ def parse_hero_position(lines: list[str]):
 			return PokerPosition(p)
 		p += 1
 	return PokerPosition.BB
-
-def parse_hero_action(lines: list[str]):
-	for line in lines:
-		action = ACTION_RE.search(line)
-		if not action:
-			continue
-		if action.group(1) == "Hero":
-			return action.group(2)
