@@ -107,6 +107,8 @@ def parse_hero_actions(lines: list[str]) -> Generator[tuple[PokerAction, PotType
 			if action.group(1) == "Hero":
 				yield (action.group(2), pot_type, None)
 				return
+			if action.group(2) == "raises":
+				return
 
 def parse_hero_hole_cards(lines: list[str]):
 	for line in lines:

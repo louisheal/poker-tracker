@@ -16,13 +16,19 @@ interface RfiSelectorProps {
 
 const RfiPositionSelector = (props: RfiSelectorProps) => {
   return (
-    <>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "row",
+        alignItems: "center",
+      }}
+    >
       <Button onClick={() => props.setSelectedRange("LJ")}>LJ</Button>
       <Button onClick={() => props.setSelectedRange("HJ")}>HJ</Button>
       <Button onClick={() => props.setSelectedRange("CO")}>CO</Button>
       <Button onClick={() => props.setSelectedRange("BTN")}>BTN</Button>
       <Button onClick={() => props.setSelectedRange("SB")}>SB</Button>
-    </>
+    </div>
   );
 };
 
@@ -32,13 +38,19 @@ interface ThreeBetSelectorProps {
 
 const ThreeBetSelector = (props: ThreeBetSelectorProps) => {
   return (
-    <>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "row",
+        alignItems: "center",
+      }}
+    >
       <Button onClick={() => props.setSelectedRange("LJ")}>v LJ</Button>
       <Button onClick={() => props.setSelectedRange("HJ")}>v HJ</Button>
       <Button onClick={() => props.setSelectedRange("CO")}>v CO</Button>
       <Button onClick={() => props.setSelectedRange("BTN")}>v BTN</Button>
       <Button onClick={() => props.setSelectedRange("SB")}>v SB</Button>
-    </>
+    </div>
   );
 };
 
@@ -48,14 +60,43 @@ interface FourBetSelectorProps {
 
 const FourBetSelector = (props: FourBetSelectorProps) => {
   return (
-    <>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "row",
+        alignItems: "center",
+      }}
+    >
       <Button onClick={() => props.setSelectedRange("LJ")}>LJ</Button>
       <Button onClick={() => props.setSelectedRange("HJ")}>HJ</Button>
       <Button onClick={() => props.setSelectedRange("CO")}>CO</Button>
       <Button onClick={() => props.setSelectedRange("BTN")}>BTN</Button>
       <Button onClick={() => props.setSelectedRange("SB")}>SB</Button>
       <Button onClick={() => props.setSelectedRange("BB")}>BB</Button>
-    </>
+    </div>
+  );
+};
+
+interface PotSelectorProps {
+  setSrp: () => void;
+  setThreeBetPot: () => void;
+  setFourBetPot: () => void;
+  selectedPot: PotType;
+}
+
+const PotSelector = (props: PotSelectorProps) => {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "row",
+        alignItems: "center",
+      }}
+    >
+      <Button onClick={props.setSrp}>SRP</Button>
+      <Button onClick={props.setThreeBetPot}>3BET</Button>
+      <Button onClick={props.setFourBetPot}>4BET</Button>
+    </div>
   );
 };
 
@@ -92,45 +133,63 @@ export const RangeView = () => {
     setPotType("FOUR_BET");
   };
 
-  const PotSelector = () => {
-    return (
-      <>
-        <Button onClick={setSrp}>SRP</Button>
-        <Button onClick={setThreeBet}>3BET</Button>
-        <Button onClick={setFourBet}>4BET</Button>
-      </>
-    );
-  };
-
   if (potType == "SRP") {
     return (
-      <>
-        <PotSelector />
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+        }}
+      >
+        <PotSelector
+          setSrp={setSrp}
+          setThreeBetPot={setThreeBet}
+          setFourBetPot={setFourBet}
+        />
         <RfiPositionSelector setSelectedRange={setSelectedRange} />
         <RangeGrid hands={ranges[potType][selectedRange]} />
-      </>
+      </div>
     );
   }
 
-  console.log(ranges);
-
   if (potType == "THREE_BET") {
     return (
-      <>
-        <PotSelector />
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+        }}
+      >
+        <PotSelector
+          setSrp={setSrp}
+          setThreeBetPot={setThreeBet}
+          setFourBetPot={setFourBet}
+        />
         <ThreeBetSelector setSelectedRange={setSelectedRange} />
         <RangeGrid hands={ranges[potType][selectedRange]} />
-      </>
+      </div>
     );
   }
 
   if (potType == "FOUR_BET") {
     return (
-      <>
-        <PotSelector />
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+        }}
+      >
+        <PotSelector
+          setSrp={setSrp}
+          setThreeBetPot={setThreeBet}
+          setFourBetPot={setFourBet}
+        />
         <FourBetSelector setSelectedRange={setSelectedRange} />
         <RangeGrid hands={ranges[potType][selectedRange]} />
-      </>
+      </div>
     );
   }
 
