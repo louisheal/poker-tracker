@@ -1,5 +1,5 @@
 from playing_cards_lib.core import Rank
-from playing_cards_lib.poker import PokerPosition, PotType
+from playing_cards_lib.poker import PokerPosition, PotType, BoardType, PokerAction
 
 
 class Stats:
@@ -129,3 +129,48 @@ class Ranges:
 
 	def json(self):
 		return { k.name: v.json() for k, v in self.ranges.items() }
+
+
+class CBetFilter:
+	pot_types: list[PotType]
+	board_types: list[BoardType]
+	hero_preflop_raiser: bool
+	hero_in_position: bool
+
+
+class CBetEvent:
+	pot_type: PotType
+	board_type: BoardType
+	hero_preflop_raiser: bool
+	hero_in_position: bool
+	cbet: bool
+	fold_to_cbet: bool
+
+	def filter(self, filters: CBetFilter) -> bool:
+		if self.pot_type not in filters.pot_types:
+			return False
+		if self.board_type not in filters.board_types:
+			return False
+		if self.hero_preflop_raiser != filters.hero_preflop_raiser:
+			return False
+		if self.hero_in_position != filters.hero_in_position:
+			return False
+		return True
+
+
+class CBets:
+	def __init__(self):
+		self.events: list[CBetEvent] = []
+
+	def add_event(self, event: CBetEvent):
+		self.events.append(event)
+
+	def json(self, filters: CBetFilter):
+		events = [e for e in self.events if e.filter(filters)]
+		
+		if not events:
+			return { "cbet_pct": 0, "fold_to_cbet_pct": 0, }
+
+		cbet_pct = sum([1 for e in events if e.cbet]) / len(events)
+		fcbet_pct = sum([1 for e in events if e.fold_to_cbet]) / len(events)
+		return { "cbet_pct": cbet_pct * 100, "fcbet_pct": fcbet_pct * 100 }

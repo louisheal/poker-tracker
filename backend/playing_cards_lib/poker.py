@@ -43,6 +43,12 @@ class PokerPosition(Enum):
     BB = 5
 
 
+class BoardType(Enum):
+    MONOTONE = 0
+    TWO_TONE = 1
+    RAINBOW = 2
+
+
 class BetAmount(Enum):
     SMALL_BET = 1/3
     MEDIUM_BET = 1/2
