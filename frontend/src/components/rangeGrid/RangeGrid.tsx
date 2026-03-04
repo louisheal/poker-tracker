@@ -52,6 +52,7 @@ export const RangeGrid = (props: Props) => {
             handKey={key}
             folds={hand.folds}
             raises={hand.raises}
+            calls={hand.calls}
           />
         );
       })}

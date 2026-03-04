@@ -12,13 +12,13 @@ class HoleCards:
         self.fst_card = fst_card
         self.snd_card = snd_card
 
-    def to_json(self):
+    def json(self):
         return {
             "FstCard": self.fst_card.to_json(),
             "SndCard": self.snd_card.to_json()
         }
     
-    def to_key(self):
+    def key(self):
         suffix = '' if self.fst_card.rank == self.snd_card.rank else 's' if self.fst_card.suit == self.snd_card.suit else 'o'
         return f"{self.fst_card.rank.value}{self.snd_card.rank.value}{suffix}"
 
@@ -80,6 +80,12 @@ class Call(PokerAction):
 class Raise(PokerAction):
     def __init__(self, raise_multiplier: RaiseMultiplier):
         self.raise_multiplier = raise_multiplier
+
+
+class PotType(Enum):
+    SRP = 0
+    THREE_BET = 1
+    FOUR_BET = 2
 
 
 class Flop:
