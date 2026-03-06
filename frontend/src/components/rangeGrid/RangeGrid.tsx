@@ -1,50 +1,21 @@
 import type { Stats } from "@/models";
 import { GridCell } from "./GridCell";
-
-const generateKeys = () => {
-  const ranks = [
-    "A",
-    "K",
-    "Q",
-    "J",
-    "T",
-    "9",
-    "8",
-    "7",
-    "6",
-    "5",
-    "4",
-    "3",
-    "2",
-  ];
-  let keys: string[] = [];
-  for (const a of ranks) {
-    let passed = false;
-    for (const b of ranks) {
-      if (a === b) {
-        passed = true;
-        keys = keys.concat(`${a}${b}`);
-      } else if (passed) {
-        keys = keys.concat(`${a}${b}s`);
-      } else {
-        keys = keys.concat(`${b}${a}o`);
-      }
-    }
-  }
-  return keys;
-};
+import { generateKeys } from "./utils.ts";
 
 interface Props {
   hands: { [handKey: string]: Stats };
 }
 
 export const RangeGrid = (props: Props) => {
-  const keys = generateKeys();
+  const keys: string[] = generateKeys();
 
   return (
-    <div className="flex flex-wrap w-2xl justify-self-center">
-      {keys.map((key) => {
-        const hand = props.hands[key];
+    <div
+      className="grid gap-1.5 w-full p-0"
+      style={{ gridTemplateColumns: "repeat(13, minmax(0, 1fr))" }}
+    >
+      {keys.map((key: string) => {
+        const hand = props.hands?.[key] ?? { folds: 0, raises: 0, calls: 0 };
 
         return (
           <GridCell

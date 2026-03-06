@@ -1,3 +1,5 @@
+import "./rangeGrid.css";
+
 interface Props {
   handKey: string;
   folds: number;
@@ -5,30 +7,34 @@ interface Props {
   calls: number;
 }
 
-const blue = "rgb(60, 120, 250)";
-const green = "rgb(34, 197, 94)";
-const red = "rgb(239, 68, 68)";
-
 export const GridCell = (props: Props) => {
   const total = props.folds + props.raises + props.calls;
   const raisePercent = total === 0 ? 0 : (props.raises / total) * 100;
   const callPercent = total === 0 ? 0 : (props.calls / total) * 100;
 
-  const raises = `${red} 0%, ${red} ${raisePercent}%`;
-  const calls = `${green} ${raisePercent}%, ${green} ${raisePercent + callPercent}%`;
-  const folds = `${blue} ${raisePercent + callPercent}%, ${blue} 100%`;
+  const ariaLabel = `${props.handKey}: ${props.raises} raises, ${props.calls} calls, ${props.folds} folds`;
 
-  const backgroundStyle = {
-    background: `linear-gradient(to right, ${raises}, ${calls}, ${folds})`,
-    boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.2)",
-  };
+  const isEmpty = total === 0;
+
+  const style: Record<string, string> = isEmpty
+    ? {}
+    : ({
+        ["--rg-raise-percent"]: `${raisePercent}%`,
+        ["--rg-call-percent"]: `${callPercent}%`,
+      } as Record<string, string>);
 
   return (
     <div
-      style={total === 0 ? {} : backgroundStyle}
-      className="w-[calc(100%/13)] aspect-square flex items-center justify-center"
+      role="button"
+      tabIndex={0}
+      title={ariaLabel}
+      aria-label={ariaLabel}
+      style={style}
+      className={`rg-cell box-border aspect-square flex items-center justify-center rounded-sm ${isEmpty ? "rg-empty" : ""}`}
     >
-      <p>{props.handKey}</p>
+      <p className="text-xs select-none">{props.handKey}</p>
     </div>
   );
 };
+
+export default GridCell;

@@ -1,6 +1,6 @@
 import { getRanges } from "@/api";
-import RangeGrid from "@/components/rangeGrid";
-import { Button } from "@/components/ui/button";
+import RangeGrid, { GridSkeleton, RangeLegend } from "@/components/rangeGrid";
+import { FilterGroup } from "@/components/FilterGroup";
 import type { Ranges } from "@/models";
 import { useEffect, useState } from "react";
 
@@ -8,7 +8,7 @@ type Positions = "LJ" | "HJ" | "CO" | "BTN" | "SB" | "BB";
 type PotType = "SRP" | "THREE_BET" | "FOUR_BET";
 
 const INIT_POS = "LJ";
-const INIT_TYPE = "THREE_BET";
+const INIT_TYPE = "SRP";
 
 const POSITIONS: Record<PotType, { value: Positions; label: string }[]> = {
   SRP: [
@@ -31,70 +31,7 @@ const POSITIONS: Record<PotType, { value: Positions; label: string }[]> = {
     { value: "CO", label: "CO" },
     { value: "BTN", label: "BTN" },
     { value: "SB", label: "SB" },
-    { value: "BB", label: "BB" },
   ],
-};
-
-interface PositionSelectorProps {
-  positions: { value: Positions; label: string }[];
-  selectedPosition: Positions;
-  setSelectedRange: (position: Positions) => void;
-}
-
-const PositionSelector = ({
-  positions,
-  selectedPosition,
-  setSelectedRange,
-}: PositionSelectorProps) => (
-  <div style={{ display: "flex", flexDirection: "row", alignItems: "center" }}>
-    {positions.map(({ value, label }) => (
-      <Button
-        key={value}
-        variant={selectedPosition === value ? "outline" : "default"}
-        onClick={() => setSelectedRange(value)}
-      >
-        {label}
-      </Button>
-    ))}
-  </div>
-);
-
-interface PotSelectorProps {
-  setSrp: () => void;
-  setThreeBetPot: () => void;
-  setFourBetPot: () => void;
-  selectedPot: PotType;
-}
-
-const PotSelector = (props: PotSelectorProps) => {
-  return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "row",
-        alignItems: "center",
-      }}
-    >
-      <Button
-        variant={props.selectedPot === "SRP" ? "outline" : "default"}
-        onClick={props.setSrp}
-      >
-        SRP
-      </Button>
-      <Button
-        variant={props.selectedPot === "THREE_BET" ? "outline" : "default"}
-        onClick={props.setThreeBetPot}
-      >
-        3BET
-      </Button>
-      <Button
-        variant={props.selectedPot === "FOUR_BET" ? "outline" : "default"}
-        onClick={props.setFourBetPot}
-      >
-        4BET
-      </Button>
-    </div>
-  );
 };
 
 export const RangeView = () => {
@@ -111,39 +48,46 @@ export const RangeView = () => {
     loadRanges();
   }, []);
 
-  if (ranges === undefined) {
-    return;
-  }
-
-  const setSrp = () => {
-    setSelectedRange("LJ");
-    setPotType("SRP");
-  };
-
-  const setThreeBet = () => {
-    setSelectedRange("LJ");
-    setPotType("THREE_BET");
-  };
-
-  const setFourBet = () => {
-    setSelectedRange("LJ");
-    setPotType("FOUR_BET");
-  };
-
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-      <PotSelector
-        setSrp={setSrp}
-        setThreeBetPot={setThreeBet}
-        setFourBetPot={setFourBet}
-        selectedPot={potType}
-      />
-      <PositionSelector
-        positions={POSITIONS[potType]}
-        selectedPosition={selectedRange}
-        setSelectedRange={setSelectedRange}
-      />
-      <RangeGrid hands={ranges[potType][selectedRange]} />
+    <div className="p-8 h-full flex flex-col gap-3">
+      <div className="w-full flex">
+        <div className="w-full max-w-3xl flex flex-row justify-between items-end">
+          <div className="flex flex-col gap-3">
+            <FilterGroup
+              options={[
+                { key: "SRP", label: "SRP", active: potType === "SRP" },
+                {
+                  key: "THREE_BET",
+                  label: "3BET",
+                  active: potType === "THREE_BET",
+                },
+                {
+                  key: "FOUR_BET",
+                  label: "4BET",
+                  active: potType === "FOUR_BET",
+                },
+              ]}
+              onToggle={(k) => setPotType(k as PotType)}
+            />
+            <FilterGroup
+              options={POSITIONS[potType].map((p) => ({
+                key: p.value,
+                label: p.label,
+                active: selectedRange === p.value,
+              }))}
+              onToggle={(k) => setSelectedRange(k as Positions)}
+            />
+          </div>
+          <RangeLegend />
+        </div>
+      </div>
+      <div className="max-w-3xl">
+        {ranges ? (
+          <RangeGrid hands={ranges[potType][selectedRange]} />
+        ) : (
+          <GridSkeleton />
+        )}
+      </div>
     </div>
   );
 };

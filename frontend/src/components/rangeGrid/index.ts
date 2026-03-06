@@ -1,3 +1,6 @@
-import { RangeGrid } from "./RangeGrid";
+export { RangeGrid } from "./RangeGrid";
+export { GridCell } from "./GridCell";
+export { RangeLegend } from "./RangeLegend";
+export { GridSkeleton } from "./GridSkeleton";
 
-export default RangeGrid;
+export { RangeGrid as default } from "./RangeGrid";

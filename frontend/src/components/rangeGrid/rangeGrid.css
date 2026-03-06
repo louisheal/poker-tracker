@@ -1,0 +1,32 @@
+.rg-cell {
+  --rg-raise-color: 239 68 68; /* red */
+  --rg-call-color: 34 197 94; /* green */
+  --rg-fold-color: 60 120 250; /* blue-ish */
+
+  /* defaults */
+  --rg-raise-percent: 0%;
+  --rg-call-percent: 0%;
+
+  background: linear-gradient(
+    to right,
+    rgb(var(--rg-raise-color)) 0%,
+    rgb(var(--rg-raise-color)) var(--rg-raise-percent),
+    rgb(var(--rg-call-color)) var(--rg-raise-percent),
+    rgb(var(--rg-call-color)) calc(var(--rg-raise-percent) + var(--rg-call-percent)),
+    rgb(var(--rg-fold-color)) calc(var(--rg-raise-percent) + var(--rg-call-percent)),
+    rgb(var(--rg-fold-color)) 100%
+  );
+
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+  transition: background-color 150ms ease, opacity 150ms ease;
+}
+
+.rg-cell:focus {
+  outline: 2px solid rgba(59, 130, 246, 0.6);
+  outline-offset: 2px;
+}
+
+.rg-cell.rg-empty {
+  background: #1e2939;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.04);
+}
