@@ -132,10 +132,17 @@ class Ranges:
 
 
 class CBetFilter:
-	pot_types: list[PotType]
-	board_types: list[BoardType]
-	hero_preflop_raiser: bool
-	hero_in_position: bool
+	def __init__(
+		self,
+		pot_types: list[PotType] | None = None,
+		board_types: list[BoardType] | None = None,
+		hero_preflop_raiser: list[bool] | None = None,
+		hero_in_position: list[bool] | None = None,
+	):
+		self.pot_types = pot_types if pot_types is not None else list(PotType)
+		self.board_types = board_types if board_types is not None else list(BoardType)
+		self.hero_preflop_raiser = hero_preflop_raiser if hero_preflop_raiser is not None else [True, False]
+		self.hero_in_position = hero_in_position if hero_in_position is not None else [True, False]
 
 
 class CBetEvent:
@@ -145,15 +152,17 @@ class CBetEvent:
 	hero_in_position: bool
 	cbet: bool
 	fold_to_cbet: bool
+	donk_bet: bool
+	fold_to_donk_bet: bool
 
 	def filter(self, filters: CBetFilter) -> bool:
 		if self.pot_type not in filters.pot_types:
 			return False
 		if self.board_type not in filters.board_types:
 			return False
-		if self.hero_preflop_raiser != filters.hero_preflop_raiser:
+		if self.hero_preflop_raiser not in filters.hero_preflop_raiser:
 			return False
-		if self.hero_in_position != filters.hero_in_position:
+		if self.hero_in_position not in filters.hero_in_position:
 			return False
 		return True
 
@@ -169,8 +178,18 @@ class CBets:
 		events = [e for e in self.events if e.filter(filters)]
 		
 		if not events:
-			return { "cbet_pct": 0, "fold_to_cbet_pct": 0, }
+			return { "cbet_pct": 0, "fcbet_pct": 0, "donk_bet_pct": 0, "fold_to_donk_pct": 0, "hand_count": 0 }
 
-		cbet_pct = sum([1 for e in events if e.cbet]) / len(events)
-		fcbet_pct = sum([1 for e in events if e.fold_to_cbet]) / len(events)
-		return { "cbet_pct": cbet_pct * 100, "fcbet_pct": fcbet_pct * 100 }
+		cbet_pct = sum(1 for e in events if e.cbet) / len(events)
+		cbet_events = [e for e in events if e.cbet]
+		fcbet_pct = (sum(1 for e in cbet_events if e.fold_to_cbet) / len(cbet_events)) if cbet_events else 0
+		donk_pct = sum(1 for e in events if e.donk_bet) / len(events)
+		donk_events = [e for e in events if e.donk_bet]
+		fold_to_donk_pct = (sum(1 for e in donk_events if e.fold_to_donk_bet) / len(donk_events)) if donk_events else 0
+		return {
+			"cbet_pct": cbet_pct * 100,
+			"fcbet_pct": fcbet_pct * 100,
+			"donk_bet_pct": donk_pct * 100,
+			"fold_to_donk_pct": fold_to_donk_pct * 100,
+			"hand_count": len(events),
+		}

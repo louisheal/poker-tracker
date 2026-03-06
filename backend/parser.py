@@ -3,13 +3,14 @@ from typing import Generator
 
 from playing_cards_lib.core import Card, Rank, Suit
 from playing_cards_lib.poker import HoleCards, PokerPosition, PotType, PokerAction, BoardType
-from models import Ranges, CBets
+from models import CBetEvent, CBets, Ranges
 
 START_RE = re.compile(r"Poker Hand #(.*): .*")
 DEALT_HERO_RE = re.compile(r"Dealt to\s+Hero\s*\[([2-9TJQKA][shdc])\s+([2-9TJQKA][shdc])\]", re.IGNORECASE)
 ACTION_RE = re.compile(r"(.*): (folds|calls|raises|checks|bets)\b", re.IGNORECASE)
 SUMMARY_RE = re.compile(r"^\*\*\*\s*SUMMARY\s*\*\*\*")
 FLOP_RE = re.compile(r"\*\*\* FLOP \*\*\* \[([2-9TJQKA][shdc]) ([2-9TJQKA][shdc]) ([2-9TJQKA][shdc])\]", re.IGNORECASE)
+SEAT_RE = re.compile(r"^Seat\s+\d+:\s+([^\s]+)")
 
 def to_card(token: str) -> Card:
 	t = token.strip()
@@ -24,23 +25,43 @@ def to_hole_cards(fst: str, snd: str) -> HoleCards:
 	snd_card = to_card(snd)
 	return HoleCards(fst_card, snd_card)
 
-def parse_histories(files: list[str]) -> Ranges:
+def parse_histories(files: list[str]) -> tuple[Ranges, CBets]:
 	ranges = Ranges()
 	cbets = CBets()
-	pot_type = None
+	include_multiway = False
 
 	for file in files:
-		for hand in group_hands(file):
+		for hand in group_hands(file, include_multiway):
 			hole_cards, position, actions = parse_hand(hand)
-			if not hole_cards:
-				continue
-			for action, pot_type, villain in actions:
-				ranges.add_hand(hole_cards.key(), position, action, pot_type, villain)
-				pot_type = pot_type
-	
-	return ranges
+			if hole_cards:
+				for action, pot_type, villain in actions:
+					ranges.add_hand(hole_cards.key(), position, action, pot_type, villain)
+			cbet_event = parse_cbet_event(hand)
+			if cbet_event:
+				cbets.add_event(cbet_event)
 
-def group_hands(file):
+	return ranges, cbets
+
+
+def flop_player_count(lines: list[str]) -> int | None:
+	players: set[str] = set()
+	for line in lines:
+		seat = SEAT_RE.search(line)
+		if seat:
+			players.add(seat.group(1))
+
+	active_players = set(players)
+	for line in lines:
+		if FLOP_RE.search(line):
+			return len(active_players)
+		action = ACTION_RE.search(line)
+		if not action:
+			continue
+		if action.group(2).lower() == "folds":
+			active_players.discard(action.group(1))
+	return None
+
+def group_hands(file, include_multiway: bool = False):
 	curr_hand = []
 	in_hand = True
 
@@ -60,7 +81,12 @@ def group_hands(file):
 			curr_hand.append(text)
 
 			if text == "*** SUMMARY ***":
-				yield curr_hand
+				if include_multiway:
+					yield curr_hand
+				else:
+					players_on_flop = flop_player_count(curr_hand)
+					if players_on_flop is None or players_on_flop <= 2:
+						yield curr_hand
 				in_hand = False
 
 def parse_hand(lines: list[str]):
@@ -68,14 +94,6 @@ def parse_hand(lines: list[str]):
 	position = parse_hero_position(lines)
 	hero_actions = parse_hero_actions(lines)
 	return hole_cards, position, hero_actions
-
-# class CBetEvent:
-# 	pot_type: PotType
-# 	board_type: BoardType
-# 	hero_preflop_raiser: bool
-# 	hero_in_position: bool
-# 	cbet: bool
-# 	fold_to_cbet: bool
 
 def parse_board_type(lines: list[str]) -> BoardType | None:
 
@@ -97,6 +115,113 @@ def parse_board_type(lines: list[str]) -> BoardType | None:
 			return BoardType.MONOTONE
 	
 	return None
+
+
+def parse_hero_sees_flop(lines: list[str]) -> bool:
+	for line in lines:
+		if FLOP_RE.search(line):
+			return True
+		action = ACTION_RE.search(line)
+		if action and action.group(1) == "Hero" and action.group(2).lower() == "folds":
+			return False
+	return False
+
+
+def parse_preflop_pot_type(lines: list[str]) -> PotType:
+	raise_count = 0
+	for line in lines:
+		if "*** FLOP ***" in line:
+			break
+		action = ACTION_RE.search(line)
+		if action and action.group(2).lower() == "raises":
+			raise_count += 1
+	if raise_count >= 3:
+		return PotType.FOUR_BET
+	elif raise_count >= 2:
+		return PotType.THREE_BET
+	return PotType.SRP
+
+
+def parse_hero_in_position(lines: list[str]) -> bool:
+	in_flop = False
+	for line in lines:
+		if FLOP_RE.search(line):
+			in_flop = True
+			continue
+		if not in_flop:
+			continue
+		if any(m in line for m in ["*** TURN ***", "*** RIVER ***", "*** SHOWDOWN ***", "*** SUMMARY ***"]):
+			break
+		action = ACTION_RE.search(line)
+		if not action:
+			continue
+		return action.group(1) != "Hero"
+	return False
+
+
+def parse_flop_cbet(lines: list[str], hero_is_pfr: bool) -> tuple[bool, bool, bool, bool]:
+
+	in_flop = False
+	cbet = False
+	fold_to_cbet = False
+	donk_bet = False
+	fold_to_donk_bet = False
+
+	for line in lines:
+
+		if FLOP_RE.search(line):
+			in_flop = True
+			continue
+
+		if not in_flop:
+			continue
+
+		if any(m in line for m in ["*** TURN ***", "*** RIVER ***", "*** SHOWDOWN ***", "*** SUMMARY ***"]):
+			break
+
+		action = ACTION_RE.search(line)
+		if not action:
+			continue
+
+		actor = action.group(1)
+		act = action.group(2).lower()
+		pfr_actor = actor == "Hero" if hero_is_pfr else actor != "Hero"
+
+		if cbet and not pfr_actor:
+			fold_to_cbet = act == "folds"
+			return cbet, fold_to_cbet, donk_bet, fold_to_donk_bet
+		
+		if donk_bet and pfr_actor:
+			fold_to_donk_bet = act == "folds"
+			return cbet, fold_to_cbet, donk_bet, fold_to_donk_bet
+		
+		if cbet or donk_bet:
+			continue
+
+		if pfr_actor and act == "bets":
+			cbet = True
+			continue
+
+		if not pfr_actor and act == "bets":
+			donk_bet = True
+			continue
+	
+	return cbet, fold_to_cbet, donk_bet, fold_to_donk_bet
+
+
+def parse_cbet_event(lines: list[str]) -> CBetEvent | None:
+	board_type = parse_board_type(lines)
+	if board_type is None:
+		return None
+	if not parse_hero_sees_flop(lines):
+		return None
+	event = CBetEvent()
+	event.pot_type = parse_preflop_pot_type(lines)
+	event.board_type = board_type
+	event.hero_preflop_raiser = parse_hero_preflop_raiser(lines)
+	event.hero_in_position = parse_hero_in_position(lines)
+	event.cbet, event.fold_to_cbet, event.donk_bet, event.fold_to_donk_bet = parse_flop_cbet(lines, event.hero_preflop_raiser)
+	return event
 
 
 def parse_hero_preflop_raiser(lines: list[str]) -> bool:

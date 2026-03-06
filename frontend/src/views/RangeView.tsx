@@ -10,72 +10,54 @@ type PotType = "SRP" | "THREE_BET" | "FOUR_BET";
 const INIT_POS = "LJ";
 const INIT_TYPE = "THREE_BET";
 
-interface RfiSelectorProps {
+const POSITIONS: Record<PotType, { value: Positions; label: string }[]> = {
+  SRP: [
+    { value: "LJ", label: "LJ" },
+    { value: "HJ", label: "HJ" },
+    { value: "CO", label: "CO" },
+    { value: "BTN", label: "BTN" },
+    { value: "SB", label: "SB" },
+  ],
+  THREE_BET: [
+    { value: "LJ", label: "v LJ" },
+    { value: "HJ", label: "v HJ" },
+    { value: "CO", label: "v CO" },
+    { value: "BTN", label: "v BTN" },
+    { value: "SB", label: "v SB" },
+  ],
+  FOUR_BET: [
+    { value: "LJ", label: "LJ" },
+    { value: "HJ", label: "HJ" },
+    { value: "CO", label: "CO" },
+    { value: "BTN", label: "BTN" },
+    { value: "SB", label: "SB" },
+    { value: "BB", label: "BB" },
+  ],
+};
+
+interface PositionSelectorProps {
+  positions: { value: Positions; label: string }[];
+  selectedPosition: Positions;
   setSelectedRange: (position: Positions) => void;
 }
 
-const RfiPositionSelector = (props: RfiSelectorProps) => {
-  return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "row",
-        alignItems: "center",
-      }}
-    >
-      <Button onClick={() => props.setSelectedRange("LJ")}>LJ</Button>
-      <Button onClick={() => props.setSelectedRange("HJ")}>HJ</Button>
-      <Button onClick={() => props.setSelectedRange("CO")}>CO</Button>
-      <Button onClick={() => props.setSelectedRange("BTN")}>BTN</Button>
-      <Button onClick={() => props.setSelectedRange("SB")}>SB</Button>
-    </div>
-  );
-};
-
-interface ThreeBetSelectorProps {
-  setSelectedRange: (position: Positions) => void;
-}
-
-const ThreeBetSelector = (props: ThreeBetSelectorProps) => {
-  return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "row",
-        alignItems: "center",
-      }}
-    >
-      <Button onClick={() => props.setSelectedRange("LJ")}>v LJ</Button>
-      <Button onClick={() => props.setSelectedRange("HJ")}>v HJ</Button>
-      <Button onClick={() => props.setSelectedRange("CO")}>v CO</Button>
-      <Button onClick={() => props.setSelectedRange("BTN")}>v BTN</Button>
-      <Button onClick={() => props.setSelectedRange("SB")}>v SB</Button>
-    </div>
-  );
-};
-
-interface FourBetSelectorProps {
-  setSelectedRange: (position: Positions) => void;
-}
-
-const FourBetSelector = (props: FourBetSelectorProps) => {
-  return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "row",
-        alignItems: "center",
-      }}
-    >
-      <Button onClick={() => props.setSelectedRange("LJ")}>LJ</Button>
-      <Button onClick={() => props.setSelectedRange("HJ")}>HJ</Button>
-      <Button onClick={() => props.setSelectedRange("CO")}>CO</Button>
-      <Button onClick={() => props.setSelectedRange("BTN")}>BTN</Button>
-      <Button onClick={() => props.setSelectedRange("SB")}>SB</Button>
-      <Button onClick={() => props.setSelectedRange("BB")}>BB</Button>
-    </div>
-  );
-};
+const PositionSelector = ({
+  positions,
+  selectedPosition,
+  setSelectedRange,
+}: PositionSelectorProps) => (
+  <div style={{ display: "flex", flexDirection: "row", alignItems: "center" }}>
+    {positions.map(({ value, label }) => (
+      <Button
+        key={value}
+        variant={selectedPosition === value ? "outline" : "default"}
+        onClick={() => setSelectedRange(value)}
+      >
+        {label}
+      </Button>
+    ))}
+  </div>
+);
 
 interface PotSelectorProps {
   setSrp: () => void;
@@ -93,9 +75,24 @@ const PotSelector = (props: PotSelectorProps) => {
         alignItems: "center",
       }}
     >
-      <Button onClick={props.setSrp}>SRP</Button>
-      <Button onClick={props.setThreeBetPot}>3BET</Button>
-      <Button onClick={props.setFourBetPot}>4BET</Button>
+      <Button
+        variant={props.selectedPot === "SRP" ? "outline" : "default"}
+        onClick={props.setSrp}
+      >
+        SRP
+      </Button>
+      <Button
+        variant={props.selectedPot === "THREE_BET" ? "outline" : "default"}
+        onClick={props.setThreeBetPot}
+      >
+        3BET
+      </Button>
+      <Button
+        variant={props.selectedPot === "FOUR_BET" ? "outline" : "default"}
+        onClick={props.setFourBetPot}
+      >
+        4BET
+      </Button>
     </div>
   );
 };
@@ -133,65 +130,20 @@ export const RangeView = () => {
     setPotType("FOUR_BET");
   };
 
-  if (potType == "SRP") {
-    return (
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-        }}
-      >
-        <PotSelector
-          setSrp={setSrp}
-          setThreeBetPot={setThreeBet}
-          setFourBetPot={setFourBet}
-        />
-        <RfiPositionSelector setSelectedRange={setSelectedRange} />
-        <RangeGrid hands={ranges[potType][selectedRange]} />
-      </div>
-    );
-  }
-
-  if (potType == "THREE_BET") {
-    return (
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-        }}
-      >
-        <PotSelector
-          setSrp={setSrp}
-          setThreeBetPot={setThreeBet}
-          setFourBetPot={setFourBet}
-        />
-        <ThreeBetSelector setSelectedRange={setSelectedRange} />
-        <RangeGrid hands={ranges[potType][selectedRange]} />
-      </div>
-    );
-  }
-
-  if (potType == "FOUR_BET") {
-    return (
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-        }}
-      >
-        <PotSelector
-          setSrp={setSrp}
-          setThreeBetPot={setThreeBet}
-          setFourBetPot={setFourBet}
-        />
-        <FourBetSelector setSelectedRange={setSelectedRange} />
-        <RangeGrid hands={ranges[potType][selectedRange]} />
-      </div>
-    );
-  }
-
-  return <></>;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+      <PotSelector
+        setSrp={setSrp}
+        setThreeBetPot={setThreeBet}
+        setFourBetPot={setFourBet}
+        selectedPot={potType}
+      />
+      <PositionSelector
+        positions={POSITIONS[potType]}
+        selectedPosition={selectedRange}
+        setSelectedRange={setSelectedRange}
+      />
+      <RangeGrid hands={ranges[potType][selectedRange]} />
+    </div>
+  );
 };
