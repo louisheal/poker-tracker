@@ -1,5 +1,7 @@
+from datetime import date
+
 from playing_cards_lib.core import Rank
-from playing_cards_lib.poker import PokerPosition, PotType, BoardType, PokerAction
+from playing_cards_lib.poker import PokerPosition, PotType, BoardType
 
 
 class Stats:
@@ -146,6 +148,7 @@ class CBetFilter:
 
 
 class CBetEvent:
+	played_on: date
 	pot_type: PotType
 	board_type: BoardType
 	hero_preflop_raiser: bool
@@ -165,6 +168,15 @@ class CBetEvent:
 		if self.hero_in_position not in filters.hero_in_position:
 			return False
 		return True
+
+
+class RangeEvent:
+	played_on: date
+	hand_key: str
+	position: PokerPosition
+	action: str
+	pot_type: PotType
+	villain: PokerPosition | None
 
 
 class CBets:

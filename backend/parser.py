@@ -1,11 +1,12 @@
+from datetime import date, datetime
 import re
 from typing import Generator
 
+from models import CBetEvent, RangeEvent
 from playing_cards_lib.core import Card, Rank, Suit
-from playing_cards_lib.poker import HoleCards, PokerPosition, PotType, PokerAction, BoardType
-from models import CBetEvent, CBets, Ranges
+from playing_cards_lib.poker import BoardType, HoleCards, PokerPosition, PotType
 
-START_RE = re.compile(r"Poker Hand #(.*): .*")
+START_RE = re.compile(r"^Poker Hand #[^:]+: .* - (\d{4}/\d{2}/\d{2}) \d{2}:\d{2}:\d{2}$")
 DEALT_HERO_RE = re.compile(r"Dealt to\s+Hero\s*\[([2-9TJQKA][shdc])\s+([2-9TJQKA][shdc])\]", re.IGNORECASE)
 ACTION_RE = re.compile(r"(.*): (folds|calls|raises|checks|bets)\b", re.IGNORECASE)
 SUMMARY_RE = re.compile(r"^\*\*\*\s*SUMMARY\s*\*\*\*")
@@ -25,22 +26,53 @@ def to_hole_cards(fst: str, snd: str) -> HoleCards:
 	snd_card = to_card(snd)
 	return HoleCards(fst_card, snd_card)
 
-def parse_histories(files: list[str]) -> tuple[Ranges, CBets]:
-	ranges = Ranges()
-	cbets = CBets()
+def parse_histories(files: list[str]) -> tuple[list[RangeEvent], list[CBetEvent]]:
+	range_events: list[RangeEvent] = []
+	cbet_events: list[CBetEvent] = []
 	include_multiway = False
 
 	for file in files:
 		for hand in group_hands(file, include_multiway):
+			played_on = parse_hand_date(hand)
+			if played_on is None:
+				continue
 			hole_cards, position, actions = parse_hand(hand)
 			if hole_cards:
 				for action, pot_type, villain in actions:
-					ranges.add_hand(hole_cards.key(), position, action, pot_type, villain)
+					event = RangeEvent()
+					event.played_on = played_on
+					event.hand_key = hole_cards.key()
+					event.position = position
+					event.action = action
+					event.pot_type = pot_type
+					event.villain = villain
+					range_events.append(event)
 			cbet_event = parse_cbet_event(hand)
 			if cbet_event:
-				cbets.add_event(cbet_event)
+				cbet_event.played_on = played_on
+				cbet_events.append(cbet_event)
 
-	return ranges, cbets
+	return range_events, cbet_events
+
+
+def parse_hand_dates(files: list[str]) -> list[date]:
+	hand_dates: list[date] = []
+	for file in files:
+		for hand in group_hands(file, include_multiway=True):
+			played_on = parse_hand_date(hand)
+			if played_on is None:
+				continue
+			hand_dates.append(played_on)
+	return hand_dates
+
+
+def parse_hand_date(lines: list[str]) -> date | None:
+	for line in lines:
+		m = START_RE.search(line)
+		if not m:
+			continue
+		return datetime.strptime(m.group(1), "%Y/%m/%d").date()
+	return None
 
 
 def flop_player_count(lines: list[str]) -> int | None:
@@ -242,7 +274,7 @@ def parse_hero_preflop_raiser(lines: list[str]) -> bool:
 	return last_raiser == "Hero"
 		
 
-def parse_hero_actions(lines: list[str]) -> Generator[tuple[PokerAction, PotType, PokerPosition | None]]:
+def parse_hero_actions(lines: list[str]) -> Generator[tuple[str, PotType, PokerPosition | None], None, None]:
 	pot_type = PotType.SRP
 	v_pos = 0
 	villain = None

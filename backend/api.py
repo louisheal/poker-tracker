@@ -1,11 +1,13 @@
 import os
+from datetime import date, datetime
+from collections import Counter
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
-from models import CBetFilter
+from models import CBetEvent, CBetFilter, CBets, RangeEvent, Ranges
+from parser import parse_hand_dates, parse_histories
 from playing_cards_lib.poker import BoardType, PotType
-from parser import parse_histories
 
 app = FastAPI()
 
@@ -32,7 +34,8 @@ if os.path.isdir(histories_dir):
             continue
         paths.append(path)
 
-ranges, cbets = parse_histories(paths)
+range_events, cbet_events = parse_histories(paths)
+hand_dates = parse_hand_dates(paths)
 
 
 def parse_bool_list(values: list[str] | None) -> list[bool]:
@@ -103,9 +106,65 @@ def parse_pot_type_list(values: list[str] | None) -> list[PotType]:
             unique.append(value)
     return unique
 
+
+def parse_optional_date(value: str | None) -> date | None:
+    if value is None:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail="Dates must be in YYYY-MM-DD format") from e
+
+
+def in_date_range(played_on: date, start_date: date | None, end_date: date | None) -> bool:
+    if start_date is not None and played_on < start_date:
+        return False
+    if end_date is not None and played_on > end_date:
+        return False
+    return True
+
+
+def filter_range_events(events: list[RangeEvent], start_date: date | None, end_date: date | None) -> list[RangeEvent]:
+    return [event for event in events if in_date_range(event.played_on, start_date, end_date)]
+
+
+def filter_cbet_events(events: list[CBetEvent], start_date: date | None, end_date: date | None) -> list[CBetEvent]:
+    return [event for event in events if in_date_range(event.played_on, start_date, end_date)]
+
+
+def aggregate_ranges(events: list[RangeEvent]) -> Ranges:
+    ranges = Ranges()
+    for event in events:
+        ranges.add_hand(event.hand_key, event.position, event.action, event.pot_type, event.villain)
+    return ranges
+
+
+def aggregate_cbets(events: list[CBetEvent]) -> CBets:
+    cbets = CBets()
+    for event in events:
+        cbets.add_event(event)
+    return cbets
+
+
+def filter_hand_dates(values: list[date], start_date: date | None, end_date: date | None) -> list[date]:
+    return [value for value in values if in_date_range(value, start_date, end_date)]
+
+
+def aggregate_daily_volume(values: list[date]) -> list[dict[str, int | str]]:
+    counts = Counter(values)
+    return [
+        {"date": d.isoformat(), "count": counts[d]}
+        for d in sorted(counts.keys())
+    ]
+
 @app.get("/")
-def get_ranges():
-    return ranges.json()
+def get_ranges(
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+):
+    start = parse_optional_date(start_date)
+    end = parse_optional_date(end_date)
+    return aggregate_ranges(filter_range_events(range_events, start, end)).json()
 
 
 @app.get("/cbets")
@@ -114,11 +173,26 @@ def get_cbets(
     hero_in_position: list[str] | None = Query(default=None),
     board_types: list[str] | None = Query(default=None),
     pot_types: list[str] | None = Query(default=None),
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
 ):
+    start = parse_optional_date(start_date)
+    end = parse_optional_date(end_date)
     f = CBetFilter(
         hero_preflop_raiser=parse_bool_list(hero_preflop_raiser),
         hero_in_position=parse_bool_list(hero_in_position),
         board_types=parse_board_type_list(board_types),
         pot_types=parse_pot_type_list(pot_types),
     )
-    return cbets.json(f)
+    filtered = filter_cbet_events(cbet_events, start, end)
+    return aggregate_cbets(filtered).json(f)
+
+
+@app.get("/hands/volume")
+def get_hand_volume(
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+):
+    start = parse_optional_date(start_date)
+    end = parse_optional_date(end_date)
+    return aggregate_daily_volume(filter_hand_dates(hand_dates, start, end))

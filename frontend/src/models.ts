@@ -39,3 +39,13 @@ export interface CbetStats {
   fold_to_donk_pct: number;
   hand_count: number;
 }
+
+export interface DailyVolumePoint {
+  date: string;
+  count: number;
+}
+
+export interface DateRangeFilter {
+  startDate?: string;
+  endDate?: string;
+}

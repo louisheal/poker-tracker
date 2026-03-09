@@ -1,21 +1,47 @@
 import "./App.css";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { BarChart2, Grid2x2 } from "lucide-react";
 import { ThemeProvider } from "@/components/theme-provider";
 import { cn } from "@/lib/utils";
 import { RangeView } from "./views/RangeView";
 import { CbetView } from "./views/CbetView";
+import { DateRangeDock } from "./components/DateRangeDock";
+import { getHandVolume } from "./api";
+import type { DailyVolumePoint, DateRangeFilter } from "./models";
 
 type View = "ranges" | "cbets";
 
 const NAV_ITEMS = [
   { id: "ranges" as View, label: "Ranges", icon: Grid2x2 },
-  { id: "cbets" as View, label: "C-Bets", icon: BarChart2 },
+  { id: "cbets" as View, label: "CBets", icon: BarChart2 },
 ];
 
 function App() {
   const [view, setView] = useState<View>("ranges");
+  const [handVolume, setHandVolume] = useState<DailyVolumePoint[]>([]);
+  const [dateRange, setDateRange] = useState<DateRangeFilter>({});
+
+  useEffect(() => {
+    const loadHandVolume = async () => {
+      const points = await getHandVolume();
+      setHandVolume(points);
+      if (!points.length) {
+        return;
+      }
+      setDateRange((prev) => {
+        if (prev.startDate || prev.endDate) {
+          return prev;
+        }
+        return {
+          startDate: points[0].date,
+          endDate: points[points.length - 1].date,
+        };
+      });
+    };
+
+    loadHandVolume();
+  }, []);
 
   return (
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
@@ -32,7 +58,7 @@ function App() {
                 "flex items-center gap-3 px-4 py-2 mx-2 rounded-md text-sm transition-colors",
                 view === id
                   ? "bg-accent text-accent-foreground font-medium"
-                  : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
+                  : "text-muted-foreground hover:text-foreground hover:bg-accent/50",
               )}
             >
               <Icon className="w-4 h-4" />
@@ -40,9 +66,20 @@ function App() {
             </button>
           ))}
         </nav>
-        <main className="flex-1 overflow-auto">
-          {view === "ranges" ? <RangeView /> : <CbetView />}
-        </main>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <main className="min-h-0 flex-1 overflow-auto">
+            {view === "ranges" ? (
+              <RangeView dateRange={dateRange} />
+            ) : (
+              <CbetView dateRange={dateRange} />
+            )}
+          </main>
+          <DateRangeDock
+            points={handVolume}
+            value={dateRange}
+            onChange={setDateRange}
+          />
+        </div>
       </div>
     </ThemeProvider>
   );

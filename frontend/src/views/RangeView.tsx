@@ -1,7 +1,7 @@
 import { getRanges } from "@/api";
 import RangeGrid, { GridSkeleton, RangeLegend } from "@/components/rangeGrid";
 import { FilterGroup } from "@/components/FilterGroup";
-import type { Ranges } from "@/models";
+import type { DateRangeFilter, Ranges } from "@/models";
 import { useEffect, useState } from "react";
 
 type Positions = "LJ" | "HJ" | "CO" | "BTN" | "SB" | "BB";
@@ -34,19 +34,23 @@ const POSITIONS: Record<PotType, { value: Positions; label: string }[]> = {
   ],
 };
 
-export const RangeView = () => {
+interface RangeViewProps {
+  dateRange: DateRangeFilter;
+}
+
+export const RangeView = ({ dateRange }: RangeViewProps) => {
   const [ranges, setRanges] = useState<Ranges>();
   const [selectedRange, setSelectedRange] = useState<Positions>(INIT_POS);
   const [potType, setPotType] = useState<PotType>(INIT_TYPE);
 
   useEffect(() => {
     const loadRanges = async () => {
-      const ranges = await getRanges();
+      const ranges = await getRanges(dateRange.startDate, dateRange.endDate);
       setRanges(ranges);
     };
 
     loadRanges();
-  }, []);
+  }, [dateRange.endDate, dateRange.startDate]);
 
   return (
     <div className="p-8 h-full flex flex-col gap-3">

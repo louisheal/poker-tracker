@@ -2,7 +2,15 @@ import { getCbets } from "@/api";
 import { SpeedDial } from "@/components/SpeedDial";
 import { FilterGroup } from "@/components/FilterGroup";
 import { useMemo } from "react";
-import type { BoardTypeFilter, PotTypeFilter, CbetStats, PositionFilters, BoardTypeFilters, PotTypeFilters } from "@/models";
+import type {
+  BoardTypeFilter,
+  PotTypeFilter,
+  CbetStats,
+  PositionFilters,
+  BoardTypeFilters,
+  PotTypeFilters,
+  DateRangeFilter,
+} from "@/models";
 import { useEffect, useState } from "react";
 
 const INITIAL_POSITION_FILTERS: PositionFilters = { ip: false, oop: false };
@@ -47,29 +55,51 @@ const CbetPanel = ({ title, role, stats }: CbetPanelProps) => {
           value={stats?.donk_bet_pct ?? 0}
           label={isPfr ? "Villain Donk Bet" : "Hero Donk Bet"}
         />
-        <SpeedDial value={stats?.fold_to_donk_pct ?? 0} label="Fold to Donk Bet" />
+        <SpeedDial
+          value={stats?.fold_to_donk_pct ?? 0}
+          label="Fold to Donk Bet"
+        />
       </div>
     </div>
   );
 };
 
-export const CbetView = () => {
+interface CbetViewProps {
+  dateRange: DateRangeFilter;
+}
+
+export const CbetView = ({ dateRange }: CbetViewProps) => {
   const [pfrStats, setPfrStats] = useState<CbetStats>();
   const [defStats, setDefStats] = useState<CbetStats>();
-  const [positionFilters, setPositionFilters] = useState<PositionFilters>(INITIAL_POSITION_FILTERS);
-  const [boardTypeFilters, setBoardTypeFilters] = useState<BoardTypeFilters>(INITIAL_BOARD_TYPE_FILTERS);
-  const [potTypeFilters, setPotTypeFilters] = useState<PotTypeFilters>(INITIAL_POT_TYPE_FILTERS);
+  const [positionFilters, setPositionFilters] = useState<PositionFilters>(
+    INITIAL_POSITION_FILTERS,
+  );
+  const [boardTypeFilters, setBoardTypeFilters] = useState<BoardTypeFilters>(
+    INITIAL_BOARD_TYPE_FILTERS,
+  );
+  const [potTypeFilters, setPotTypeFilters] = useState<PotTypeFilters>(
+    INITIAL_POT_TYPE_FILTERS,
+  );
 
   const togglePositionFilter = (key: string) => {
-    setPositionFilters((prev) => ({ ...prev, [key as keyof PositionFilters]: !prev[key as keyof PositionFilters] }));
+    setPositionFilters((prev) => ({
+      ...prev,
+      [key as keyof PositionFilters]: !prev[key as keyof PositionFilters],
+    }));
   };
 
   const toggleBoardTypeFilter = (key: string) => {
-    setBoardTypeFilters((prev) => ({ ...prev, [key as keyof BoardTypeFilters]: !prev[key as keyof BoardTypeFilters] }));
+    setBoardTypeFilters((prev) => ({
+      ...prev,
+      [key as keyof BoardTypeFilters]: !prev[key as keyof BoardTypeFilters],
+    }));
   };
 
   const togglePotTypeFilter = (key: string) => {
-    setPotTypeFilters((prev) => ({ ...prev, [key as keyof PotTypeFilters]: !prev[key as keyof PotTypeFilters] }));
+    setPotTypeFilters((prev) => ({
+      ...prev,
+      [key as keyof PotTypeFilters]: !prev[key as keyof PotTypeFilters],
+    }));
   };
 
   const { heroInPosition, boardTypes, potTypes } = useMemo(() => {
@@ -93,13 +123,33 @@ export const CbetView = () => {
 
   useEffect(() => {
     Promise.all([
-      getCbets(heroInPosition, [true], boardTypes, potTypes),
-      getCbets(heroInPosition, [false], boardTypes, potTypes),
+      getCbets(
+        heroInPosition,
+        [true],
+        boardTypes,
+        potTypes,
+        dateRange.startDate,
+        dateRange.endDate,
+      ),
+      getCbets(
+        heroInPosition,
+        [false],
+        boardTypes,
+        potTypes,
+        dateRange.startDate,
+        dateRange.endDate,
+      ),
     ]).then(([pfr, def]) => {
       setPfrStats(pfr);
       setDefStats(def);
     });
-  }, [heroInPosition, boardTypes, potTypes]);
+  }, [
+    heroInPosition,
+    boardTypes,
+    potTypes,
+    dateRange.startDate,
+    dateRange.endDate,
+  ]);
 
   return (
     <div className="p-8 h-full content-start flex flex-col gap-6">
@@ -114,9 +164,21 @@ export const CbetView = () => {
 
         <FilterGroup
           options={[
-            { key: "monotone", label: "MONOTONE", active: boardTypeFilters.monotone },
-            { key: "twoTone", label: "2TONE", active: boardTypeFilters.twoTone },
-            { key: "rainbow", label: "RAINBOW", active: boardTypeFilters.rainbow },
+            {
+              key: "monotone",
+              label: "MONOTONE",
+              active: boardTypeFilters.monotone,
+            },
+            {
+              key: "twoTone",
+              label: "2TONE",
+              active: boardTypeFilters.twoTone,
+            },
+            {
+              key: "rainbow",
+              label: "RAINBOW",
+              active: boardTypeFilters.rainbow,
+            },
           ]}
           onToggle={toggleBoardTypeFilter}
         />
