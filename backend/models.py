@@ -1,4 +1,5 @@
 from datetime import date
+from enum import Enum
 
 from playing_cards_lib.core import Rank
 from playing_cards_lib.poker import PokerPosition, PotType, BoardType
@@ -205,3 +206,102 @@ class CBets:
 			"fold_to_donk_pct": fold_to_donk_pct * 100,
 			"hand_count": len(events),
 		}
+
+
+class FlopActionSequence(str, Enum):
+	XX = "XX"
+	XBC = "XBC"
+	XBRC = "XBRC"
+	BC = "BC"
+
+
+class TurnRunout(str, Enum):
+	OVERCARD = "OVERCARD"
+	FLUSH_COMPLETING = "FLUSH_COMPLETING"
+	PAIRED = "PAIRED"
+	OTHER = "OTHER"
+
+
+class TurnEvent:
+	played_on: date
+	pot_type: PotType
+	board_type: BoardType
+	hero_preflop_raiser: bool
+	hero_in_position: bool
+	flop_action_sequence: FlopActionSequence
+	turn_runout: TurnRunout
+	hero_bet_turn: bool
+	villain_bet_turn: bool
+	hero_folded_to_villain_turn_bet: bool
+	villain_folded_to_hero_turn_bet: bool
+
+	def filter(self, filters: "TurnFilter") -> bool:
+		if self.pot_type not in filters.pot_types:
+			return False
+		if self.board_type not in filters.board_types:
+			return False
+		if self.hero_preflop_raiser not in filters.hero_preflop_raiser:
+			return False
+		if self.hero_in_position not in filters.hero_in_position:
+			return False
+		if self.turn_runout not in filters.turn_runouts:
+			return False
+		return True
+
+
+class TurnFilter:
+	def __init__(
+		self,
+		pot_types: list[PotType] | None = None,
+		board_types: list[BoardType] | None = None,
+		hero_preflop_raiser: list[bool] | None = None,
+		hero_in_position: list[bool] | None = None,
+		turn_runouts: list[TurnRunout] | None = None,
+	):
+		self.pot_types = pot_types if pot_types is not None else list(PotType)
+		self.board_types = board_types if board_types is not None else list(BoardType)
+		self.hero_preflop_raiser = hero_preflop_raiser if hero_preflop_raiser is not None else [True, False]
+		self.hero_in_position = hero_in_position if hero_in_position is not None else [True, False]
+		self.turn_runouts = turn_runouts if turn_runouts is not None else list(TurnRunout)
+
+
+class Turns:
+	def __init__(self):
+		self.events: list[TurnEvent] = []
+
+	def add_event(self, event: TurnEvent):
+		self.events.append(event)
+
+	def json(self, filters: TurnFilter):
+		result = {}
+		
+		for sequence in FlopActionSequence:
+			sequence_events = [e for e in self.events if e.flop_action_sequence == sequence and e.filter(filters)]
+			
+			if not sequence_events:
+				result[sequence.value] = {
+					"hero_bet_pct": 0,
+					"villain_fold_to_hero_bet_pct": 0,
+					"villain_bet_pct": 0,
+					"hero_fold_to_villain_bet_pct": 0,
+					"hand_count": 0,
+				}
+				continue
+			
+			hero_bet_pct = sum(1 for e in sequence_events if e.hero_bet_turn) / len(sequence_events)
+			hero_bet_events = [e for e in sequence_events if e.hero_bet_turn]
+			villain_fold_to_hero_bet_pct = (sum(1 for e in hero_bet_events if e.villain_folded_to_hero_turn_bet) / len(hero_bet_events)) if hero_bet_events else 0
+			
+			villain_bet_pct = sum(1 for e in sequence_events if e.villain_bet_turn) / len(sequence_events)
+			villain_bet_events = [e for e in sequence_events if e.villain_bet_turn]
+			hero_fold_to_villain_bet_pct = (sum(1 for e in villain_bet_events if e.hero_folded_to_villain_turn_bet) / len(villain_bet_events)) if villain_bet_events else 0
+			
+			result[sequence.value] = {
+				"hero_bet_pct": hero_bet_pct * 100,
+				"villain_fold_to_hero_bet_pct": villain_fold_to_hero_bet_pct * 100,
+				"villain_bet_pct": villain_bet_pct * 100,
+				"hero_fold_to_villain_bet_pct": hero_fold_to_villain_bet_pct * 100,
+				"hand_count": len(sequence_events),
+			}
+		
+		return result

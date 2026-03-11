@@ -5,7 +5,7 @@ from collections import Counter
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
-from models import CBetEvent, CBetFilter, CBets, RangeEvent, Ranges
+from models import CBetEvent, CBetFilter, CBets, RangeEvent, Ranges, TurnEvent, TurnFilter, Turns, TurnRunout
 from parser import parse_hand_dates, parse_histories
 from playing_cards_lib.poker import BoardType, PotType
 
@@ -34,7 +34,7 @@ if os.path.isdir(histories_dir):
             continue
         paths.append(path)
 
-range_events, cbet_events = parse_histories(paths)
+range_events, cbet_events, turn_events = parse_histories(paths)
 hand_dates = parse_hand_dates(paths)
 
 
@@ -107,6 +107,31 @@ def parse_pot_type_list(values: list[str] | None) -> list[PotType]:
     return unique
 
 
+def parse_turn_runout_list(values: list[str] | None) -> list[TurnRunout]:
+    if values is None:
+        return list(TurnRunout)
+    parsed: list[TurnRunout] = []
+    mapping = {
+        "OVERCARD": TurnRunout.OVERCARD,
+        "FLUSH_COMPLETING": TurnRunout.FLUSH_COMPLETING,
+        "FLUSH": TurnRunout.FLUSH_COMPLETING,
+        "PAIRED": TurnRunout.PAIRED,
+        "OTHER": TurnRunout.OTHER,
+    }
+    for value in values:
+        for token in value.split(","):
+            t = token.strip().upper()
+            if t in mapping:
+                parsed.append(mapping[t])
+    if not parsed:
+        return list(TurnRunout)
+    unique: list[TurnRunout] = []
+    for value in parsed:
+        if value not in unique:
+            unique.append(value)
+    return unique
+
+
 def parse_optional_date(value: str | None) -> date | None:
     if value is None:
         return None
@@ -144,6 +169,17 @@ def aggregate_cbets(events: list[CBetEvent]) -> CBets:
     for event in events:
         cbets.add_event(event)
     return cbets
+
+
+def filter_turn_events(events: list[TurnEvent], start_date: date | None, end_date: date | None) -> list[TurnEvent]:
+    return [event for event in events if in_date_range(event.played_on, start_date, end_date)]
+
+
+def aggregate_turns(events: list[TurnEvent]) -> Turns:
+    turns = Turns()
+    for event in events:
+        turns.add_event(event)
+    return turns
 
 
 def filter_hand_dates(values: list[date], start_date: date | None, end_date: date | None) -> list[date]:
@@ -186,6 +222,29 @@ def get_cbets(
     )
     filtered = filter_cbet_events(cbet_events, start, end)
     return aggregate_cbets(filtered).json(f)
+
+
+@app.get("/turn")
+def get_turn(
+    hero_preflop_raiser: list[str] | None = Query(default=None),
+    hero_in_position: list[str] | None = Query(default=None),
+    board_types: list[str] | None = Query(default=None),
+    pot_types: list[str] | None = Query(default=None),
+    turn_runouts: list[str] | None = Query(default=None),
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+):
+    start = parse_optional_date(start_date)
+    end = parse_optional_date(end_date)
+    f = TurnFilter(
+        hero_preflop_raiser=parse_bool_list(hero_preflop_raiser),
+        hero_in_position=parse_bool_list(hero_in_position),
+        board_types=parse_board_type_list(board_types),
+        pot_types=parse_pot_type_list(pot_types),
+        turn_runouts=parse_turn_runout_list(turn_runouts),
+    )
+    filtered = filter_turn_events(turn_events, start, end)
+    return aggregate_turns(filtered).json(f)
 
 
 @app.get("/hands/volume")

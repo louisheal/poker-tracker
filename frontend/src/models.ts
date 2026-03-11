@@ -40,6 +40,27 @@ export interface CbetStats {
   hand_count: number;
 }
 
+export type FlopActionLine = "XX" | "XBC" | "XBRC" | "BC";
+
+export type TurnRunoutFilter = "OVERCARD" | "FLUSH_COMPLETING" | "PAIRED" | "OTHER";
+
+export interface TurnRunoutFilters {
+  overcard: boolean;
+  flushCompleting: boolean;
+  paired: boolean;
+  other: boolean;
+}
+
+export interface TurnStats {
+  hero_bet_pct: number;
+  villain_fold_to_hero_bet_pct: number;
+  villain_bet_pct: number;
+  hero_fold_to_villain_bet_pct: number;
+  hand_count: number;
+}
+
+export type TurnStatsMap = { [key in FlopActionLine]: TurnStats };
+
 export interface DailyVolumePoint {
   date: string;
   count: number;
