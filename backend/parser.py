@@ -1,8 +1,11 @@
+import logging
 from datetime import date, datetime
 import re
 from typing import Generator
 
-from models import CBetEvent, RangeEvent, TurnEvent, FlopActionSequence, TurnRunout
+from models import CBetEvent, FlopActionSequence, RangeEvent, RiverEvent, ShowdownType, TurnEvent, TurnRunout
+
+logger = logging.getLogger(__name__)
 from playing_cards_lib.core import Card, Rank, Suit
 from playing_cards_lib.poker import BoardType, HoleCards, PokerPosition, PotType
 
@@ -12,7 +15,9 @@ ACTION_RE = re.compile(r"(.*): (folds|calls|raises|checks|bets)\b", re.IGNORECAS
 SUMMARY_RE = re.compile(r"^\*\*\*\s*SUMMARY\s*\*\*\*")
 FLOP_RE = re.compile(r"\*\*\* FLOP \*\*\* \[([2-9TJQKA][shdc]) ([2-9TJQKA][shdc]) ([2-9TJQKA][shdc])\]", re.IGNORECASE)
 TURN_RE = re.compile(r"\*\*\* TURN \*\*\* \[([2-9TJQKA][shdc]) ([2-9TJQKA][shdc]) ([2-9TJQKA][shdc])\] \[([2-9TJQKA][shdc])\]", re.IGNORECASE)
-RIVER_RE = re.compile(r"\*\*\* RIVER \*\*\*", re.IGNORECASE)
+RIVER_RE = re.compile(r"\*\*\* RIVER \*\*\* \[([2-9TJQKA][shdc]) ([2-9TJQKA][shdc]) ([2-9TJQKA][shdc]) ([2-9TJQKA][shdc])\] \[([2-9TJQKA][shdc])\]", re.IGNORECASE)
+TOTAL_POT_RE = re.compile(r"Total pot \$(\d+\.?\d*)")
+HERO_SHOWDOWN_RE = re.compile(r"Hero.*showed.*and (won|lost)")
 SEAT_RE = re.compile(r"^Seat\s+\d+:\s+([^\s]+)")
 
 def to_card(token: str) -> Card:
@@ -28,14 +33,19 @@ def to_hole_cards(fst: str, snd: str) -> HoleCards:
 	snd_card = to_card(snd)
 	return HoleCards(fst_card, snd_card)
 
-def parse_histories(files: list[str]) -> tuple[list[RangeEvent], list[CBetEvent], list[TurnEvent]]:
+def parse_histories(files: list[str]) -> tuple[list[RangeEvent], list[CBetEvent], list[TurnEvent], list[RiverEvent]]:
 	range_events: list[RangeEvent] = []
 	cbet_events: list[CBetEvent] = []
 	turn_events: list[TurnEvent] = []
+	river_events: list[RiverEvent] = []
 	include_multiway = False
+	hand_count = 0
 
 	for file in files:
 		for hand in group_hands(file, include_multiway):
+			hand_count += 1
+			if hand_count % 1000 == 0:
+				logger.info(f"Parsed {hand_count} hands...")
 			played_on = parse_hand_date(hand)
 			if played_on is None:
 				continue
@@ -58,8 +68,13 @@ def parse_histories(files: list[str]) -> tuple[list[RangeEvent], list[CBetEvent]
 			if turn_event:
 				turn_event.played_on = played_on
 				turn_events.append(turn_event)
+			river_event = parse_river_event(hand)
+			if river_event:
+				river_event.played_on = played_on
+				river_events.append(river_event)
 
-	return range_events, cbet_events, turn_events
+	logger.info(f"Parsing complete. Total hands: {hand_count}")
+	return range_events, cbet_events, turn_events, river_events
 
 
 def parse_hand_dates(files: list[str]) -> list[date]:
@@ -102,31 +117,39 @@ def flop_player_count(lines: list[str]) -> int | None:
 
 def group_hands(file, include_multiway: bool = False):
 	curr_hand = []
-	in_hand = True
 
 	with open(file, 'r', encoding='utf-8') as f:
 		for line in f:
 			text = line.strip()
 			if not text:
+				if curr_hand:
+					if include_multiway:
+						yield curr_hand
+					else:
+						players_on_flop = flop_player_count(curr_hand)
+						if players_on_flop is None or players_on_flop <= 2:
+							yield curr_hand
+					curr_hand = []
 				continue
 
-			if "Poker Hand" in text:
-				in_hand = True
-				curr_hand = []
-
-			if not in_hand:
-				continue
-
-			curr_hand.append(text)
-
-			if text == "*** SUMMARY ***":
+			if "Poker Hand" in text and curr_hand:
 				if include_multiway:
 					yield curr_hand
 				else:
 					players_on_flop = flop_player_count(curr_hand)
 					if players_on_flop is None or players_on_flop <= 2:
 						yield curr_hand
-				in_hand = False
+				curr_hand = []
+
+			curr_hand.append(text)
+
+	if curr_hand:
+		if include_multiway:
+			yield curr_hand
+		else:
+			players_on_flop = flop_player_count(curr_hand)
+			if players_on_flop is None or players_on_flop <= 2:
+				yield curr_hand
 
 def parse_hand(lines: list[str]):
 	hole_cards = parse_hero_hole_cards(lines)
@@ -245,13 +268,15 @@ def parse_hero_in_position(lines: list[str]) -> bool:
 	return False
 
 
-def parse_flop_cbet(lines: list[str], hero_is_pfr: bool) -> tuple[bool, bool, bool, bool]:
+def parse_flop_cbet(lines: list[str], hero_is_pfr: bool) -> tuple[bool, bool, bool, bool, bool, bool]:
 
 	in_flop = False
 	cbet = False
 	fold_to_cbet = False
+	raise_to_cbet = False
 	donk_bet = False
 	fold_to_donk_bet = False
+	raise_to_donk_bet = False
 
 	for line in lines:
 
@@ -274,12 +299,18 @@ def parse_flop_cbet(lines: list[str], hero_is_pfr: bool) -> tuple[bool, bool, bo
 		pfr_actor = actor == "Hero" if hero_is_pfr else actor != "Hero"
 
 		if cbet and not pfr_actor:
-			fold_to_cbet = act == "folds"
-			return cbet, fold_to_cbet, donk_bet, fold_to_donk_bet
+			if act == "folds":
+				fold_to_cbet = True
+			elif act == "raises":
+				raise_to_cbet = True
+			return cbet, fold_to_cbet, raise_to_cbet, donk_bet, fold_to_donk_bet, raise_to_donk_bet
 		
 		if donk_bet and pfr_actor:
-			fold_to_donk_bet = act == "folds"
-			return cbet, fold_to_cbet, donk_bet, fold_to_donk_bet
+			if act == "folds":
+				fold_to_donk_bet = True
+			elif act == "raises":
+				raise_to_donk_bet = True
+			return cbet, fold_to_cbet, raise_to_cbet, donk_bet, fold_to_donk_bet, raise_to_donk_bet
 		
 		if cbet or donk_bet:
 			continue
@@ -292,7 +323,7 @@ def parse_flop_cbet(lines: list[str], hero_is_pfr: bool) -> tuple[bool, bool, bo
 			donk_bet = True
 			continue
 	
-	return cbet, fold_to_cbet, donk_bet, fold_to_donk_bet
+	return cbet, fold_to_cbet, raise_to_cbet, donk_bet, fold_to_donk_bet, raise_to_donk_bet
 
 
 def parse_flop_action_sequence(lines: list[str], hero_is_pfr: bool) -> FlopActionSequence | None:
@@ -338,12 +369,14 @@ def parse_flop_action_sequence(lines: list[str], hero_is_pfr: bool) -> FlopActio
 	return None
 
 
-def parse_turn_actions(lines: list[str]) -> tuple[bool, bool, bool, bool]:
+def parse_turn_actions(lines: list[str]) -> tuple[bool, bool, bool, bool, bool, bool]:
 	in_turn = False
 	hero_bet_turn = False
+	villain_fold_to_hero_bet = False
+	villain_raise_to_hero_bet = False
 	villain_bet_turn = False
-	hero_folded_to_villain_turn_bet = False
-	villain_folded_to_hero_turn_bet = False
+	hero_fold_to_villain_bet = False
+	hero_raise_to_villain_bet = False
 	
 	for line in lines:
 		if TURN_RE.search(line):
@@ -363,11 +396,21 @@ def parse_turn_actions(lines: list[str]) -> tuple[bool, bool, bool, bool]:
 		actor = action.group(1)
 		act = action.group(2).lower()
 		
-		if hero_bet_turn and actor != "Hero" and act == "folds":
-			villain_folded_to_hero_turn_bet = True
+		if hero_bet_turn and actor != "Hero":
+			if act == "folds":
+				villain_fold_to_hero_bet = True
+			elif act == "raises":
+				villain_raise_to_hero_bet = True
+			# Stop after first response
+			return hero_bet_turn, villain_fold_to_hero_bet, villain_raise_to_hero_bet, villain_bet_turn, hero_fold_to_villain_bet, hero_raise_to_villain_bet
 		
-		if villain_bet_turn and actor == "Hero" and act == "folds":
-			hero_folded_to_villain_turn_bet = True
+		if villain_bet_turn and actor == "Hero":
+			if act == "folds":
+				hero_fold_to_villain_bet = True
+			elif act == "raises":
+				hero_raise_to_villain_bet = True
+			# Stop after first response
+			return hero_bet_turn, villain_fold_to_hero_bet, villain_raise_to_hero_bet, villain_bet_turn, hero_fold_to_villain_bet, hero_raise_to_villain_bet
 		
 		if not hero_bet_turn and not villain_bet_turn:
 			if actor == "Hero" and act == "bets":
@@ -375,7 +418,7 @@ def parse_turn_actions(lines: list[str]) -> tuple[bool, bool, bool, bool]:
 			elif actor != "Hero" and act == "bets":
 				villain_bet_turn = True
 	
-	return hero_bet_turn, villain_bet_turn, hero_folded_to_villain_turn_bet, villain_folded_to_hero_turn_bet
+	return hero_bet_turn, villain_fold_to_hero_bet, villain_raise_to_hero_bet, villain_bet_turn, hero_fold_to_villain_bet, hero_raise_to_villain_bet
 
 
 def parse_turn_event(lines: list[str]) -> TurnEvent | None:
@@ -393,7 +436,7 @@ def parse_turn_event(lines: list[str]) -> TurnEvent | None:
 	if turn_runout is None:
 		return None
 	
-	hero_bet_turn, villain_bet_turn, hero_folded_to_villain_turn_bet, villain_folded_to_hero_turn_bet = parse_turn_actions(lines)
+	hero_bet_turn, villain_fold_to_hero_bet, villain_raise_to_hero_bet, villain_bet_turn, hero_fold_to_villain_bet, hero_raise_to_villain_bet = parse_turn_actions(lines)
 	
 	event = TurnEvent()
 	event.pot_type = parse_preflop_pot_type(lines)
@@ -403,9 +446,11 @@ def parse_turn_event(lines: list[str]) -> TurnEvent | None:
 	event.flop_action_sequence = flop_action_sequence
 	event.turn_runout = turn_runout
 	event.hero_bet_turn = hero_bet_turn
+	event.villain_fold_to_hero_bet = villain_fold_to_hero_bet
+	event.villain_raise_to_hero_bet = villain_raise_to_hero_bet
 	event.villain_bet_turn = villain_bet_turn
-	event.hero_folded_to_villain_turn_bet = hero_folded_to_villain_turn_bet
-	event.villain_folded_to_hero_turn_bet = villain_folded_to_hero_turn_bet
+	event.hero_fold_to_villain_bet = hero_fold_to_villain_bet
+	event.hero_raise_to_villain_bet = hero_raise_to_villain_bet
 	return event
 
 
@@ -420,7 +465,7 @@ def parse_cbet_event(lines: list[str]) -> CBetEvent | None:
 	event.board_type = board_type
 	event.hero_preflop_raiser = parse_hero_preflop_raiser(lines)
 	event.hero_in_position = parse_hero_in_position(lines)
-	event.cbet, event.fold_to_cbet, event.donk_bet, event.fold_to_donk_bet = parse_flop_cbet(lines, event.hero_preflop_raiser)
+	event.cbet, event.fold_to_cbet, event.raise_to_cbet, event.donk_bet, event.fold_to_donk_bet, event.raise_to_donk_bet = parse_flop_cbet(lines, event.hero_preflop_raiser)
 	return event
 
 
@@ -506,3 +551,148 @@ def parse_hero_position(lines: list[str]):
 			return PokerPosition(p)
 		p += 1
 	return PokerPosition.BB
+
+
+def parse_river_actions(lines: list[str]) -> tuple[bool, bool, bool, bool, bool, bool]:
+	in_river = False
+	hero_bet_river = False
+	villain_fold_to_hero_bet = False
+	villain_raise_to_hero_bet = False
+	villain_bet_river = False
+	hero_fold_to_villain_bet = False
+	hero_raise_to_villain_bet = False
+
+	for line in lines:
+		if RIVER_RE.search(line):
+			in_river = True
+			continue
+
+		if not in_river:
+			continue
+
+		if any(m in line for m in ["*** SHOWDOWN ***", "*** SUMMARY ***"]):
+			break
+
+		action = ACTION_RE.search(line)
+		if not action:
+			continue
+
+		actor = action.group(1)
+		act = action.group(2).lower()
+
+		if hero_bet_river and actor != "Hero":
+			if act == "folds":
+				villain_fold_to_hero_bet = True
+			elif act == "raises":
+				villain_raise_to_hero_bet = True
+			return hero_bet_river, villain_fold_to_hero_bet, villain_raise_to_hero_bet, villain_bet_river, hero_fold_to_villain_bet, hero_raise_to_villain_bet
+
+		if villain_bet_river and actor == "Hero":
+			if act == "folds":
+				hero_fold_to_villain_bet = True
+			elif act == "raises":
+				hero_raise_to_villain_bet = True
+			return hero_bet_river, villain_fold_to_hero_bet, villain_raise_to_hero_bet, villain_bet_river, hero_fold_to_villain_bet, hero_raise_to_villain_bet
+
+		if not hero_bet_river and not villain_bet_river:
+			if actor == "Hero" and act == "bets":
+				hero_bet_river = True
+			elif actor != "Hero" and act == "bets":
+				villain_bet_river = True
+
+	return hero_bet_river, villain_fold_to_hero_bet, villain_raise_to_hero_bet, villain_bet_river, hero_fold_to_villain_bet, hero_raise_to_villain_bet
+
+
+def parse_river_showdown_type(lines: list[str]) -> ShowdownType | None:
+	in_river = False
+	has_bet = False
+	has_raise = False
+
+	for line in lines:
+		if RIVER_RE.search(line):
+			in_river = True
+			continue
+
+		if not in_river:
+			continue
+
+		if any(m in line for m in ["*** SHOWDOWN ***", "*** SUMMARY ***"]):
+			break
+
+		action = ACTION_RE.search(line)
+		if not action:
+			continue
+
+		act = action.group(2).lower()
+		if act == "bets":
+			has_bet = True
+		elif act == "raises":
+			has_raise = True
+
+	if has_raise:
+		return ShowdownType.RAISE_OCCURRED
+	if has_bet:
+		return ShowdownType.BET_CALL
+	return ShowdownType.CHECK_CHECK
+
+
+def parse_showdown_result(lines: list[str]) -> tuple[bool, bool, float]:
+	went_to_showdown = False
+	hero_won = False
+	pot_size_bb = 0.0
+
+	for line in lines:
+		m = HERO_SHOWDOWN_RE.search(line)
+		if m:
+			went_to_showdown = True
+			hero_won = m.group(1) == "won"
+
+	for line in lines:
+		m = TOTAL_POT_RE.search(line)
+		if m:
+			pot_size_bb = float(m.group(1)) / 0.02
+			break
+
+	return went_to_showdown, hero_won, pot_size_bb
+
+
+def parse_river_event(lines: list[str]) -> RiverEvent | None:
+	board_type = parse_board_type(lines)
+	if board_type is None:
+		return None
+	if not parse_hero_sees_flop(lines):
+		return None
+
+	has_river = any(RIVER_RE.search(line) for line in lines)
+	if not has_river:
+		return None
+
+	flop_action_sequence = parse_flop_action_sequence(lines, parse_hero_preflop_raiser(lines))
+	if flop_action_sequence is None:
+		return None
+
+	turn_runout = parse_turn_runout(lines)
+	if turn_runout is None:
+		return None
+
+	hero_bet, v_fold, v_raise, v_bet, h_fold, h_raise = parse_river_actions(lines)
+	went_to_showdown, hero_won, pot_size_bb = parse_showdown_result(lines)
+	showdown_type = parse_river_showdown_type(lines) if went_to_showdown else None
+
+	event = RiverEvent()
+	event.pot_type = parse_preflop_pot_type(lines)
+	event.board_type = board_type
+	event.hero_in_position = parse_hero_in_position(lines)
+	event.flop_action_sequence = flop_action_sequence
+	event.turn_runout = turn_runout
+	event.hero_bet_river = hero_bet
+	event.villain_fold_to_hero_bet = v_fold
+	event.villain_raise_to_hero_bet = v_raise
+	event.villain_bet_river = v_bet
+	event.hero_fold_to_villain_bet = h_fold
+	event.hero_raise_to_villain_bet = h_raise
+	event.went_to_showdown = went_to_showdown
+	event.showdown_type = showdown_type
+	event.hero_won_showdown = hero_won
+	event.pot_size_bb = pot_size_bb
+	return event

@@ -7,6 +7,7 @@ import type {
   TurnStatsMap,
   FlopActionLine,
   TurnRunoutFilter,
+  RiverStats,
 } from "./models";
 
 export const getRanges = async (startDate?: string, endDate?: string) => {
@@ -108,5 +109,40 @@ export const getTurnStats = async (
     params.append("end_date", endDate);
   }
   const response = await fetch(`http://localhost:8000/turn?${params}`);
+  return response.json();
+};
+
+export const getRiverStats = async (
+  heroInPosition: boolean[],
+  boardTypes: BoardTypeFilter[],
+  potTypes: PotTypeFilter[],
+  flopActions: FlopActionLine[],
+  turnRunouts: TurnRunoutFilter[],
+  startDate?: string,
+  endDate?: string,
+): Promise<RiverStats> => {
+  const params = new URLSearchParams();
+  for (const value of heroInPosition) {
+    params.append("hero_in_position", String(value));
+  }
+  for (const value of boardTypes) {
+    params.append("board_types", value);
+  }
+  for (const value of potTypes) {
+    params.append("pot_types", value);
+  }
+  for (const value of flopActions) {
+    params.append("flop_actions", value);
+  }
+  for (const value of turnRunouts) {
+    params.append("turn_runouts", value);
+  }
+  if (startDate) {
+    params.append("start_date", startDate);
+  }
+  if (endDate) {
+    params.append("end_date", endDate);
+  }
+  const response = await fetch(`http://localhost:8000/river?${params}`);
   return response.json();
 };

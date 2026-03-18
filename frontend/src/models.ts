@@ -35,8 +35,10 @@ export interface PotTypeFilters {
 export interface CbetStats {
   cbet_pct: number;
   fcbet_pct: number;
+  raise_to_cbet_pct: number;
   donk_bet_pct: number;
   fold_to_donk_pct: number;
+  raise_to_donk_pct: number;
   hand_count: number;
 }
 
@@ -54,12 +56,45 @@ export interface TurnRunoutFilters {
 export interface TurnStats {
   hero_bet_pct: number;
   villain_fold_to_hero_bet_pct: number;
+  villain_raise_to_hero_bet_pct: number;
   villain_bet_pct: number;
   hero_fold_to_villain_bet_pct: number;
+  hero_raise_to_villain_bet_pct: number;
   hand_count: number;
 }
 
 export type TurnStatsMap = { [key in FlopActionLine]: TurnStats };
+
+export type ShowdownType = "CHECK_CHECK" | "BET_CALL" | "RAISE_OCCURRED";
+
+export interface RiverActionStats {
+  hero_bet_pct: number;
+  villain_fold_to_hero_bet_pct: number;
+  villain_raise_to_hero_bet_pct: number;
+  villain_bet_pct: number;
+  hero_fold_to_villain_bet_pct: number;
+  hero_raise_to_villain_bet_pct: number;
+  hand_count: number;
+}
+
+export interface ShowdownStats {
+  bb_per_hand: number;
+  hand_count: number;
+}
+
+export type ShowdownStatsMap = { [key in ShowdownType]: ShowdownStats };
+
+export interface RiverStats {
+  actions: RiverActionStats;
+  showdown: ShowdownStatsMap;
+}
+
+export interface FlopActionFilters {
+  xx: boolean;
+  xbc: boolean;
+  xbrc: boolean;
+  bc: boolean;
+}
 
 export interface DailyVolumePoint {
   date: string;

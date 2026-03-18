@@ -45,12 +45,16 @@ const CbetPanel = ({ title, role, stats }: CbetPanelProps) => {
           {stats?.hand_count ?? 0} hands
         </p>
       </div>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         <SpeedDial
           value={stats?.cbet_pct ?? 0}
           label={isPfr ? "Hero C-Bet" : "Villain C-Bet"}
         />
         <SpeedDial value={stats?.fcbet_pct ?? 0} label="Fold to C-Bet" />
+        <SpeedDial
+          value={stats?.raise_to_cbet_pct ?? 0}
+          label={isPfr ? "Villain Raise" : "Hero Raise"}
+        />
         <SpeedDial
           value={stats?.donk_bet_pct ?? 0}
           label={isPfr ? "Villain Donk Bet" : "Hero Donk Bet"}
@@ -58,6 +62,10 @@ const CbetPanel = ({ title, role, stats }: CbetPanelProps) => {
         <SpeedDial
           value={stats?.fold_to_donk_pct ?? 0}
           label="Fold to Donk Bet"
+        />
+        <SpeedDial
+          value={stats?.raise_to_donk_pct ?? 0}
+          label={isPfr ? "Hero Raise" : "Villain Raise"}
         />
       </div>
     </div>

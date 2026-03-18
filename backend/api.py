@@ -1,3 +1,4 @@
+import logging
 import os
 from datetime import date, datetime
 from collections import Counter
@@ -5,9 +6,12 @@ from collections import Counter
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
-from models import CBetEvent, CBetFilter, CBets, RangeEvent, Ranges, TurnEvent, TurnFilter, Turns, TurnRunout
+from models import CBetEvent, CBetFilter, CBets, FlopActionSequence, RangeEvent, Ranges, RiverEvent, RiverFilter, Rivers, TurnEvent, TurnFilter, Turns, TurnRunout
 from parser import parse_hand_dates, parse_histories
 from playing_cards_lib.poker import BoardType, PotType
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 app = FastAPI()
 
@@ -34,8 +38,10 @@ if os.path.isdir(histories_dir):
             continue
         paths.append(path)
 
-range_events, cbet_events, turn_events = parse_histories(paths)
+logger.info(f"Loading {len(paths)} hand history files...")
+range_events, cbet_events, turn_events, river_events = parse_histories(paths)
 hand_dates = parse_hand_dates(paths)
+logger.info(f"Loaded {len(range_events)} range events, {len(cbet_events)} cbet events, {len(turn_events)} turn events, {len(river_events)} river events")
 
 
 def parse_bool_list(values: list[str] | None) -> list[bool]:
@@ -126,6 +132,30 @@ def parse_turn_runout_list(values: list[str] | None) -> list[TurnRunout]:
     if not parsed:
         return list(TurnRunout)
     unique: list[TurnRunout] = []
+    for value in parsed:
+        if value not in unique:
+            unique.append(value)
+    return unique
+
+
+def parse_flop_action_list(values: list[str] | None) -> list[FlopActionSequence]:
+    if values is None:
+        return list(FlopActionSequence)
+    parsed: list[FlopActionSequence] = []
+    mapping = {
+        "XX": FlopActionSequence.XX,
+        "XBC": FlopActionSequence.XBC,
+        "XBRC": FlopActionSequence.XBRC,
+        "BC": FlopActionSequence.BC,
+    }
+    for value in values:
+        for token in value.split(","):
+            t = token.strip().upper()
+            if t in mapping:
+                parsed.append(mapping[t])
+    if not parsed:
+        return list(FlopActionSequence)
+    unique: list[FlopActionSequence] = []
     for value in parsed:
         if value not in unique:
             unique.append(value)
@@ -255,3 +285,37 @@ def get_hand_volume(
     start = parse_optional_date(start_date)
     end = parse_optional_date(end_date)
     return aggregate_daily_volume(filter_hand_dates(hand_dates, start, end))
+
+
+def filter_river_events(events: list[RiverEvent], start_date: date | None, end_date: date | None) -> list[RiverEvent]:
+    return [event for event in events if in_date_range(event.played_on, start_date, end_date)]
+
+
+def aggregate_rivers(events: list[RiverEvent]) -> Rivers:
+    rivers = Rivers()
+    for event in events:
+        rivers.add_event(event)
+    return rivers
+
+
+@app.get("/river")
+def get_river(
+    hero_in_position: list[str] | None = Query(default=None),
+    board_types: list[str] | None = Query(default=None),
+    pot_types: list[str] | None = Query(default=None),
+    flop_actions: list[str] | None = Query(default=None),
+    turn_runouts: list[str] | None = Query(default=None),
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+):
+    start = parse_optional_date(start_date)
+    end = parse_optional_date(end_date)
+    f = RiverFilter(
+        hero_in_position=parse_bool_list(hero_in_position),
+        board_types=parse_board_type_list(board_types),
+        pot_types=parse_pot_type_list(pot_types),
+        flop_actions=parse_flop_action_list(flop_actions),
+        turn_runouts=parse_turn_runout_list(turn_runouts),
+    )
+    filtered = filter_river_events(river_events, start, end)
+    return aggregate_rivers(filtered).json(f)

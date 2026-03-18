@@ -156,8 +156,10 @@ class CBetEvent:
 	hero_in_position: bool
 	cbet: bool
 	fold_to_cbet: bool
+	raise_to_cbet: bool
 	donk_bet: bool
 	fold_to_donk_bet: bool
+	raise_to_donk_bet: bool
 
 	def filter(self, filters: CBetFilter) -> bool:
 		if self.pot_type not in filters.pot_types:
@@ -191,19 +193,25 @@ class CBets:
 		events = [e for e in self.events if e.filter(filters)]
 		
 		if not events:
-			return { "cbet_pct": 0, "fcbet_pct": 0, "donk_bet_pct": 0, "fold_to_donk_pct": 0, "hand_count": 0 }
+			return { "cbet_pct": 0, "fcbet_pct": 0, "raise_to_cbet_pct": 0, "donk_bet_pct": 0, "fold_to_donk_pct": 0, "raise_to_donk_pct": 0, "hand_count": 0 }
 
 		cbet_pct = sum(1 for e in events if e.cbet) / len(events)
 		cbet_events = [e for e in events if e.cbet]
 		fcbet_pct = (sum(1 for e in cbet_events if e.fold_to_cbet) / len(cbet_events)) if cbet_events else 0
+		raise_to_cbet_pct = (sum(1 for e in cbet_events if e.raise_to_cbet) / len(cbet_events)) if cbet_events else 0
+		
 		donk_pct = sum(1 for e in events if e.donk_bet) / len(events)
 		donk_events = [e for e in events if e.donk_bet]
 		fold_to_donk_pct = (sum(1 for e in donk_events if e.fold_to_donk_bet) / len(donk_events)) if donk_events else 0
+		raise_to_donk_pct = (sum(1 for e in donk_events if e.raise_to_donk_bet) / len(donk_events)) if donk_events else 0
+		
 		return {
 			"cbet_pct": cbet_pct * 100,
 			"fcbet_pct": fcbet_pct * 100,
+			"raise_to_cbet_pct": raise_to_cbet_pct * 100,
 			"donk_bet_pct": donk_pct * 100,
 			"fold_to_donk_pct": fold_to_donk_pct * 100,
+			"raise_to_donk_pct": raise_to_donk_pct * 100,
 			"hand_count": len(events),
 		}
 
@@ -231,9 +239,11 @@ class TurnEvent:
 	flop_action_sequence: FlopActionSequence
 	turn_runout: TurnRunout
 	hero_bet_turn: bool
+	villain_fold_to_hero_bet: bool
+	villain_raise_to_hero_bet: bool
 	villain_bet_turn: bool
-	hero_folded_to_villain_turn_bet: bool
-	villain_folded_to_hero_turn_bet: bool
+	hero_fold_to_villain_bet: bool
+	hero_raise_to_villain_bet: bool
 
 	def filter(self, filters: "TurnFilter") -> bool:
 		if self.pot_type not in filters.pot_types:
@@ -282,26 +292,150 @@ class Turns:
 				result[sequence.value] = {
 					"hero_bet_pct": 0,
 					"villain_fold_to_hero_bet_pct": 0,
+					"villain_raise_to_hero_bet_pct": 0,
 					"villain_bet_pct": 0,
 					"hero_fold_to_villain_bet_pct": 0,
+					"hero_raise_to_villain_bet_pct": 0,
 					"hand_count": 0,
 				}
 				continue
 			
 			hero_bet_pct = sum(1 for e in sequence_events if e.hero_bet_turn) / len(sequence_events)
 			hero_bet_events = [e for e in sequence_events if e.hero_bet_turn]
-			villain_fold_to_hero_bet_pct = (sum(1 for e in hero_bet_events if e.villain_folded_to_hero_turn_bet) / len(hero_bet_events)) if hero_bet_events else 0
+			villain_fold_to_hero_bet_pct = (sum(1 for e in hero_bet_events if e.villain_fold_to_hero_bet) / len(hero_bet_events)) if hero_bet_events else 0
+			villain_raise_to_hero_bet_pct = (sum(1 for e in hero_bet_events if e.villain_raise_to_hero_bet) / len(hero_bet_events)) if hero_bet_events else 0
 			
 			villain_bet_pct = sum(1 for e in sequence_events if e.villain_bet_turn) / len(sequence_events)
 			villain_bet_events = [e for e in sequence_events if e.villain_bet_turn]
-			hero_fold_to_villain_bet_pct = (sum(1 for e in villain_bet_events if e.hero_folded_to_villain_turn_bet) / len(villain_bet_events)) if villain_bet_events else 0
+			hero_fold_to_villain_bet_pct = (sum(1 for e in villain_bet_events if e.hero_fold_to_villain_bet) / len(villain_bet_events)) if villain_bet_events else 0
+			hero_raise_to_villain_bet_pct = (sum(1 for e in villain_bet_events if e.hero_raise_to_villain_bet) / len(villain_bet_events)) if villain_bet_events else 0
 			
 			result[sequence.value] = {
 				"hero_bet_pct": hero_bet_pct * 100,
 				"villain_fold_to_hero_bet_pct": villain_fold_to_hero_bet_pct * 100,
+				"villain_raise_to_hero_bet_pct": villain_raise_to_hero_bet_pct * 100,
 				"villain_bet_pct": villain_bet_pct * 100,
 				"hero_fold_to_villain_bet_pct": hero_fold_to_villain_bet_pct * 100,
+				"hero_raise_to_villain_bet_pct": hero_raise_to_villain_bet_pct * 100,
 				"hand_count": len(sequence_events),
 			}
 		
 		return result
+
+
+class ShowdownType(str, Enum):
+	CHECK_CHECK = "CHECK_CHECK"
+	BET_CALL = "BET_CALL"
+	RAISE_OCCURRED = "RAISE_OCCURRED"
+
+
+class RiverEvent:
+	played_on: date
+	pot_type: PotType
+	board_type: BoardType
+	hero_in_position: bool
+	flop_action_sequence: FlopActionSequence
+	turn_runout: TurnRunout
+	hero_bet_river: bool
+	villain_fold_to_hero_bet: bool
+	villain_raise_to_hero_bet: bool
+	villain_bet_river: bool
+	hero_fold_to_villain_bet: bool
+	hero_raise_to_villain_bet: bool
+	went_to_showdown: bool
+	showdown_type: ShowdownType | None
+	hero_won_showdown: bool
+	pot_size_bb: float
+
+	def filter(self, filters: "RiverFilter") -> bool:
+		if self.pot_type not in filters.pot_types:
+			return False
+		if self.board_type not in filters.board_types:
+			return False
+		if self.hero_in_position not in filters.hero_in_position:
+			return False
+		if self.flop_action_sequence not in filters.flop_actions:
+			return False
+		if self.turn_runout not in filters.turn_runouts:
+			return False
+		return True
+
+
+class RiverFilter:
+	def __init__(
+		self,
+		pot_types: list[PotType] | None = None,
+		board_types: list[BoardType] | None = None,
+		hero_in_position: list[bool] | None = None,
+		flop_actions: list[FlopActionSequence] | None = None,
+		turn_runouts: list[TurnRunout] | None = None,
+	):
+		self.pot_types = pot_types if pot_types is not None else list(PotType)
+		self.board_types = board_types if board_types is not None else list(BoardType)
+		self.hero_in_position = hero_in_position if hero_in_position is not None else [True, False]
+		self.flop_actions = flop_actions if flop_actions is not None else list(FlopActionSequence)
+		self.turn_runouts = turn_runouts if turn_runouts is not None else list(TurnRunout)
+
+
+class Rivers:
+	def __init__(self):
+		self.events: list[RiverEvent] = []
+
+	def add_event(self, event: RiverEvent):
+		self.events.append(event)
+
+	def json(self, filters: RiverFilter):
+		events = [e for e in self.events if e.filter(filters)]
+
+		if not events:
+			empty_showdown = {
+				st.value: {"bb_per_hand": 0, "hand_count": 0}
+				for st in ShowdownType
+			}
+			return {
+				"actions": {
+					"hero_bet_pct": 0,
+					"villain_fold_to_hero_bet_pct": 0,
+					"villain_raise_to_hero_bet_pct": 0,
+					"villain_bet_pct": 0,
+					"hero_fold_to_villain_bet_pct": 0,
+					"hero_raise_to_villain_bet_pct": 0,
+					"hand_count": 0,
+				},
+				"showdown": empty_showdown,
+			}
+
+		hero_bet_pct = sum(1 for e in events if e.hero_bet_river) / len(events)
+		hero_bet_events = [e for e in events if e.hero_bet_river]
+		villain_fold_pct = (sum(1 for e in hero_bet_events if e.villain_fold_to_hero_bet) / len(hero_bet_events)) if hero_bet_events else 0
+		villain_raise_pct = (sum(1 for e in hero_bet_events if e.villain_raise_to_hero_bet) / len(hero_bet_events)) if hero_bet_events else 0
+
+		villain_bet_pct = sum(1 for e in events if e.villain_bet_river) / len(events)
+		villain_bet_events = [e for e in events if e.villain_bet_river]
+		hero_fold_pct = (sum(1 for e in villain_bet_events if e.hero_fold_to_villain_bet) / len(villain_bet_events)) if villain_bet_events else 0
+		hero_raise_pct = (sum(1 for e in villain_bet_events if e.hero_raise_to_villain_bet) / len(villain_bet_events)) if villain_bet_events else 0
+
+		showdown_result = {}
+		for st in ShowdownType:
+			sd_events = [e for e in events if e.went_to_showdown and e.showdown_type == st]
+			if not sd_events:
+				showdown_result[st.value] = {"bb_per_hand": 0, "hand_count": 0}
+				continue
+			total_bb = sum(e.pot_size_bb if e.hero_won_showdown else -e.pot_size_bb for e in sd_events)
+			showdown_result[st.value] = {
+				"bb_per_hand": round(total_bb / len(sd_events), 2),
+				"hand_count": len(sd_events),
+			}
+
+		return {
+			"actions": {
+				"hero_bet_pct": hero_bet_pct * 100,
+				"villain_fold_to_hero_bet_pct": villain_fold_pct * 100,
+				"villain_raise_to_hero_bet_pct": villain_raise_pct * 100,
+				"villain_bet_pct": villain_bet_pct * 100,
+				"hero_fold_to_villain_bet_pct": hero_fold_pct * 100,
+				"hero_raise_to_villain_bet_pct": hero_raise_pct * 100,
+				"hand_count": len(events),
+			},
+			"showdown": showdown_result,
+		}
