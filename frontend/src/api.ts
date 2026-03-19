@@ -6,7 +6,10 @@ import type {
   Ranges,
   TurnStatsMap,
   FlopActionLine,
+  FlopRankTextureFilter,
   TurnRunoutFilter,
+  TurnActionLine,
+  RiverRunoutFilter,
   RiverStats,
 } from "./models";
 
@@ -117,7 +120,10 @@ export const getRiverStats = async (
   boardTypes: BoardTypeFilter[],
   potTypes: PotTypeFilter[],
   flopActions: FlopActionLine[],
+  flopRankTextures: FlopRankTextureFilter[],
   turnRunouts: TurnRunoutFilter[],
+  turnActionSequences: TurnActionLine[],
+  riverRunouts: RiverRunoutFilter[],
   startDate?: string,
   endDate?: string,
 ): Promise<RiverStats> => {
@@ -134,8 +140,17 @@ export const getRiverStats = async (
   for (const value of flopActions) {
     params.append("flop_actions", value);
   }
+  for (const value of flopRankTextures) {
+    params.append("flop_rank_textures", value);
+  }
   for (const value of turnRunouts) {
     params.append("turn_runouts", value);
+  }
+  for (const value of turnActionSequences) {
+    params.append("turn_action_sequences", value);
+  }
+  for (const value of riverRunouts) {
+    params.append("river_runouts", value);
   }
   if (startDate) {
     params.append("start_date", startDate);

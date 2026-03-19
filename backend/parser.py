@@ -3,7 +3,7 @@ from datetime import date, datetime
 import re
 from typing import Generator
 
-from models import CBetEvent, FlopActionSequence, RangeEvent, RiverEvent, ShowdownType, TurnEvent, TurnRunout
+from models import CBetEvent, FlopActionSequence, FlopRankTexture, RangeEvent, RiverActionSequence, RiverEvent, RiverRunout, ShowdownType, TurnActionSequence, TurnEvent, TurnRunout
 
 logger = logging.getLogger(__name__)
 from playing_cards_lib.core import Card, Rank, Suit
@@ -224,6 +224,97 @@ def parse_turn_runout(lines: list[str]) -> TurnRunout | None:
 	
 	# Everything else is other
 	return TurnRunout.OTHER
+
+
+def parse_river_card(lines: list[str]) -> Card | None:
+	for line in lines:
+		river = RIVER_RE.search(line)
+		if not river:
+			continue
+		return to_card(river.group(5))
+	return None
+
+
+def parse_river_runout(lines: list[str]) -> RiverRunout | None:
+	flop_cards = parse_flop_cards(lines)
+	turn_card = parse_turn_card(lines)
+	river_card = parse_river_card(lines)
+
+	if flop_cards is None or turn_card is None or river_card is None:
+		return None
+
+	board_ranks = {card.rank for card in flop_cards} | {turn_card.rank}
+	board_suits = [card.suit for card in flop_cards] + [turn_card.suit]
+
+	if all(river_card.rank.value > rank.value for rank in board_ranks):
+		return RiverRunout.OVERCARD
+
+	if river_card.rank in board_ranks:
+		return RiverRunout.PAIRED
+
+	river_suited_count = sum(1 for s in board_suits if s == river_card.suit)
+	if river_suited_count >= 2:
+		return RiverRunout.FLUSH_COMPLETING
+
+	return RiverRunout.OTHER
+
+
+def parse_flop_rank_texture(lines: list[str]) -> FlopRankTexture | None:
+	flop_cards = parse_flop_cards(lines)
+	if flop_cards is None:
+		return None
+
+	ranks = [card.rank for card in flop_cards]
+	unique_ranks = len(set(ranks))
+
+	if unique_ranks == 1:
+		return FlopRankTexture.TRIPS
+	elif unique_ranks == 2:
+		return FlopRankTexture.PAIRED
+	else:
+		return FlopRankTexture.UNPAIRED
+
+
+def parse_turn_action_sequence(lines: list[str]) -> TurnActionSequence | None:
+	in_turn = False
+	sequence = ""
+
+	for line in lines:
+		if TURN_RE.search(line):
+			in_turn = True
+			continue
+
+		if not in_turn:
+			continue
+
+		if any(m in line for m in ["*** RIVER ***", "*** SHOWDOWN ***", "*** SUMMARY ***"]):
+			break
+
+		action = ACTION_RE.search(line)
+		if not action:
+			continue
+
+		act = action.group(2).lower()
+
+		if act == "checks":
+			sequence += "X"
+		elif act == "bets":
+			sequence += "B"
+		elif act == "raises":
+			sequence += "R"
+		elif act == "calls":
+			sequence += "C"
+
+	if sequence == "XX":
+		return TurnActionSequence.XX
+	elif sequence == "XBC":
+		return TurnActionSequence.XBC
+	elif sequence == "XBRC":
+		return TurnActionSequence.XBRC
+	elif sequence == "BC":
+		return TurnActionSequence.BC
+
+	return None
 
 
 def parse_hero_sees_flop(lines: list[str]) -> bool:
@@ -636,6 +727,50 @@ def parse_river_showdown_type(lines: list[str]) -> ShowdownType | None:
 	return ShowdownType.CHECK_CHECK
 
 
+def parse_river_action_sequence(lines: list[str]) -> RiverActionSequence | None:
+	in_river = False
+	sequence = ""
+
+	for line in lines:
+		if RIVER_RE.search(line):
+			in_river = True
+			continue
+
+		if not in_river:
+			continue
+
+		if any(m in line for m in ["*** SHOWDOWN ***", "*** SUMMARY ***"]):
+			break
+
+		action = ACTION_RE.search(line)
+		if not action:
+			continue
+
+		act = action.group(2).lower()
+
+		if act == "checks":
+			sequence += "X"
+		elif act == "bets":
+			sequence += "B"
+		elif act == "raises":
+			sequence += "R"
+		elif act == "calls":
+			sequence += "C"
+		elif act == "folds":
+			sequence += "F"
+
+	if sequence == "XX":
+		return RiverActionSequence.XX
+	elif sequence in ("XBC", "XBF"):
+		return RiverActionSequence.XBC
+	elif sequence in ("XBRC", "XBRF"):
+		return RiverActionSequence.XBRC
+	elif sequence in ("BC", "BF"):
+		return RiverActionSequence.BC
+
+	return None
+
+
 def parse_showdown_result(lines: list[str]) -> tuple[bool, bool, float]:
 	went_to_showdown = False
 	hero_won = False
@@ -671,8 +806,24 @@ def parse_river_event(lines: list[str]) -> RiverEvent | None:
 	if flop_action_sequence is None:
 		return None
 
+	flop_rank_texture = parse_flop_rank_texture(lines)
+	if flop_rank_texture is None:
+		return None
+
 	turn_runout = parse_turn_runout(lines)
 	if turn_runout is None:
+		return None
+
+	turn_action_sequence = parse_turn_action_sequence(lines)
+	if turn_action_sequence is None:
+		return None
+
+	river_runout = parse_river_runout(lines)
+	if river_runout is None:
+		return None
+
+	river_action_sequence = parse_river_action_sequence(lines)
+	if river_action_sequence is None:
 		return None
 
 	hero_bet, v_fold, v_raise, v_bet, h_fold, h_raise = parse_river_actions(lines)
@@ -684,7 +835,11 @@ def parse_river_event(lines: list[str]) -> RiverEvent | None:
 	event.board_type = board_type
 	event.hero_in_position = parse_hero_in_position(lines)
 	event.flop_action_sequence = flop_action_sequence
+	event.flop_rank_texture = flop_rank_texture
 	event.turn_runout = turn_runout
+	event.turn_action_sequence = turn_action_sequence
+	event.river_runout = river_runout
+	event.river_action_sequence = river_action_sequence
 	event.hero_bet_river = hero_bet
 	event.villain_fold_to_hero_bet = v_fold
 	event.villain_raise_to_hero_bet = v_raise

@@ -230,6 +230,33 @@ class TurnRunout(str, Enum):
 	OTHER = "OTHER"
 
 
+class RiverRunout(str, Enum):
+	OVERCARD = "OVERCARD"
+	FLUSH_COMPLETING = "FLUSH_COMPLETING"
+	PAIRED = "PAIRED"
+	OTHER = "OTHER"
+
+
+class FlopRankTexture(str, Enum):
+	TRIPS = "TRIPS"
+	PAIRED = "PAIRED"
+	UNPAIRED = "UNPAIRED"
+
+
+class TurnActionSequence(str, Enum):
+	XX = "XX"
+	XBC = "XBC"
+	XBRC = "XBRC"
+	BC = "BC"
+
+
+class RiverActionSequence(str, Enum):
+	XX = "XX"
+	XBC = "XBC"
+	XBRC = "XBRC"
+	BC = "BC"
+
+
 class TurnEvent:
 	played_on: date
 	pot_type: PotType
@@ -335,7 +362,11 @@ class RiverEvent:
 	board_type: BoardType
 	hero_in_position: bool
 	flop_action_sequence: FlopActionSequence
+	flop_rank_texture: FlopRankTexture
 	turn_runout: TurnRunout
+	turn_action_sequence: TurnActionSequence
+	river_runout: RiverRunout
+	river_action_sequence: RiverActionSequence
 	hero_bet_river: bool
 	villain_fold_to_hero_bet: bool
 	villain_raise_to_hero_bet: bool
@@ -356,7 +387,13 @@ class RiverEvent:
 			return False
 		if self.flop_action_sequence not in filters.flop_actions:
 			return False
+		if self.flop_rank_texture not in filters.flop_rank_textures:
+			return False
 		if self.turn_runout not in filters.turn_runouts:
+			return False
+		if self.turn_action_sequence not in filters.turn_action_sequences:
+			return False
+		if self.river_runout not in filters.river_runouts:
 			return False
 		return True
 
@@ -368,13 +405,19 @@ class RiverFilter:
 		board_types: list[BoardType] | None = None,
 		hero_in_position: list[bool] | None = None,
 		flop_actions: list[FlopActionSequence] | None = None,
+		flop_rank_textures: list[FlopRankTexture] | None = None,
 		turn_runouts: list[TurnRunout] | None = None,
+		turn_action_sequences: list[TurnActionSequence] | None = None,
+		river_runouts: list[RiverRunout] | None = None,
 	):
 		self.pot_types = pot_types if pot_types is not None else list(PotType)
 		self.board_types = board_types if board_types is not None else list(BoardType)
 		self.hero_in_position = hero_in_position if hero_in_position is not None else [True, False]
 		self.flop_actions = flop_actions if flop_actions is not None else list(FlopActionSequence)
+		self.flop_rank_textures = flop_rank_textures if flop_rank_textures is not None else list(FlopRankTexture)
 		self.turn_runouts = turn_runouts if turn_runouts is not None else list(TurnRunout)
+		self.turn_action_sequences = turn_action_sequences if turn_action_sequences is not None else list(TurnActionSequence)
+		self.river_runouts = river_runouts if river_runouts is not None else list(RiverRunout)
 
 
 class Rivers:
@@ -389,8 +432,12 @@ class Rivers:
 
 		if not events:
 			empty_showdown = {
-				st.value: {"bb_per_hand": 0, "hand_count": 0}
-				for st in ShowdownType
+				seq.value: {"bb_per_hand": 0, "hand_count": 0}
+				for seq in RiverActionSequence
+			}
+			empty_avg_pot = {
+				seq.value: {"avg_pot_bb": 0, "hand_count": 0}
+				for seq in RiverActionSequence
 			}
 			return {
 				"actions": {
@@ -403,6 +450,7 @@ class Rivers:
 					"hand_count": 0,
 				},
 				"showdown": empty_showdown,
+				"avg_pot": empty_avg_pot,
 			}
 
 		hero_bet_pct = sum(1 for e in events if e.hero_bet_river) / len(events)
@@ -416,13 +464,24 @@ class Rivers:
 		hero_raise_pct = (sum(1 for e in villain_bet_events if e.hero_raise_to_villain_bet) / len(villain_bet_events)) if villain_bet_events else 0
 
 		showdown_result = {}
-		for st in ShowdownType:
-			sd_events = [e for e in events if e.went_to_showdown and e.showdown_type == st]
+		avg_pot_result = {}
+		for seq in RiverActionSequence:
+			seq_events = [e for e in events if e.river_action_sequence == seq]
+			if not seq_events:
+				avg_pot_result[seq.value] = {"avg_pot_bb": 0, "hand_count": 0}
+			else:
+				total_pot = sum(e.pot_size_bb for e in seq_events)
+				avg_pot_result[seq.value] = {
+					"avg_pot_bb": round(total_pot / len(seq_events), 1),
+					"hand_count": len(seq_events),
+				}
+
+			sd_events = [e for e in events if e.went_to_showdown and e.river_action_sequence == seq]
 			if not sd_events:
-				showdown_result[st.value] = {"bb_per_hand": 0, "hand_count": 0}
+				showdown_result[seq.value] = {"bb_per_hand": 0, "hand_count": 0}
 				continue
 			total_bb = sum(e.pot_size_bb if e.hero_won_showdown else -e.pot_size_bb for e in sd_events)
-			showdown_result[st.value] = {
+			showdown_result[seq.value] = {
 				"bb_per_hand": round(total_bb / len(sd_events), 2),
 				"hand_count": len(sd_events),
 			}
@@ -438,4 +497,5 @@ class Rivers:
 				"hand_count": len(events),
 			},
 			"showdown": showdown_result,
+			"avg_pot": avg_pot_result,
 		}

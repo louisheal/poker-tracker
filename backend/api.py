@@ -6,7 +6,7 @@ from collections import Counter
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
-from models import CBetEvent, CBetFilter, CBets, FlopActionSequence, RangeEvent, Ranges, RiverEvent, RiverFilter, Rivers, TurnEvent, TurnFilter, Turns, TurnRunout
+from models import CBetEvent, CBetFilter, CBets, FlopActionSequence, FlopRankTexture, RangeEvent, Ranges, RiverEvent, RiverFilter, RiverRunout, Rivers, TurnActionSequence, TurnEvent, TurnFilter, Turns, TurnRunout
 from parser import parse_hand_dates, parse_histories
 from playing_cards_lib.poker import BoardType, PotType
 
@@ -162,6 +162,78 @@ def parse_flop_action_list(values: list[str] | None) -> list[FlopActionSequence]
     return unique
 
 
+def parse_river_runout_list(values: list[str] | None) -> list[RiverRunout]:
+    if values is None:
+        return list(RiverRunout)
+    parsed: list[RiverRunout] = []
+    mapping = {
+        "OVERCARD": RiverRunout.OVERCARD,
+        "FLUSH_COMPLETING": RiverRunout.FLUSH_COMPLETING,
+        "FLUSH": RiverRunout.FLUSH_COMPLETING,
+        "PAIRED": RiverRunout.PAIRED,
+        "OTHER": RiverRunout.OTHER,
+    }
+    for value in values:
+        for token in value.split(","):
+            t = token.strip().upper()
+            if t in mapping:
+                parsed.append(mapping[t])
+    if not parsed:
+        return list(RiverRunout)
+    unique: list[RiverRunout] = []
+    for value in parsed:
+        if value not in unique:
+            unique.append(value)
+    return unique
+
+
+def parse_flop_rank_texture_list(values: list[str] | None) -> list[FlopRankTexture]:
+    if values is None:
+        return list(FlopRankTexture)
+    parsed: list[FlopRankTexture] = []
+    mapping = {
+        "TRIPS": FlopRankTexture.TRIPS,
+        "PAIRED": FlopRankTexture.PAIRED,
+        "UNPAIRED": FlopRankTexture.UNPAIRED,
+    }
+    for value in values:
+        for token in value.split(","):
+            t = token.strip().upper()
+            if t in mapping:
+                parsed.append(mapping[t])
+    if not parsed:
+        return list(FlopRankTexture)
+    unique: list[FlopRankTexture] = []
+    for value in parsed:
+        if value not in unique:
+            unique.append(value)
+    return unique
+
+
+def parse_turn_action_sequence_list(values: list[str] | None) -> list[TurnActionSequence]:
+    if values is None:
+        return list(TurnActionSequence)
+    parsed: list[TurnActionSequence] = []
+    mapping = {
+        "XX": TurnActionSequence.XX,
+        "XBC": TurnActionSequence.XBC,
+        "XBRC": TurnActionSequence.XBRC,
+        "BC": TurnActionSequence.BC,
+    }
+    for value in values:
+        for token in value.split(","):
+            t = token.strip().upper()
+            if t in mapping:
+                parsed.append(mapping[t])
+    if not parsed:
+        return list(TurnActionSequence)
+    unique: list[TurnActionSequence] = []
+    for value in parsed:
+        if value not in unique:
+            unique.append(value)
+    return unique
+
+
 def parse_optional_date(value: str | None) -> date | None:
     if value is None:
         return None
@@ -304,7 +376,10 @@ def get_river(
     board_types: list[str] | None = Query(default=None),
     pot_types: list[str] | None = Query(default=None),
     flop_actions: list[str] | None = Query(default=None),
+    flop_rank_textures: list[str] | None = Query(default=None),
     turn_runouts: list[str] | None = Query(default=None),
+    turn_action_sequences: list[str] | None = Query(default=None),
+    river_runouts: list[str] | None = Query(default=None),
     start_date: str | None = Query(default=None),
     end_date: str | None = Query(default=None),
 ):
@@ -315,7 +390,10 @@ def get_river(
         board_types=parse_board_type_list(board_types),
         pot_types=parse_pot_type_list(pot_types),
         flop_actions=parse_flop_action_list(flop_actions),
+        flop_rank_textures=parse_flop_rank_texture_list(flop_rank_textures),
         turn_runouts=parse_turn_runout_list(turn_runouts),
+        turn_action_sequences=parse_turn_action_sequence_list(turn_action_sequences),
+        river_runouts=parse_river_runout_list(river_runouts),
     )
     filtered = filter_river_events(river_events, start, end)
     return aggregate_rivers(filtered).json(f)

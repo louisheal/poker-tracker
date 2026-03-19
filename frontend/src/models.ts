@@ -46,11 +46,37 @@ export type FlopActionLine = "XX" | "XBC" | "XBRC" | "BC";
 
 export type TurnRunoutFilter = "OVERCARD" | "FLUSH_COMPLETING" | "PAIRED" | "OTHER";
 
+export type RiverRunoutFilter = "OVERCARD" | "FLUSH_COMPLETING" | "PAIRED" | "OTHER";
+
+export type FlopRankTextureFilter = "TRIPS" | "PAIRED" | "UNPAIRED";
+
+export type TurnActionLine = "XX" | "XBC" | "XBRC" | "BC";
+
 export interface TurnRunoutFilters {
   overcard: boolean;
   flushCompleting: boolean;
   paired: boolean;
   other: boolean;
+}
+
+export interface RiverRunoutFilters {
+  overcard: boolean;
+  flushCompleting: boolean;
+  paired: boolean;
+  other: boolean;
+}
+
+export interface FlopRankTextureFilters {
+  trips: boolean;
+  paired: boolean;
+  unpaired: boolean;
+}
+
+export interface TurnActionFilters {
+  xx: boolean;
+  xbc: boolean;
+  xbrc: boolean;
+  bc: boolean;
 }
 
 export interface TurnStats {
@@ -82,11 +108,19 @@ export interface ShowdownStats {
   hand_count: number;
 }
 
-export type ShowdownStatsMap = { [key in ShowdownType]: ShowdownStats };
+export type ShowdownStatsMap = { [key in FlopActionLine]: ShowdownStats };
+
+export interface AvgPotStats {
+  avg_pot_bb: number;
+  hand_count: number;
+}
+
+export type AvgPotStatsMap = { [key in FlopActionLine]: AvgPotStats };
 
 export interface RiverStats {
   actions: RiverActionStats;
   showdown: ShowdownStatsMap;
+  avg_pot: AvgPotStatsMap;
 }
 
 export interface FlopActionFilters {
