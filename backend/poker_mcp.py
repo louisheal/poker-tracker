@@ -101,11 +101,16 @@ def get_cbet_stats(
     pot_types: list[str] | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
+    bet_size_min: float | None = None,
+    bet_size_max: float | None = None,
 ) -> dict:
     """Get flop continuation bet statistics.
 
     Filter by position (IP/OOP), whether hero was the preflop raiser,
     board texture (MONOTONE, TWO_TONE, RAINBOW), and pot type (SRP, THREE_BET, FOUR_BET).
+
+    bet_size_min/bet_size_max filter by bet size as % of pot (0-200).
+    Only hands where a bet was made (cbet or donk) are filtered; check-check hands pass through.
 
     Returns cbet%, fold-to-cbet%, raise-to-cbet%, donk-bet%, fold-to-donk%, raise-to-donk%, and hand count.
     """
@@ -116,6 +121,8 @@ def get_cbet_stats(
         hero_preflop_raiser=_resolve_bool(hero_preflop_raiser),
         board_types=_resolve(board_types, BOARD_TYPE_MAP, BoardType),
         pot_types=_resolve(pot_types, POT_TYPE_MAP, PotType),
+        bet_size_min=bet_size_min,
+        bet_size_max=bet_size_max,
     )
     filtered = [e for e in cbet_events if _in_range(e.played_on, start, end)]
     cbets = CBets()

@@ -19,6 +19,11 @@ RIVER_RE = re.compile(r"\*\*\* RIVER \*\*\* \[([2-9TJQKA][shdc]) ([2-9TJQKA][shd
 TOTAL_POT_RE = re.compile(r"Total pot \$(\d+\.?\d*)")
 HERO_SHOWDOWN_RE = re.compile(r"Hero.*showed.*and (won|lost)")
 SEAT_RE = re.compile(r"^Seat\s+\d+:\s+([^\s]+)")
+BLIND_RE = re.compile(r"posts (?:small|big) blind \$(\d+\.?\d*)")
+BET_AMOUNT_RE = re.compile(r": bets \$(\d+\.?\d*)")
+CALL_AMOUNT_RE = re.compile(r": calls \$(\d+\.?\d*)")
+RAISE_TO_AMOUNT_RE = re.compile(r": raises \$[\d.]+ to \$(\d+\.?\d*)")
+UNCALLED_RE = re.compile(r"Uncalled bet \(\$(\d+\.?\d*)\)")
 
 def to_card(token: str) -> Card:
 	t = token.strip()
@@ -359,7 +364,63 @@ def parse_hero_in_position(lines: list[str]) -> bool:
 	return False
 
 
-def parse_flop_cbet(lines: list[str], hero_is_pfr: bool) -> tuple[bool, bool, bool, bool, bool, bool]:
+def parse_pot_at_flop(lines: list[str]) -> float | None:
+	"""Compute pot at flop by tracking per-player preflop contributions. Returns pot in BB."""
+	contributions: dict[str, float] = {}
+	in_preflop = False
+
+	for line in lines:
+		if "*** HOLE CARDS ***" in line:
+			in_preflop = True
+			continue
+		if not in_preflop:
+			continue
+		if "*** FLOP ***" in line:
+			break
+
+		m = BLIND_RE.search(line)
+		if m:
+			colon_idx = line.find(": posts")
+			if colon_idx > 0:
+				player = line[:colon_idx].strip()
+				contributions[player] = contributions.get(player, 0) + float(m.group(1))
+			continue
+
+		m = RAISE_TO_AMOUNT_RE.search(line)
+		if m:
+			colon_idx = line.find(": raises")
+			if colon_idx > 0:
+				player = line[:colon_idx].strip()
+				# "raises $X to $Y" — Y is the player's total contribution this round
+				contributions[player] = float(m.group(1))
+			continue
+
+		m = CALL_AMOUNT_RE.search(line)
+		if m:
+			colon_idx = line.find(": calls")
+			if colon_idx > 0:
+				player = line[:colon_idx].strip()
+				contributions[player] = contributions.get(player, 0) + float(m.group(1))
+			continue
+
+		m = BET_AMOUNT_RE.search(line)
+		if m:
+			colon_idx = line.find(": bets")
+			if colon_idx > 0:
+				player = line[:colon_idx].strip()
+				contributions[player] = contributions.get(player, 0) + float(m.group(1))
+			continue
+
+	if not contributions:
+		return None
+
+	pot_dollars = sum(contributions.values())
+	if pot_dollars <= 0:
+		return None
+	return pot_dollars / 0.02
+
+
+def parse_flop_cbet(lines: list[str], hero_is_pfr: bool) -> tuple[bool, bool, bool, bool, bool, bool, float | None, float | None]:
 
 	in_flop = False
 	cbet = False
@@ -368,6 +429,8 @@ def parse_flop_cbet(lines: list[str], hero_is_pfr: bool) -> tuple[bool, bool, bo
 	donk_bet = False
 	fold_to_donk_bet = False
 	raise_to_donk_bet = False
+	cbet_amount: float | None = None
+	donk_bet_amount: float | None = None
 
 	for line in lines:
 
@@ -394,27 +457,33 @@ def parse_flop_cbet(lines: list[str], hero_is_pfr: bool) -> tuple[bool, bool, bo
 				fold_to_cbet = True
 			elif act == "raises":
 				raise_to_cbet = True
-			return cbet, fold_to_cbet, raise_to_cbet, donk_bet, fold_to_donk_bet, raise_to_donk_bet
+			return cbet, fold_to_cbet, raise_to_cbet, donk_bet, fold_to_donk_bet, raise_to_donk_bet, cbet_amount, donk_bet_amount
 		
 		if donk_bet and pfr_actor:
 			if act == "folds":
 				fold_to_donk_bet = True
 			elif act == "raises":
 				raise_to_donk_bet = True
-			return cbet, fold_to_cbet, raise_to_cbet, donk_bet, fold_to_donk_bet, raise_to_donk_bet
+			return cbet, fold_to_cbet, raise_to_cbet, donk_bet, fold_to_donk_bet, raise_to_donk_bet, cbet_amount, donk_bet_amount
 		
 		if cbet or donk_bet:
 			continue
 
 		if pfr_actor and act == "bets":
 			cbet = True
+			m = BET_AMOUNT_RE.search(line)
+			if m:
+				cbet_amount = float(m.group(1))
 			continue
 
 		if not pfr_actor and act == "bets":
 			donk_bet = True
+			m = BET_AMOUNT_RE.search(line)
+			if m:
+				donk_bet_amount = float(m.group(1))
 			continue
 	
-	return cbet, fold_to_cbet, raise_to_cbet, donk_bet, fold_to_donk_bet, raise_to_donk_bet
+	return cbet, fold_to_cbet, raise_to_cbet, donk_bet, fold_to_donk_bet, raise_to_donk_bet, cbet_amount, donk_bet_amount
 
 
 def parse_flop_action_sequence(lines: list[str], hero_is_pfr: bool) -> FlopActionSequence | None:
@@ -556,7 +625,23 @@ def parse_cbet_event(lines: list[str]) -> CBetEvent | None:
 	event.board_type = board_type
 	event.hero_preflop_raiser = parse_hero_preflop_raiser(lines)
 	event.hero_in_position = parse_hero_in_position(lines)
-	event.cbet, event.fold_to_cbet, event.raise_to_cbet, event.donk_bet, event.fold_to_donk_bet, event.raise_to_donk_bet = parse_flop_cbet(lines, event.hero_preflop_raiser)
+	cbet, fold_to_cbet, raise_to_cbet, donk_bet, fold_to_donk_bet, raise_to_donk_bet, cbet_amount, donk_bet_amount = parse_flop_cbet(lines, event.hero_preflop_raiser)
+	event.cbet = cbet
+	event.fold_to_cbet = fold_to_cbet
+	event.raise_to_cbet = raise_to_cbet
+	event.donk_bet = donk_bet
+	event.fold_to_donk_bet = fold_to_donk_bet
+	event.raise_to_donk_bet = raise_to_donk_bet
+
+	# Compute pot-relative bet sizes
+	pot_at_flop = parse_pot_at_flop(lines)
+	if pot_at_flop and pot_at_flop > 0:
+		pot_dollars = pot_at_flop * 0.02
+		if cbet_amount is not None:
+			event.cbet_size_pct = (cbet_amount / pot_dollars) * 100
+		if donk_bet_amount is not None:
+			event.donk_bet_size_pct = (donk_bet_amount / pot_dollars) * 100
+
 	return event
 
 

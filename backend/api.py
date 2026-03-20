@@ -311,6 +311,31 @@ def get_cbets(
     hero_in_position: list[str] | None = Query(default=None),
     board_types: list[str] | None = Query(default=None),
     pot_types: list[str] | None = Query(default=None),
+    bet_size_min: float | None = Query(default=None),
+    bet_size_max: float | None = Query(default=None),
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+):
+    start = parse_optional_date(start_date)
+    end = parse_optional_date(end_date)
+    f = CBetFilter(
+        hero_preflop_raiser=parse_bool_list(hero_preflop_raiser),
+        hero_in_position=parse_bool_list(hero_in_position),
+        board_types=parse_board_type_list(board_types),
+        pot_types=parse_pot_type_list(pot_types),
+        bet_size_min=bet_size_min,
+        bet_size_max=bet_size_max,
+    )
+    filtered = filter_cbet_events(cbet_events, start, end)
+    return aggregate_cbets(filtered).json(f)
+
+
+@app.get("/cbets/bet-sizes")
+def get_cbet_bet_sizes(
+    hero_preflop_raiser: list[str] | None = Query(default=None),
+    hero_in_position: list[str] | None = Query(default=None),
+    board_types: list[str] | None = Query(default=None),
+    pot_types: list[str] | None = Query(default=None),
     start_date: str | None = Query(default=None),
     end_date: str | None = Query(default=None),
 ):
@@ -323,7 +348,7 @@ def get_cbets(
         pot_types=parse_pot_type_list(pot_types),
     )
     filtered = filter_cbet_events(cbet_events, start, end)
-    return aggregate_cbets(filtered).json(f)
+    return {"villain_bet_sizes": aggregate_cbets(filtered).bet_sizes(f)}
 
 
 @app.get("/turn")

@@ -37,6 +37,8 @@ export const getCbets = async (
   potTypes: PotTypeFilter[],
   startDate?: string,
   endDate?: string,
+  betSizeMin?: number,
+  betSizeMax?: number,
 ): Promise<CbetStats> => {
   const params = new URLSearchParams();
   for (const value of heroInPosition) {
@@ -57,7 +59,44 @@ export const getCbets = async (
   if (endDate) {
     params.append("end_date", endDate);
   }
+  if (betSizeMin !== undefined) {
+    params.append("bet_size_min", String(betSizeMin));
+  }
+  if (betSizeMax !== undefined) {
+    params.append("bet_size_max", String(betSizeMax));
+  }
   const response = await fetch(`http://localhost:8000/cbets?${params}`);
+  return response.json();
+};
+
+export interface VillainBetSizesResponse {
+  villain_bet_sizes: number[];
+}
+
+export const getVillainBetSizes = async (
+  heroInPosition: boolean[],
+  boardTypes: BoardTypeFilter[],
+  potTypes: PotTypeFilter[],
+  startDate?: string,
+  endDate?: string,
+): Promise<VillainBetSizesResponse> => {
+  const params = new URLSearchParams();
+  for (const value of heroInPosition) {
+    params.append("hero_in_position", String(value));
+  }
+  for (const value of boardTypes) {
+    params.append("board_types", value);
+  }
+  for (const value of potTypes) {
+    params.append("pot_types", value);
+  }
+  if (startDate) {
+    params.append("start_date", startDate);
+  }
+  if (endDate) {
+    params.append("end_date", endDate);
+  }
+  const response = await fetch(`http://localhost:8000/cbets/bet-sizes?${params}`);
   return response.json();
 };
 

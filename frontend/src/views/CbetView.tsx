@@ -1,7 +1,9 @@
-import { getCbets } from "@/api";
+import { getCbets, getVillainBetSizes } from "@/api";
 import { SpeedDial } from "@/components/SpeedDial";
 import { FilterGroup } from "@/components/FilterGroup";
-import { useMemo } from "react";
+import { BetSizeDistribution } from "@/components/BetSizeDistribution";
+import { Slider } from "@/components/ui/slider";
+import { useMemo, useCallback } from "react";
 import type {
   BoardTypeFilter,
   PotTypeFilter,
@@ -26,6 +28,9 @@ const INITIAL_POT_TYPE_FILTERS: PotTypeFilters = {
   threeBet: false,
   fourBet: false,
 };
+
+const BET_SIZE_MIN = 0;
+const BET_SIZE_MAX = 200;
 
 interface CbetPanelProps {
   title: string;
@@ -79,6 +84,7 @@ interface CbetViewProps {
 export const CbetView = ({ dateRange }: CbetViewProps) => {
   const [pfrStats, setPfrStats] = useState<CbetStats>();
   const [defStats, setDefStats] = useState<CbetStats>();
+  const [villainBetSizes, setVillainBetSizes] = useState<number[]>([]);
   const [positionFilters, setPositionFilters] = useState<PositionFilters>(
     INITIAL_POSITION_FILTERS,
   );
@@ -88,6 +94,10 @@ export const CbetView = ({ dateRange }: CbetViewProps) => {
   const [potTypeFilters, setPotTypeFilters] = useState<PotTypeFilters>(
     INITIAL_POT_TYPE_FILTERS,
   );
+  const [betSizeRange, setBetSizeRange] = useState<[number, number]>([
+    BET_SIZE_MIN,
+    BET_SIZE_MAX,
+  ]);
 
   const togglePositionFilter = (key: string) => {
     setPositionFilters((prev) => ({
@@ -110,6 +120,13 @@ export const CbetView = ({ dateRange }: CbetViewProps) => {
     }));
   };
 
+  const onBetSizeChange = useCallback((values: number[]) => {
+    setBetSizeRange([values[0], values[1]]);
+  }, []);
+
+  const isDefaultBetSize =
+    betSizeRange[0] === BET_SIZE_MIN && betSizeRange[1] === BET_SIZE_MAX;
+
   const { heroInPosition, boardTypes, potTypes } = useMemo(() => {
     const heroInPosition: boolean[] = [];
     const boardTypes: BoardTypeFilter[] = [];
@@ -130,6 +147,9 @@ export const CbetView = ({ dateRange }: CbetViewProps) => {
   }, [positionFilters, boardTypeFilters, potTypeFilters]);
 
   useEffect(() => {
+    const betMin = isDefaultBetSize ? undefined : betSizeRange[0];
+    const betMax = isDefaultBetSize ? undefined : betSizeRange[1];
+
     Promise.all([
       getCbets(
         heroInPosition,
@@ -138,6 +158,8 @@ export const CbetView = ({ dateRange }: CbetViewProps) => {
         potTypes,
         dateRange.startDate,
         dateRange.endDate,
+        betMin,
+        betMax,
       ),
       getCbets(
         heroInPosition,
@@ -146,6 +168,8 @@ export const CbetView = ({ dateRange }: CbetViewProps) => {
         potTypes,
         dateRange.startDate,
         dateRange.endDate,
+        betMin,
+        betMax,
       ),
     ]).then(([pfr, def]) => {
       setPfrStats(pfr);
@@ -157,11 +181,23 @@ export const CbetView = ({ dateRange }: CbetViewProps) => {
     potTypes,
     dateRange.startDate,
     dateRange.endDate,
+    betSizeRange,
+    isDefaultBetSize,
   ]);
+
+  useEffect(() => {
+    getVillainBetSizes(
+      heroInPosition,
+      boardTypes,
+      potTypes,
+      dateRange.startDate,
+      dateRange.endDate,
+    ).then((res) => setVillainBetSizes(res.villain_bet_sizes));
+  }, [heroInPosition, boardTypes, potTypes, dateRange.startDate, dateRange.endDate]);
 
   return (
     <div className="p-8 h-full content-start flex flex-col gap-6">
-      <div className="flex flex-wrap gap-4">
+      <div className="flex flex-wrap items-end gap-4">
         <FilterGroup
           options={[
             { key: "ip", label: "IP", active: positionFilters.ip },
@@ -199,11 +235,28 @@ export const CbetView = ({ dateRange }: CbetViewProps) => {
           ]}
           onToggle={togglePotTypeFilter}
         />
+
+        <div className="flex flex-col gap-1.5 min-w-48 max-w-64">
+          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
+            Bet Size {betSizeRange[0]}% – {betSizeRange[1]}%
+          </span>
+          <Slider
+            min={BET_SIZE_MIN}
+            max={BET_SIZE_MAX}
+            step={5}
+            value={betSizeRange}
+            onValueChange={onBetSizeChange}
+          />
+        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 max-w-5xl">
         <CbetPanel role="PFR" title="PFR" stats={pfrStats} />
         <CbetPanel role="DEF" title="DEF" stats={defStats} />
+      </div>
+
+      <div className="max-w-5xl">
+        <BetSizeDistribution sizes={villainBetSizes} />
       </div>
     </div>
   );

@@ -141,11 +141,15 @@ class CBetFilter:
 		board_types: list[BoardType] | None = None,
 		hero_preflop_raiser: list[bool] | None = None,
 		hero_in_position: list[bool] | None = None,
+		bet_size_min: float | None = None,
+		bet_size_max: float | None = None,
 	):
 		self.pot_types = pot_types if pot_types is not None else list(PotType)
 		self.board_types = board_types if board_types is not None else list(BoardType)
 		self.hero_preflop_raiser = hero_preflop_raiser if hero_preflop_raiser is not None else [True, False]
 		self.hero_in_position = hero_in_position if hero_in_position is not None else [True, False]
+		self.bet_size_min = bet_size_min
+		self.bet_size_max = bet_size_max
 
 
 class CBetEvent:
@@ -160,6 +164,12 @@ class CBetEvent:
 	donk_bet: bool
 	fold_to_donk_bet: bool
 	raise_to_donk_bet: bool
+	cbet_size_pct: float | None
+	donk_bet_size_pct: float | None
+
+	def __init__(self):
+		self.cbet_size_pct = None
+		self.donk_bet_size_pct = None
 
 	def filter(self, filters: CBetFilter) -> bool:
 		if self.pot_type not in filters.pot_types:
@@ -170,6 +180,15 @@ class CBetEvent:
 			return False
 		if self.hero_in_position not in filters.hero_in_position:
 			return False
+		if filters.bet_size_min is not None or filters.bet_size_max is not None:
+			# Determine the relevant bet size for this hand
+			bet_pct = self.cbet_size_pct if self.cbet else self.donk_bet_size_pct if self.donk_bet else None
+			if bet_pct is not None:
+				lo = filters.bet_size_min if filters.bet_size_min is not None else 0
+				hi = filters.bet_size_max if filters.bet_size_max is not None else 200
+				if bet_pct < lo or bet_pct > hi:
+					return False
+			# Hands with no bet (XX) pass through — no bet size to filter on
 		return True
 
 
@@ -214,6 +233,23 @@ class CBets:
 			"raise_to_donk_pct": raise_to_donk_pct * 100,
 			"hand_count": len(events),
 		}
+
+
+	def bet_sizes(self, filters: CBetFilter):
+		"""Return villain cbet sizes as list of pot-% values for distribution charting."""
+		no_size_filter = CBetFilter(
+			pot_types=filters.pot_types,
+			board_types=filters.board_types,
+			hero_preflop_raiser=filters.hero_preflop_raiser,
+			hero_in_position=filters.hero_in_position,
+		)
+		events = [e for e in self.events if e.filter(no_size_filter)]
+		# Villain cbet = when hero is DEF (not PFR) and villain cbets
+		sizes = []
+		for e in events:
+			if not e.hero_preflop_raiser and e.cbet_size_pct is not None:
+				sizes.append(round(e.cbet_size_pct, 1))
+		return sizes
 
 
 class FlopActionSequence(str, Enum):
