@@ -35,14 +35,14 @@ function buildActionLabel(actor: "hero" | "villain" | "", action: string, sizeRa
   return `${actorStr} ${actionStr}`;
 }
 
-function actionToPrefix(la: LineActionItem): string {
-  if (la.sizeRange) {
-    if (la.sizeRange[1] >= 999) {
-      return `${la.action}${la.sizeRange[0]}+`;
+function actionToPrefix(lineAction: LineActionItem): string {
+  if (lineAction.sizeRange) {
+    if (lineAction.sizeRange[1] >= 999) {
+      return `${lineAction.action}${lineAction.sizeRange[0]}+`;
     }
-    return `${la.action}${la.sizeRange[0]}-${la.sizeRange[1]}`;
+    return `${lineAction.action}${lineAction.sizeRange[0]}-${lineAction.sizeRange[1]}`;
   }
-  return la.action;
+  return lineAction.action;
 }
 
 const BOARD_TYPE_MAP = {

@@ -21,14 +21,14 @@ export const ActionLine = ({ actionLine, onClickFlop, onClickTag, onRemoveLast }
       />
 
       {/* Action tags - cursor 1+ */}
-      {actionLine.actions.map((la, i) => {
+      {actionLine.actions.map((lineAction, i) => {
         const actionCursor = i + 1;
         const isActive = actionCursor === actionLine.cursor;
         const isFuture = actionCursor > actionLine.cursor;
         return (
           <ActionTag
             key={i}
-            label={la.label}
+            label={lineAction.label}
             isActive={isActive}
             isFuture={isFuture}
             onClick={() => onClickTag(actionCursor)}
