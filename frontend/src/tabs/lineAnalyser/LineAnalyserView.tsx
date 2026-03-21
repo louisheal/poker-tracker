@@ -58,6 +58,18 @@ const POT_TYPE_MAP = {
   fourBet: "FOUR_BET" as const,
 };
 
+const INITIAL_BOARD_TYPE_FILTERS = {
+  monotone: false,
+  twoTone: false,
+  rainbow: false,
+};
+
+const INITIAL_POT_TYPE_FILTERS = {
+  srp: false,
+  threeBet: false,
+  fourBet: false,
+};
+
 const EMPTY_RESPONSE: LineAnalysisFlopResponse = {
   hand_count: 0,
   street_stats: {
@@ -89,11 +101,11 @@ export const LineAnalyserView = ({
   const [position, setPosition] = useState<string>("ip");
   const [role, setRole] = useState<string>("pfr");
   const [boardTypeFilters, toggleBoard, activeBoards] = useToggleFilter(
-    { monotone: false, twoTone: false, rainbow: false },
+    INITIAL_BOARD_TYPE_FILTERS,
     BOARD_TYPE_MAP,
   );
   const [potTypeFilters, togglePot, activePots] = useToggleFilter(
-    { srp: false, threeBet: false, fourBet: false },
+    INITIAL_POT_TYPE_FILTERS,
     POT_TYPE_MAP,
   );
   const [data, setData] = useState<LineAnalysisFlopResponse>(EMPTY_RESPONSE);
@@ -117,7 +129,7 @@ export const LineAnalyserView = ({
   }, [actionLine]);
 
   useEffect(() => {
-    (async () => {
+    const fetchLineData = async () => {
       try {
         const result = await getLineAnalysisFlop(
           position === "ip",
@@ -132,7 +144,9 @@ export const LineAnalyserView = ({
       } catch (err) {
         console.error("Failed to fetch line analysis data:", err);
       }
-    })();
+    };
+
+    fetchLineData();
   }, [position, role, activeBoards, activePots, actionPrefix, dateRange]);
 
   const handleActionClick = useCallback((action: string, sizeRange?: [number, number]) => {

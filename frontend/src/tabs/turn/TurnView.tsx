@@ -20,18 +20,23 @@ interface Props {
   dateRange: DateRangeFilter;
 }
 
+const INITIAL_POSITION_FILTERS = { ip: false, oop: false };
+const INITIAL_BOARD_TYPE_FILTERS = { monotone: false, twoTone: false, rainbow: false };
+const INITIAL_POT_TYPE_FILTERS = { srp: false, threeBet: false, fourBet: false };
+const INITIAL_TURN_RUNOUT_FILTERS = { overcard: false, flushCompleting: false, paired: false, other: false };
+
 export const TurnView = ({ dateRange }: Props) => {
   const [positionFilters, togglePosition, heroInPosition] = useToggleFilter(
-    { ip: false, oop: false }, POSITION_MAP,
+    INITIAL_POSITION_FILTERS, POSITION_MAP,
   );
   const [boardTypeFilters, toggleBoard, boardTypes] = useToggleFilter(
-    { monotone: false, twoTone: false, rainbow: false }, BOARD_TYPE_MAP,
+    INITIAL_BOARD_TYPE_FILTERS, BOARD_TYPE_MAP,
   );
   const [potTypeFilters, togglePot, potTypes] = useToggleFilter(
-    { srp: false, threeBet: false, fourBet: false }, POT_TYPE_MAP,
+    INITIAL_POT_TYPE_FILTERS, POT_TYPE_MAP,
   );
   const [turnRunoutFilters, toggleTurnRunout, turnRunouts] = useToggleFilter(
-    { overcard: false, flushCompleting: false, paired: false, other: false }, TURN_RUNOUT_MAP,
+    INITIAL_TURN_RUNOUT_FILTERS, TURN_RUNOUT_MAP,
   );
 
   const [turnStats, setTurnStats] = useState<
@@ -44,17 +49,20 @@ export const TurnView = ({ dateRange }: Props) => {
   });
 
   useEffect(() => {
-    getTurnStats(
-      heroInPosition,
-      [true, false],
-      boardTypes,
-      potTypes,
-      turnRunouts,
-      dateRange.startDate,
-      dateRange.endDate,
-    ).then((stats) => {
+    const fetchStats = async () => {
+      const stats = await getTurnStats(
+        heroInPosition,
+        [true, false],
+        boardTypes,
+        potTypes,
+        turnRunouts,
+        dateRange.startDate,
+        dateRange.endDate,
+      );
       setTurnStats(stats);
-    });
+    };
+
+    fetchStats();
   }, [
     heroInPosition,
     boardTypes,

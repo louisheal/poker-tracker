@@ -19,31 +19,42 @@ interface Props {
   dateRange: DateRangeFilter;
 }
 
+const INITIAL_POSITION_FILTERS = { ip: false, oop: false };
+const INITIAL_BOARD_TYPE_FILTERS = { monotone: false, twoTone: false, rainbow: false };
+const INITIAL_FLOP_ACTION_FILTERS = { xx: false, xbc: false, xbrc: false, bc: false };
+const INITIAL_FLOP_RANK_TEXTURE_FILTERS = { trips: false, paired: false, unpaired: false };
+const INITIAL_TURN_ACTION_FILTERS = { xx: false, xbc: false, xbrc: false, bc: false };
+const INITIAL_TURN_RUNOUT_FILTERS = { overcard: false, flushCompleting: false, paired: false, other: false };
+const INITIAL_RIVER_RUNOUT_FILTERS = { overcard: false, flushCompleting: false, paired: false, other: false };
+
 export const RiverView = ({ dateRange }: Props) => {
   const [riverStats, setRiverStats] = useState<RiverStats>();
-  const [positionFilters, togglePosition, heroInPosition] = useToggleFilter({ ip: false, oop: false }, POSITION_MAP);
-  const [boardTypeFilters, toggleBoard, boardTypes] = useToggleFilter({ monotone: false, twoTone: false, rainbow: false }, BOARD_TYPE_MAP);
-  const [flopActionFilters, toggleFlopAction, flopActions] = useToggleFilter({ xx: false, xbc: false, xbrc: false, bc: false }, FLOP_ACTION_MAP);
-  const [flopRankTextureFilters, toggleFlopRankTexture, flopRankTextures] = useToggleFilter({ trips: false, paired: false, unpaired: false }, FLOP_RANK_TEXTURE_MAP);
-  const [turnActionFilters, toggleTurnAction, turnActions] = useToggleFilter({ xx: false, xbc: false, xbrc: false, bc: false }, TURN_ACTION_MAP);
-  const [turnRunoutFilters, toggleTurnRunout, turnRunouts] = useToggleFilter({ overcard: false, flushCompleting: false, paired: false, other: false }, TURN_RUNOUT_MAP);
-  const [riverRunoutFilters, toggleRiverRunout, riverRunouts] = useToggleFilter({ overcard: false, flushCompleting: false, paired: false, other: false }, RIVER_RUNOUT_MAP);
+  const [positionFilters, togglePosition, heroInPosition] = useToggleFilter(INITIAL_POSITION_FILTERS, POSITION_MAP);
+  const [boardTypeFilters, toggleBoard, boardTypes] = useToggleFilter(INITIAL_BOARD_TYPE_FILTERS, BOARD_TYPE_MAP);
+  const [flopActionFilters, toggleFlopAction, flopActions] = useToggleFilter(INITIAL_FLOP_ACTION_FILTERS, FLOP_ACTION_MAP);
+  const [flopRankTextureFilters, toggleFlopRankTexture, flopRankTextures] = useToggleFilter(INITIAL_FLOP_RANK_TEXTURE_FILTERS, FLOP_RANK_TEXTURE_MAP);
+  const [turnActionFilters, toggleTurnAction, turnActions] = useToggleFilter(INITIAL_TURN_ACTION_FILTERS, TURN_ACTION_MAP);
+  const [turnRunoutFilters, toggleTurnRunout, turnRunouts] = useToggleFilter(INITIAL_TURN_RUNOUT_FILTERS, TURN_RUNOUT_MAP);
+  const [riverRunoutFilters, toggleRiverRunout, riverRunouts] = useToggleFilter(INITIAL_RIVER_RUNOUT_FILTERS, RIVER_RUNOUT_MAP);
 
   useEffect(() => {
-    getRiverStats(
-      heroInPosition,
-      boardTypes,
-      [],
-      flopActions,
-      flopRankTextures,
-      turnRunouts,
-      turnActions,
-      riverRunouts,
-      dateRange.startDate,
-      dateRange.endDate,
-    ).then((stats) => {
+    const fetchStats = async () => {
+      const stats = await getRiverStats(
+        heroInPosition,
+        boardTypes,
+        [],
+        flopActions,
+        flopRankTextures,
+        turnRunouts,
+        turnActions,
+        riverRunouts,
+        dateRange.startDate,
+        dateRange.endDate,
+      );
       setRiverStats(stats);
-    });
+    };
+
+    fetchStats();
   }, [
     heroInPosition,
     boardTypes,
