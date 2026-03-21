@@ -7,13 +7,13 @@ from app.models import (
 	FlopFilter, Flops, ActionSequence, Runout, FlopRankTexture,
 	RiverFilter, Rivers,
 	TurnFilter, Turns, Ranges,
+	BoardType, PotType,
 )
 from app.routers.params import (
 	BOARD_TYPE_MAP, POT_TYPE_MAP, RUNOUT_MAP,
 	ACTION_SEQUENCE_MAP, FLOP_RANK_MAP,
 	in_date_range, parse_optional_date,
 )
-from playing_cards_lib.poker import BoardType, PotType
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)

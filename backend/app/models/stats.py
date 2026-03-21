@@ -1,5 +1,7 @@
 from playing_cards_lib.core import Rank
-from playing_cards_lib.poker import PokerPosition, PotType
+from playing_cards_lib.poker import PokerPosition
+
+from .enums import PotType
 
 
 class Stats:

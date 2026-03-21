@@ -1,6 +1,6 @@
-from playing_cards_lib.poker import PotType, BoardType
+from playing_cards_lib.poker import PokerPosition
 
-from .enums import ActionSequence, Runout, FlopRankTexture
+from .enums import ActionSequence, Runout, FlopRankTexture, BoardType, PotType
 
 
 class FlopFilter:

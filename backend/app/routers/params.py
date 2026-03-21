@@ -3,9 +3,7 @@ from typing import TypeVar
 
 from fastapi import HTTPException
 
-from playing_cards_lib.poker import BoardType, PotType
-
-from app.models import ActionSequence, Runout, FlopRankTexture
+from app.models import ActionSequence, Runout, FlopRankTexture, BoardType, PotType
 
 T = TypeVar("T")
 

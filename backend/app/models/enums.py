@@ -1,6 +1,18 @@
 from enum import Enum
 
 
+class BoardType(Enum):
+	MONOTONE = 0
+	TWO_TONE = 1
+	RAINBOW = 2
+
+
+class PotType(Enum):
+	SRP = 0
+	THREE_BET = 1
+	FOUR_BET = 2
+
+
 class ActionSequence(str, Enum):
 	XX = "XX"
 	XBC = "XBC"

@@ -2,9 +2,9 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import TYPE_CHECKING
 
-from playing_cards_lib.poker import PokerPosition, PotType, BoardType
+from playing_cards_lib.poker import PokerPosition
 
-from .enums import ActionSequence, Runout, FlopRankTexture, ShowdownType
+from .enums import ActionSequence, Runout, FlopRankTexture, ShowdownType, BoardType, PotType
 
 if TYPE_CHECKING:
 	from .filters import FlopFilter, TurnFilter, RiverFilter

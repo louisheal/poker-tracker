@@ -3,11 +3,12 @@
 import logging
 
 from playing_cards_lib.core import Card
-from playing_cards_lib.poker import BoardType, PotType, PokerPosition
+from playing_cards_lib.poker import PokerPosition
 
 from app.models.enums import (
 	ActionSequence, Runout,
 	FlopRankTexture, ShowdownType,
+	BoardType, PotType,
 )
 from app.models.events import RangeEvent, FlopEvent, TurnEvent, RiverEvent, LineEvent, FlopAction
 

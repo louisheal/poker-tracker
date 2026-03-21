@@ -7,11 +7,12 @@ from datetime import date
 from enum import Enum
 
 from playing_cards_lib.core import Card
-from playing_cards_lib.poker import HoleCards, BoardType, PotType
+from playing_cards_lib.poker import HoleCards
 
 from app.models.enums import (
 	ActionSequence, Runout,
 	FlopRankTexture, ShowdownType,
+	BoardType, PotType,
 )
 
 
