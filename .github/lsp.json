@@ -7,6 +7,15 @@
         ".ts": "typescript",
         ".tsx": "typescript"
       }
+    },
+    "python": {
+      "command": "backend/venv/Scripts/pylsp",
+      "args": [],
+      "fileExtensions": {
+        ".py": "python"
+      }
     }
   }
 }
+
+
