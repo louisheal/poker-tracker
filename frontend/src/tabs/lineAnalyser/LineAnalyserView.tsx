@@ -236,22 +236,18 @@ export const LineAnalyserView = ({
         </span>
         <div className="flex flex-wrap items-end gap-4">
           <FilterGroup
-            radio
             options={[
-              { key: "ip", label: "IP" },
-              { key: "oop", label: "OOP" },
+              { key: "ip", label: "IP", active: position === "ip" },
+              { key: "oop", label: "OOP", active: position === "oop" },
             ]}
-            selected={position}
-            onSelect={handlePositionChange}
+            onToggle={handlePositionChange}
           />
           <FilterGroup
-            radio
             options={[
-              { key: "pfr", label: "PFR" },
-              { key: "def", label: "DEF" },
+              { key: "pfr", label: "PFR", active: role === "pfr" },
+              { key: "def", label: "DEF", active: role === "def" },
             ]}
-            selected={role}
-            onSelect={handleRoleChange}
+            onToggle={handleRoleChange}
           />
           <FilterGroup
             options={[
