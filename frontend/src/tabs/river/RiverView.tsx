@@ -1,10 +1,8 @@
 import { getRiverStats } from "@/api";
-import { SpeedDial } from "@/components/SpeedDial";
 import { FilterGroup } from "@/components/FilterGroup";
 import { useMemo } from "react";
 import type {
   BoardTypeFilter,
-  RiverActionStats,
   PositionFilters,
   BoardTypeFilters,
   DateRangeFilter,
@@ -18,11 +16,12 @@ import type {
   TurnActionLine,
   RiverRunoutFilter,
   RiverRunoutFilters,
-  ShowdownStats,
-  AvgPotStats,
 } from "@/models";
 import { useEffect, useState } from "react";
 import type { RiverStats } from "@/models";
+import { RiverActionPanel } from "./components/RiverActionPanel";
+import { ShowdownPanel } from "./components/ShowdownPanel";
+import { AvgPotPanel } from "./components/AvgPotPanel";
 
 const INITIAL_POSITION_FILTERS: PositionFilters = { ip: false, oop: false };
 
@@ -66,142 +65,11 @@ const INITIAL_RIVER_RUNOUT_FILTERS: RiverRunoutFilters = {
   other: false,
 };
 
-interface RiverActionPanelProps {
-  stats: RiverActionStats | undefined;
-}
-
-const RiverActionPanel = ({ stats }: RiverActionPanelProps) => {
-  return (
-    <div className="bg-card border border-border rounded-xl p-6 flex flex-col gap-6">
-      <div className="flex flex-col gap-1">
-        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
-          River Actions
-        </h3>
-        <p className="text-xs text-muted-foreground">
-          {stats?.hand_count ?? 0} hands
-        </p>
-      </div>
-      <div className="grid grid-cols-3 gap-4">
-        <SpeedDial value={stats?.hero_bet_pct ?? 0} label="Hero Bet" />
-        <SpeedDial
-          value={stats?.villain_fold_to_hero_bet_pct ?? 0}
-          label="Villain Fold"
-        />
-        <SpeedDial
-          value={stats?.villain_raise_to_hero_bet_pct ?? 0}
-          label="Villain Raise"
-        />
-      </div>
-      <div className="border-t border-border" />
-      <div className="grid grid-cols-3 gap-4">
-        <SpeedDial value={stats?.villain_bet_pct ?? 0} label="Villain Bet" />
-        <SpeedDial
-          value={stats?.hero_fold_to_villain_bet_pct ?? 0}
-          label="Hero Fold"
-        />
-        <SpeedDial
-          value={stats?.hero_raise_to_villain_bet_pct ?? 0}
-          label="Hero Raise"
-        />
-      </div>
-    </div>
-  );
-};
-
-const SHOWDOWN_LINES: { key: FlopActionLine; label: string }[] = [
-  { key: "XX", label: "XX" },
-  { key: "XBC", label: "XBC" },
-  { key: "XBRC", label: "XBRC" },
-  { key: "BC", label: "BC" },
-];
-
-interface ShowdownPanelProps {
-  showdown: { [key in FlopActionLine]: ShowdownStats } | undefined;
-}
-
-const ShowdownPanel = ({ showdown }: ShowdownPanelProps) => {
-  return (
-    <div className="bg-card border border-border rounded-xl p-6 flex flex-col gap-6">
-      <div className="flex flex-col gap-1">
-        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
-          Showdown Results (BB/hand)
-        </h3>
-      </div>
-      <div className="grid grid-cols-2 gap-4">
-        {SHOWDOWN_LINES.map(({ key, label }) => {
-          const stats = showdown?.[key];
-          const value = stats?.bb_per_hand ?? 0;
-          const isPositive = value > 0;
-          const isNegative = value < 0;
-          return (
-            <div key={key} className="flex flex-col items-center gap-2">
-              <div className="w-25 h-25 rounded-full border-[7px] border-border flex items-center justify-center">
-                <span
-                  className={`text-lg font-bold ${isPositive ? "text-green-500" : isNegative ? "text-red-500" : "text-foreground"}`}
-                >
-                  {value >= 0 ? "+" : ""}
-                  {value.toFixed(1)}
-                </span>
-              </div>
-              <span className="text-xs text-muted-foreground">{label}</span>
-              <span className="text-xs text-muted-foreground">
-                {stats?.hand_count ?? 0} hands
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-};
-
-const AVG_POT_LINES: { key: FlopActionLine; label: string }[] = [
-  { key: "XX", label: "XX" },
-  { key: "XBC", label: "XBC" },
-  { key: "XBRC", label: "XBRC" },
-  { key: "BC", label: "BC" },
-];
-
-interface AvgPotPanelProps {
-  avgPot: { [key in FlopActionLine]: AvgPotStats } | undefined;
-}
-
-const AvgPotPanel = ({ avgPot }: AvgPotPanelProps) => {
-  return (
-    <div className="bg-card border border-border rounded-xl p-6 flex flex-col gap-6">
-      <div className="flex flex-col gap-1">
-        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
-          Avg Pot Size (BB)
-        </h3>
-      </div>
-      <div className="grid grid-cols-2 gap-4">
-        {AVG_POT_LINES.map(({ key, label }) => {
-          const stats = avgPot?.[key];
-          const value = stats?.avg_pot_bb ?? 0;
-          return (
-            <div key={key} className="flex flex-col items-center gap-2">
-              <div className="w-25 h-25 rounded-full border-[7px] border-border flex items-center justify-center">
-                <span className="text-lg font-bold text-foreground">
-                  {value.toFixed(1)}
-                </span>
-              </div>
-              <span className="text-xs text-muted-foreground">{label}</span>
-              <span className="text-xs text-muted-foreground">
-                {stats?.hand_count ?? 0} hands
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-};
-
-interface RiverViewProps {
+interface Props {
   dateRange: DateRangeFilter;
 }
 
-export const RiverView = ({ dateRange }: RiverViewProps) => {
+export const RiverView = ({ dateRange }: Props) => {
   const [riverStats, setRiverStats] = useState<RiverStats>();
   const [positionFilters, setPositionFilters] = useState<PositionFilters>(
     INITIAL_POSITION_FILTERS,

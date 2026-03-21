@@ -4,11 +4,11 @@ import { useEffect, useState } from "react";
 import { BarChart2, Grid2x2, TrendingUp, CircleDollarSign, Search } from "lucide-react";
 import { ThemeProvider } from "@/components/theme-provider";
 import { cn } from "@/lib/utils";
-import { RangeView } from "./views/RangeView";
-import { CbetView } from "./views/CbetView";
-import { TurnView } from "./views/TurnView";
-import { RiverView } from "./views/RiverView";
-import { LineAnalyserView } from "./views/LineAnalyserView";
+import { RangeView } from "./tabs/ranges/RangeView";
+import { FlopView } from "./tabs/flop/FlopView";
+import { TurnView } from "./tabs/turn/TurnView";
+import { RiverView } from "./tabs/river/RiverView";
+import { LineAnalyserView } from "./tabs/lineAnalyser/LineAnalyserView";
 import { DateRangeDock } from "./components/DateRangeDock";
 import { getHandVolume } from "./api";
 import type { DailyVolumePoint, DateRangeFilter } from "./models";
@@ -77,7 +77,7 @@ function App() {
             {view === "ranges" ? (
               <RangeView dateRange={dateRange} />
             ) : view === "flop" ? (
-              <CbetView dateRange={dateRange} />
+              <FlopView dateRange={dateRange} />
             ) : view === "turn" ? (
               <TurnView dateRange={dateRange} />
             ) : view === "river" ? (

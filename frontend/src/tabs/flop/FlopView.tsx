@@ -1,5 +1,4 @@
 import { getCbets, getVillainBetSizes } from "@/api";
-import { SpeedDial } from "@/components/SpeedDial";
 import { FilterGroup } from "@/components/FilterGroup";
 import { BetSizeDistribution } from "@/components/BetSizeDistribution";
 import { Slider } from "@/components/ui/slider";
@@ -14,6 +13,7 @@ import type {
   DateRangeFilter,
 } from "@/models";
 import { useEffect, useState } from "react";
+import { FlopStatsPanel } from "./components/FlopStatsPanel";
 
 const INITIAL_POSITION_FILTERS: PositionFilters = { ip: false, oop: false };
 
@@ -32,56 +32,11 @@ const INITIAL_POT_TYPE_FILTERS: PotTypeFilters = {
 const BET_SIZE_MIN = 0;
 const BET_SIZE_MAX = 200;
 
-interface CbetPanelProps {
-  title: string;
-  role: "PFR" | "DEF";
-  stats: CbetStats | undefined;
-}
-
-const CbetPanel = ({ title, role, stats }: CbetPanelProps) => {
-  const isPfr = role === "PFR";
-  return (
-    <div className="bg-card border border-border rounded-xl p-6 flex flex-col gap-6">
-      <div className="flex flex-col gap-1">
-        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
-          {title}
-        </h3>
-        <p className="text-xs text-muted-foreground">
-          {stats?.hand_count ?? 0} hands
-        </p>
-      </div>
-      <div className="grid grid-cols-3 gap-4">
-        <SpeedDial
-          value={stats?.cbet_pct ?? 0}
-          label={isPfr ? "Hero C-Bet" : "Villain C-Bet"}
-        />
-        <SpeedDial value={stats?.fcbet_pct ?? 0} label="Fold to C-Bet" />
-        <SpeedDial
-          value={stats?.raise_to_cbet_pct ?? 0}
-          label={isPfr ? "Villain Raise" : "Hero Raise"}
-        />
-        <SpeedDial
-          value={stats?.donk_bet_pct ?? 0}
-          label={isPfr ? "Villain Donk Bet" : "Hero Donk Bet"}
-        />
-        <SpeedDial
-          value={stats?.fold_to_donk_pct ?? 0}
-          label="Fold to Donk Bet"
-        />
-        <SpeedDial
-          value={stats?.raise_to_donk_pct ?? 0}
-          label={isPfr ? "Hero Raise" : "Villain Raise"}
-        />
-      </div>
-    </div>
-  );
-};
-
-interface CbetViewProps {
+interface Props {
   dateRange: DateRangeFilter;
 }
 
-export const CbetView = ({ dateRange }: CbetViewProps) => {
+export const FlopView = ({ dateRange }: Props) => {
   const [pfrStats, setPfrStats] = useState<CbetStats>();
   const [defStats, setDefStats] = useState<CbetStats>();
   const [villainBetSizes, setVillainBetSizes] = useState<number[]>([]);
@@ -251,8 +206,8 @@ export const CbetView = ({ dateRange }: CbetViewProps) => {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 max-w-5xl">
-        <CbetPanel role="PFR" title="PFR" stats={pfrStats} />
-        <CbetPanel role="DEF" title="DEF" stats={defStats} />
+        <FlopStatsPanel role="PFR" title="PFR" stats={pfrStats} />
+        <FlopStatsPanel role="DEF" title="DEF" stats={defStats} />
       </div>
 
       <div className="max-w-5xl">

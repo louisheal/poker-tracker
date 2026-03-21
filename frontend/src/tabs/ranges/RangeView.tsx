@@ -1,5 +1,7 @@
 import { getRanges } from "@/api";
-import RangeGrid, { GridSkeleton, RangeLegend } from "@/components/rangeGrid";
+import { RangeGrid } from "./components/RangeGrid";
+import { GridSkeleton } from "./components/GridSkeleton";
+import { RangeLegend } from "./components/RangeLegend";
 import { FilterGroup } from "@/components/FilterGroup";
 import type { DateRangeFilter, Ranges } from "@/models";
 import { useEffect, useState } from "react";
@@ -34,11 +36,11 @@ const POSITIONS: Record<PotType, { value: Positions; label: string }[]> = {
   ],
 };
 
-interface RangeViewProps {
+interface Props {
   dateRange: DateRangeFilter;
 }
 
-export const RangeView = ({ dateRange }: RangeViewProps) => {
+export const RangeView = ({ dateRange }: Props) => {
   const [ranges, setRanges] = useState<Ranges>();
   const [selectedRange, setSelectedRange] = useState<Positions>(INIT_POS);
   const [potType, setPotType] = useState<PotType>(INIT_TYPE);

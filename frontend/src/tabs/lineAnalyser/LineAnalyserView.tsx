@@ -1,12 +1,9 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
-import { Button } from "@/components/ui/button";
 import { FilterGroup } from "@/components/FilterGroup";
-import { SpeedDial } from "@/components/SpeedDial";
 import { BetSizeDistribution } from "@/components/BetSizeDistribution";
 import {
   getLineAnalysisFlop,
   type LineAnalysisFlopResponse,
-  type NextAction,
 } from "@/api";
 import type {
   BoardTypeFilter,
@@ -14,73 +11,13 @@ import type {
   PotTypeFilter,
   PotTypeFilters,
   DateRangeFilter,
-  ActionLine,
+  ActionLine as ActionLineType,
   LineActionItem,
 } from "@/models";
-
-// --- Single-select filter (always one selected) ---
-
-interface RadioFilterProps {
-  options: { key: string; label: string }[];
-  selected: string;
-  onSelect: (key: string) => void;
-}
-
-const RadioFilter = ({ options, selected, onSelect }: RadioFilterProps) => (
-  <div className="flex items-center gap-2">
-    {options.map((opt) => (
-      <Button
-        key={opt.key}
-        variant={selected === opt.key ? "outline" : "default"}
-        onClick={() => onSelect(opt.key)}
-      >
-        {opt.label}
-      </Button>
-    ))}
-  </div>
-);
-
-// --- Action line types ---
-
-interface ActionTagProps {
-  label: string;
-  isActive: boolean;
-  isFuture: boolean;
-  onClick: () => void;
-  onRemove?: () => void;
-  showArrow?: boolean;
-}
-
-const ActionTag = ({ label, isActive, isFuture, onClick, onRemove, showArrow = true }: ActionTagProps) => (
-  <div className="flex items-center gap-1">
-    {showArrow && (
-      <span className={`text-xs ${isFuture ? "text-muted-foreground/40" : "text-muted-foreground"}`}>→</span>
-    )}
-    <button
-      onClick={onClick}
-      className={`
-        inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-colors
-        ${isActive
-          ? "bg-primary text-primary-foreground"
-          : isFuture
-            ? "bg-muted/40 text-muted-foreground/50 hover:bg-muted/60"
-            : "bg-muted text-muted-foreground hover:bg-muted/80"
-        }
-      `}
-    >
-      {label}
-      {onRemove && (
-        <span
-          role="button"
-          onClick={(e) => { e.stopPropagation(); onRemove(); }}
-          className="ml-1 hover:text-destructive cursor-pointer"
-        >
-          ×
-        </span>
-      )}
-    </button>
-  </div>
-);
+import { RadioFilter } from "./components/RadioFilter";
+import { ActionLine } from "./components/ActionLine";
+import { StreetStatsPanel } from "./components/StreetStatsPanel";
+import { EvPanel } from "./components/EvPanel";
 
 const ACTION_LABELS: Record<string, string> = {
   X: "Check",
@@ -111,247 +48,6 @@ function actionToPrefix(la: LineActionItem): string {
   }
   return la.action;
 }
-
-// --- Action line tag bar ---
-
-interface ActionLineProps {
-  actionLine: ActionLine;
-  onClickFlop: () => void;
-  onClickTag: (index: number) => void;
-  onRemoveLast: () => void;
-}
-
-const ActionLineComponent = ({ actionLine, onClickFlop, onClickTag, onRemoveLast }: ActionLineProps) => {
-  return (
-    <div className="flex items-center gap-1 flex-wrap">
-      {/* Flop - cursor = -1 means at flop */}
-      <ActionTag
-        label="Flop"
-        isActive={actionLine.cursor === -1}
-        isFuture={false}
-        onClick={onClickFlop}
-        showArrow={false}
-      />
-
-      {/* Action tags */}
-      {actionLine.actions.map((la, i) => {
-        const isActive = i === actionLine.cursor;
-        const isFuture = i > actionLine.cursor;
-        return (
-          <ActionTag
-            key={i}
-            label={la.label}
-            isActive={isActive}
-            isFuture={isFuture}
-            onClick={() => onClickTag(i)}
-            onRemove={i === actionLine.actions.length - 1 ? onRemoveLast : undefined}
-            showArrow={true}
-          />
-        );
-      })}
-    </div>
-  );
-};
-
-// --- EV Row ---
-
-interface EvRowProps {
-  label: string;
-  evBb: number;
-  count: number;
-  onClick?: () => void;
-}
-
-const EvRow = ({ label, evBb, count, onClick }: EvRowProps) => {
-  const color =
-    evBb > 0
-      ? "text-emerald-400"
-      : evBb < 0
-        ? "text-red-400"
-        : "text-muted-foreground";
-  return (
-    <div
-      className={`flex items-center justify-between py-2 ${onClick ? "cursor-pointer hover:bg-muted/50 rounded px-2 -mx-2 transition-colors" : ""}`}
-      onClick={onClick}
-    >
-      <div className="flex items-baseline gap-2">
-        <span className="text-sm">{label}</span>
-        <span className="text-xs text-muted-foreground">{count} hands</span>
-      </div>
-      <span className={`text-sm font-semibold tabular-nums ${color}`}>
-        {evBb > 0 ? "+" : ""}
-        {evBb.toFixed(1)} BB
-      </span>
-    </div>
-  );
-};
-
-// --- Street stats panel ---
-
-interface StreetStats {
-  hand_count: number;
-  cbet_pct: number;
-  fold_to_cbet_pct: number;
-  raise_to_cbet_pct: number;
-  fold_to_cbet_raise_pct: number;
-  donk_bet_pct: number;
-  fold_to_donk_pct: number;
-  raise_to_donk_pct: number;
-  fold_to_donk_raise_pct: number;
-}
-
-interface StreetStatsPanelProps {
-  stats: StreetStats;
-  isPfr: boolean;
-}
-
-const StreetStatsPanel = ({ stats, isPfr }: StreetStatsPanelProps) => (
-  <div className="bg-card border border-border rounded-xl p-6 flex flex-col gap-6">
-    <div className="flex flex-col gap-1">
-      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
-        {isPfr ? "PFR" : "DEF"} — Flop Stats
-      </h3>
-      <p className="text-xs text-muted-foreground">
-        {stats.hand_count} hands
-      </p>
-    </div>
-    {/* C-bet row */}
-    <div className="grid grid-cols-4 gap-4">
-      <SpeedDial
-        value={stats.cbet_pct}
-        label={isPfr ? "Hero C-Bet" : "Villain C-Bet"}
-      />
-      <SpeedDial value={stats.fold_to_cbet_pct} label="Fold to C-Bet" />
-      <SpeedDial
-        value={stats.raise_to_cbet_pct}
-        label={isPfr ? "Villain Raise" : "Hero Raise"}
-      />
-      <SpeedDial
-        value={stats.fold_to_cbet_raise_pct}
-        label={isPfr ? "Hero F2R" : "Villain F2R"}
-      />
-    </div>
-    {/* Donk row */}
-    <div className="grid grid-cols-4 gap-4">
-      <SpeedDial
-        value={stats.donk_bet_pct}
-        label={isPfr ? "Villain Donk" : "Hero Donk"}
-      />
-      <SpeedDial value={stats.fold_to_donk_pct} label="Fold to Donk" />
-      <SpeedDial
-        value={stats.raise_to_donk_pct}
-        label={isPfr ? "Hero Raise" : "Villain Raise"}
-      />
-      <SpeedDial
-        value={stats.fold_to_donk_raise_pct}
-        label={isPfr ? "Villain F2R" : "Hero F2R"}
-      />
-    </div>
-  </div>
-);
-
-// --- Dynamic EV panel ---
-
-const BET_ACTION_LABELS: Record<string, string> = {
-  "B0-50": "Bet Small (0-50%)",
-  "B50-100": "Bet Medium (50-100%)",
-  "B100-200": "Bet Large (100-200%)",
-  "B200+": "Bet Overbet (200%+)",
-  "R0-50": "Raise Small (0-50%)",
-  "R50-100": "Raise Medium (50-100%)",
-  "R100-200": "Raise Large (100-200%)",
-  "R200+": "Raise Overbet (200%+)",
-};
-
-function getActionLabel(action: string): string {
-  return BET_ACTION_LABELS[action] || ACTION_LABELS[action] || action;
-}
-
-function parseActionKey(action: string): { base: string; sizeRange?: [number, number] } {
-  // "B50-100" → { base: "B", sizeRange: [50, 100] }
-  // "B200+" → { base: "B", sizeRange: [200, 999] }
-  // "X" → { base: "X" }
-  const match = action.match(/^([BRCXF])(\d+-\d+|\d+\+)?$/);
-  if (!match) return { base: action };
-  const base = match[1];
-  const sizePart = match[2];
-  if (!sizePart) return { base };
-  if (sizePart.endsWith("+")) {
-    const lo = parseInt(sizePart.slice(0, -1));
-    return { base, sizeRange: [lo, 999] };
-  }
-  const [lo, hi] = sizePart.split("-").map(Number);
-  return { base, sizeRange: [lo, hi] };
-}
-
-interface EvPanelProps {
-  nextActor: "hero" | "villain" | "";
-  overallEv: number;
-  handCount: number;
-  nextActions: NextAction[];
-  onActionClick: (action: string, sizeRange?: [number, number]) => void;
-}
-
-const EvPanel = ({
-  nextActor,
-  overallEv,
-  handCount,
-  nextActions,
-  onActionClick,
-}: EvPanelProps) => {
-  const actorLabel = nextActor === "hero" ? "Hero" : "Villain";
-  const overallColor =
-    overallEv > 0
-      ? "text-emerald-400"
-      : overallEv < 0
-        ? "text-red-400"
-        : "text-muted-foreground";
-
-  return (
-    <div className="bg-card border border-border rounded-xl p-6 flex flex-col gap-4">
-      <div className="flex items-baseline justify-between">
-        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
-          Expected Value
-        </h3>
-        <span className="text-xs text-muted-foreground">
-          {handCount} hands
-        </span>
-      </div>
-
-      {/* Overall EV */}
-      <div className="bg-background/50 border border-border rounded-lg px-4 py-3 flex items-center justify-between">
-        <span className="text-sm font-semibold">Overall</span>
-        <span className={`text-lg font-bold tabular-nums ${overallColor}`}>
-          {overallEv > 0 ? "+" : ""}
-          {overallEv.toFixed(1)} BB
-        </span>
-      </div>
-
-      {/* Dynamic per-action EV */}
-      <div className="flex flex-col divide-y divide-border">
-        {nextActions.map((na) => {
-          const { base, sizeRange } = parseActionKey(na.action);
-          return (
-            <EvRow
-              key={na.action}
-              label={`${actorLabel} ${getActionLabel(na.action)}`}
-              evBb={na.ev}
-              count={na.count}
-              onClick={() => onActionClick(base, sizeRange)}
-            />
-          );
-        })}
-        {nextActions.length === 0 && (
-          <p className="text-xs text-muted-foreground py-2">
-            No further actions (hand complete)
-          </p>
-        )}
-      </div>
-    </div>
-  );
-};
-
-// --- Filter defaults ---
 
 const INITIAL_BOARD_TYPE_FILTERS: BoardTypeFilters = {
   monotone: false,
@@ -398,15 +94,13 @@ const EMPTY_RESPONSE: LineAnalysisFlopResponse = {
   action_depth: 0,
 };
 
-// --- Main view ---
-
-interface LineAnalyserViewProps {
+interface Props {
   dateRange: DateRangeFilter;
 }
 
 export const LineAnalyserView = ({
   dateRange,
-}: LineAnalyserViewProps) => {
+}: Props) => {
   const [position, setPosition] = useState<string>("ip");
   const [role, setRole] = useState<string>("pfr");
   const [boardTypeFilters, setBoardTypeFilters] = useState<BoardTypeFilters>(
@@ -417,13 +111,11 @@ export const LineAnalyserView = ({
   );
   const [data, setData] = useState<LineAnalysisFlopResponse>(EMPTY_RESPONSE);
 
-  // Action line state - cursor starts at -1 (Flop selected)
-  const [actionLine, setActionLine] = useState<ActionLine>({
+  const [actionLine, setActionLine] = useState<ActionLineType>({
     actions: [],
     cursor: -1,
   });
 
-  // Reset line when position/role change
   const resetLine = useCallback(() => {
     setActionLine({
       actions: [],
@@ -445,7 +137,6 @@ export const LineAnalyserView = ({
     }));
   };
 
-  // Build filter arrays for API
   const activeBoards = useMemo(() => {
     const active = Object.entries(boardTypeFilters)
       .filter(([, v]) => v)
@@ -460,10 +151,8 @@ export const LineAnalyserView = ({
     return active.length > 0 ? active : Object.values(POT_TYPE_MAP);
   }, [potTypeFilters]);
 
-  // Build action prefix from actions up to cursor
   const actionPrefix = useMemo(() => {
     if (actionLine.cursor < 0 || actionLine.actions.length === 0) return undefined;
-    // cursor is now 0-indexed into actions, so cursor + 1 is the count
     if (actionLine.cursor >= actionLine.actions.length) return undefined;
     return actionLine.actions.slice(0, actionLine.cursor + 1).map(actionToPrefix);
   }, [actionLine]);
@@ -487,7 +176,6 @@ export const LineAnalyserView = ({
     })();
   }, [position, role, activeBoards, activePots, actionPrefix, dateRange]);
 
-  // Handle clicking an action in the EV panel
   const handleActionClick = useCallback((action: string, sizeRange?: [number, number]) => {
     const actor = data.next_actor;
     if (!actor) return;
@@ -508,7 +196,6 @@ export const LineAnalyserView = ({
     });
   }, [data.next_actor]);
 
-  // Navigate to a tag
   const handleClickTag = useCallback((index: number) => {
     setActionLine((prev) => ({
       ...prev,
@@ -516,7 +203,6 @@ export const LineAnalyserView = ({
     }));
   }, []);
 
-  // Remove last tag
   const handleRemoveLast = useCallback(() => {
     setActionLine((prev) => ({
       ...prev,
@@ -525,7 +211,6 @@ export const LineAnalyserView = ({
     }));
   }, []);
 
-  // Reset to flop (cursor = -1, before any actions)
   const handleClickFlop = useCallback(() => {
     setActionLine((prev) => ({
       ...prev,
@@ -533,7 +218,6 @@ export const LineAnalyserView = ({
     }));
   }, []);
 
-  // Reset line on position/role change (action line depends on who acts first)
   const handlePositionChange = useCallback((key: string) => {
     setPosition(key);
     resetLine();
@@ -544,39 +228,30 @@ export const LineAnalyserView = ({
     resetLine();
   }, [resetLine]);
 
-  // Determine bet size chart title based on context
   const betSizeTitle = useMemo(() => {
     const heroIsOop = position === "oop";
     const nextActor = data.next_actor;
     const isHeroNextToAct = nextActor === "hero";
     const actorName = isHeroNextToAct ? "Hero" : "Villain";
     
-    // Determine action type based on depth in action line
-    // Depth 0 (at flop): first actor either donks (if OOP) or c-bets (if IP)
-    // Depth 1+: could be bet, raise, or call response
     const depth = actionLine.cursor;
     let actionType = "";
     
     if (depth === -1) {
-      // At flop: if next actor is OOP, they donk; if IP, they c-bet
       actionType = isHeroNextToAct && heroIsOop ? "Donk Bet" : "C-Bet";
       if (isHeroNextToAct && !heroIsOop) actionType = "C-Bet";
       if (!isHeroNextToAct && heroIsOop) actionType = "C-Bet";
       if (!isHeroNextToAct && !heroIsOop) actionType = "Donk Bet";
     } else {
-      // Post-flop: look at last action to determine next action type
       const lastAction = actionLine.actions[depth];
       if (lastAction?.action === "X") {
-        // Last was check, so next is bet or donk
         actionType = isHeroNextToAct && heroIsOop ? "Donk Bet" : "C-Bet";
         if (isHeroNextToAct && !heroIsOop) actionType = "C-Bet";
         if (!isHeroNextToAct && heroIsOop) actionType = "C-Bet";
         if (!isHeroNextToAct && !heroIsOop) actionType = "Donk Bet";
       } else if (lastAction?.action === "B" || lastAction?.action.startsWith("B")) {
-        // Last was bet, so next is raise or call
         actionType = "Raise";
       } else if (lastAction?.action === "R" || lastAction?.action.startsWith("R")) {
-        // Last was raise, so next is reraise
         actionType = "Raise";
       }
     }
@@ -657,7 +332,7 @@ export const LineAnalyserView = ({
       </div>
 
       {/* Action line tags */}
-      <ActionLineComponent
+      <ActionLine
         actionLine={actionLine}
         onClickFlop={handleClickFlop}
         onClickTag={handleClickTag}
