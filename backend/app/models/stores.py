@@ -1,16 +1,16 @@
-from .events import CBetEvent, LineEvent, TurnEvent, RiverEvent, FlopAction
-from .filters import CBetFilter, LineFilter, TurnFilter, RiverFilter
-from .enums import FlopActionSequence, RiverActionSequence
+from .events import FlopEvent, LineEvent, TurnEvent, RiverEvent, FlopAction
+from .filters import FlopFilter, LineFilter, TurnFilter, RiverFilter
+from .enums import ActionSequence
 
 
-class CBets:
+class Flops:
 	def __init__(self):
-		self.events: list[CBetEvent] = []
+		self.events: list[FlopEvent] = []
 
-	def add_event(self, event: CBetEvent):
+	def add_event(self, event: FlopEvent):
 		self.events.append(event)
 
-	def json(self, filters: CBetFilter):
+	def json(self, filters: FlopFilter):
 		events = [e for e in self.events if e.filter(filters)]
 		
 		if not events:
@@ -37,9 +37,9 @@ class CBets:
 		}
 
 
-	def bet_sizes(self, filters: CBetFilter):
+	def bet_sizes(self, filters: FlopFilter):
 		"""Return villain cbet sizes as list of pot-% values for distribution charting."""
-		no_size_filter = CBetFilter(
+		no_size_filter = FlopFilter(
 			pot_types=filters.pot_types,
 			board_types=filters.board_types,
 			hero_preflop_raiser=filters.hero_preflop_raiser,
@@ -247,7 +247,7 @@ class Turns:
 	def json(self, filters: TurnFilter):
 		result = {}
 		
-		for sequence in FlopActionSequence:
+		for sequence in ActionSequence:
 			sequence_events = [e for e in self.events if e.flop_action_sequence == sequence and e.filter(filters)]
 			
 			if not sequence_events:
@@ -298,11 +298,11 @@ class Rivers:
 		if not events:
 			empty_showdown = {
 				seq.value: {"bb_per_hand": 0, "hand_count": 0}
-				for seq in RiverActionSequence
+				for seq in ActionSequence
 			}
 			empty_avg_pot = {
 				seq.value: {"avg_pot_bb": 0, "hand_count": 0}
-				for seq in RiverActionSequence
+				for seq in ActionSequence
 			}
 			return {
 				"actions": {
@@ -330,7 +330,7 @@ class Rivers:
 
 		showdown_result = {}
 		avg_pot_result = {}
-		for seq in RiverActionSequence:
+		for seq in ActionSequence:
 			seq_events = [e for e in events if e.river_action_sequence == seq]
 			if not seq_events:
 				avg_pot_result[seq.value] = {"avg_pot_bb": 0, "hand_count": 0}

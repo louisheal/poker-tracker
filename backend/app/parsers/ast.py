@@ -10,8 +10,8 @@ from playing_cards_lib.core import Card
 from playing_cards_lib.poker import HoleCards, BoardType, PotType
 
 from app.models.enums import (
-	FlopActionSequence, TurnRunout, RiverRunout,
-	FlopRankTexture, TurnActionSequence, RiverActionSequence, ShowdownType,
+	ActionSequence, Runout,
+	FlopRankTexture, ShowdownType,
 )
 
 
@@ -83,11 +83,11 @@ class HandContext:
 	hero_pnl_bb: float = 0.0
 	hero_preflop_invested_bb: float = 0.0
 	has_hero_pnl: bool = False
-	flop_action_sequence: FlopActionSequence | None = None
-	turn_runout: TurnRunout | None = None
-	turn_action_sequence: TurnActionSequence | None = None
-	river_runout: RiverRunout | None = None
-	river_action_sequence: RiverActionSequence | None = None
+	flop_action_sequence: ActionSequence | None = None
+	turn_runout: Runout | None = None
+	turn_action_sequence: ActionSequence | None = None
+	river_runout: Runout | None = None
+	river_action_sequence: ActionSequence | None = None
 	showdown_type: ShowdownType | None = None
 	went_to_showdown: bool = False
 	hero_won_showdown: bool = False

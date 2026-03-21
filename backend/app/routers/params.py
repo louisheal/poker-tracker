@@ -5,10 +5,7 @@ from fastapi import HTTPException
 
 from playing_cards_lib.poker import BoardType, PotType
 
-from app.models import (
-    FlopActionSequence, FlopRankTexture,
-    RiverRunout, TurnActionSequence, TurnRunout,
-)
+from app.models import ActionSequence, Runout, FlopRankTexture
 
 T = TypeVar("T")
 
@@ -61,14 +58,14 @@ def parse_bool_list(values: list[str] | None) -> list[bool]:
 
 
 # Pre-built mappings
-BOARD_TYPE_MAP = {
+BOARD_TYPE_MAP: dict[str, BoardType] = {
     "MONOTONE": BoardType.MONOTONE,
     "TWO_TONE": BoardType.TWO_TONE,
     "2TONE": BoardType.TWO_TONE,
     "RAINBOW": BoardType.RAINBOW,
 }
 
-POT_TYPE_MAP = {
+POT_TYPE_MAP: dict[str, PotType] = {
     "SRP": PotType.SRP,
     "THREE_BET": PotType.THREE_BET,
     "3BET": PotType.THREE_BET,
@@ -76,69 +73,46 @@ POT_TYPE_MAP = {
     "4BET": PotType.FOUR_BET,
 }
 
-TURN_RUNOUT_MAP = {
-    "OVERCARD": TurnRunout.OVERCARD,
-    "FLUSH_COMPLETING": TurnRunout.FLUSH_COMPLETING,
-    "FLUSH": TurnRunout.FLUSH_COMPLETING,
-    "PAIRED": TurnRunout.PAIRED,
-    "OTHER": TurnRunout.OTHER,
+RUNOUT_MAP: dict[str, Runout] = {
+    "OVERCARD": Runout.OVERCARD,
+    "FLUSH_COMPLETING": Runout.FLUSH_COMPLETING,
+    "FLUSH": Runout.FLUSH_COMPLETING,
+    "PAIRED": Runout.PAIRED,
+    "OTHER": Runout.OTHER,
 }
 
-FLOP_ACTION_MAP = {
-    "XX": FlopActionSequence.XX,
-    "XBC": FlopActionSequence.XBC,
-    "XBRC": FlopActionSequence.XBRC,
-    "BC": FlopActionSequence.BC,
+ACTION_SEQUENCE_MAP: dict[str, ActionSequence] = {
+    "XX": ActionSequence.XX,
+    "XBC": ActionSequence.XBC,
+    "XBRC": ActionSequence.XBRC,
+    "BC": ActionSequence.BC,
 }
 
-RIVER_RUNOUT_MAP = {
-    "OVERCARD": RiverRunout.OVERCARD,
-    "FLUSH_COMPLETING": RiverRunout.FLUSH_COMPLETING,
-    "FLUSH": RiverRunout.FLUSH_COMPLETING,
-    "PAIRED": RiverRunout.PAIRED,
-    "OTHER": RiverRunout.OTHER,
-}
-
-FLOP_RANK_MAP = {
+FLOP_RANK_MAP: dict[str, FlopRankTexture] = {
     "TRIPS": FlopRankTexture.TRIPS,
     "PAIRED": FlopRankTexture.PAIRED,
     "UNPAIRED": FlopRankTexture.UNPAIRED,
 }
 
-TURN_ACTION_MAP = {
-    "XX": TurnActionSequence.XX,
-    "XBC": TurnActionSequence.XBC,
-    "XBRC": TurnActionSequence.XBRC,
-    "BC": TurnActionSequence.BC,
-}
 
-
-def parse_board_type_list(values):
+def parse_board_type_list(values: list[str] | None) -> list[BoardType]:
     return parse_enum_list(values, BOARD_TYPE_MAP, list(BoardType))
 
 
-def parse_pot_type_list(values):
+def parse_pot_type_list(values: list[str] | None) -> list[PotType]:
     return parse_enum_list(values, POT_TYPE_MAP, list(PotType))
 
 
-def parse_turn_runout_list(values):
-    return parse_enum_list(values, TURN_RUNOUT_MAP, list(TurnRunout))
+def parse_runout_list(values: list[str] | None) -> list[Runout]:
+    return parse_enum_list(values, RUNOUT_MAP, list(Runout))
 
 
-def parse_flop_action_list(values):
-    return parse_enum_list(values, FLOP_ACTION_MAP, list(FlopActionSequence))
+def parse_action_sequence_list(values: list[str] | None) -> list[ActionSequence]:
+    return parse_enum_list(values, ACTION_SEQUENCE_MAP, list(ActionSequence))
 
 
-def parse_river_runout_list(values):
-    return parse_enum_list(values, RIVER_RUNOUT_MAP, list(RiverRunout))
-
-
-def parse_flop_rank_texture_list(values):
+def parse_flop_rank_texture_list(values: list[str] | None) -> list[FlopRankTexture]:
     return parse_enum_list(values, FLOP_RANK_MAP, list(FlopRankTexture))
-
-
-def parse_turn_action_sequence_list(values):
-    return parse_enum_list(values, TURN_ACTION_MAP, list(TurnActionSequence))
 
 
 def parse_optional_date(value: str | None) -> date | None:

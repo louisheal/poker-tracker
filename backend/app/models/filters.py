@@ -1,9 +1,9 @@
 from playing_cards_lib.poker import PotType, BoardType
 
-from .enums import FlopActionSequence, FlopRankTexture, TurnRunout, TurnActionSequence, RiverRunout
+from .enums import ActionSequence, Runout, FlopRankTexture
 
 
-class CBetFilter:
+class FlopFilter:
 	def __init__(
 		self,
 		pot_types: list[PotType] | None = None,
@@ -42,13 +42,13 @@ class TurnFilter:
 		board_types: list[BoardType] | None = None,
 		hero_preflop_raiser: list[bool] | None = None,
 		hero_in_position: list[bool] | None = None,
-		turn_runouts: list[TurnRunout] | None = None,
+		turn_runouts: list[Runout] | None = None,
 	):
 		self.pot_types = pot_types if pot_types is not None else list(PotType)
 		self.board_types = board_types if board_types is not None else list(BoardType)
 		self.hero_preflop_raiser = hero_preflop_raiser if hero_preflop_raiser is not None else [True, False]
 		self.hero_in_position = hero_in_position if hero_in_position is not None else [True, False]
-		self.turn_runouts = turn_runouts if turn_runouts is not None else list(TurnRunout)
+		self.turn_runouts = turn_runouts if turn_runouts is not None else list(Runout)
 
 
 class RiverFilter:
@@ -57,17 +57,17 @@ class RiverFilter:
 		pot_types: list[PotType] | None = None,
 		board_types: list[BoardType] | None = None,
 		hero_in_position: list[bool] | None = None,
-		flop_actions: list[FlopActionSequence] | None = None,
+		flop_actions: list[ActionSequence] | None = None,
 		flop_rank_textures: list[FlopRankTexture] | None = None,
-		turn_runouts: list[TurnRunout] | None = None,
-		turn_action_sequences: list[TurnActionSequence] | None = None,
-		river_runouts: list[RiverRunout] | None = None,
+		turn_runouts: list[Runout] | None = None,
+		turn_action_sequences: list[ActionSequence] | None = None,
+		river_runouts: list[Runout] | None = None,
 	):
 		self.pot_types = pot_types if pot_types is not None else list(PotType)
 		self.board_types = board_types if board_types is not None else list(BoardType)
 		self.hero_in_position = hero_in_position if hero_in_position is not None else [True, False]
-		self.flop_actions = flop_actions if flop_actions is not None else list(FlopActionSequence)
+		self.flop_actions = flop_actions if flop_actions is not None else list(ActionSequence)
 		self.flop_rank_textures = flop_rank_textures if flop_rank_textures is not None else list(FlopRankTexture)
-		self.turn_runouts = turn_runouts if turn_runouts is not None else list(TurnRunout)
-		self.turn_action_sequences = turn_action_sequences if turn_action_sequences is not None else list(TurnActionSequence)
-		self.river_runouts = river_runouts if river_runouts is not None else list(RiverRunout)
+		self.turn_runouts = turn_runouts if turn_runouts is not None else list(Runout)
+		self.turn_action_sequences = turn_action_sequences if turn_action_sequences is not None else list(ActionSequence)
+		self.river_runouts = river_runouts if river_runouts is not None else list(Runout)

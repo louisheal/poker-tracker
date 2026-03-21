@@ -4,17 +4,43 @@ import re
 import logging
 from datetime import datetime
 
-from .common import (
-	START_RE, DEALT_HERO_RE, ACTION_RE,
-	BET_AMOUNT_RE, CALL_AMOUNT_RE, RAISE_INC_RE,
-	UNCALLED_RE, HERO_COLLECTED_RE, HERO_WON_RE,
-	HERO_SHOWDOWN_RE, TOTAL_POT_RE,
-	FLOP_RE, TURN_RE, RIVER_RE, SEAT_RE,
-	to_card, to_hole_cards,
-)
+from playing_cards_lib.core import Card, Rank, Suit
+from playing_cards_lib.poker import HoleCards
+
 from .ast import HandAST, Action, ActionType, BlindPost, Street
 
 logger = logging.getLogger(__name__)
+
+START_RE = re.compile(r"^Poker Hand #[^:]+: .* - (\d{4}/\d{2}/\d{2}) \d{2}:\d{2}:\d{2}$")
+DEALT_HERO_RE = re.compile(r"Dealt to\s+Hero\s*\[([2-9TJQKA][shdc])\s+([2-9TJQKA][shdc])\]", re.IGNORECASE)
+ACTION_RE = re.compile(r"(.*): (folds|calls|raises|checks|bets)\b", re.IGNORECASE)
+BET_AMOUNT_RE = re.compile(r": bets \$(\d+\.?\d*)")
+CALL_AMOUNT_RE = re.compile(r": calls \$(\d+\.?\d*)")
+RAISE_INC_RE = re.compile(r": raises \$(\d+\.?\d*) to \$(\d+\.?\d*)")
+UNCALLED_RE = re.compile(r"Uncalled bet \(\$(\d+\.?\d*)\)")
+HERO_COLLECTED_RE = re.compile(r"Hero collected \$(\d+\.?\d*)")
+HERO_WON_RE = re.compile(r"Hero.*and won \(\$(\d+\.?\d*)\)")
+HERO_SHOWDOWN_RE = re.compile(r"Hero.*showed.*and (won|lost)")
+TOTAL_POT_RE = re.compile(r"Total pot \$(\d+\.?\d*)")
+FLOP_RE = re.compile(r"\*\*\* FLOP \*\*\* \[([2-9TJQKA][shdc]) ([2-9TJQKA][shdc]) ([2-9TJQKA][shdc])\]", re.IGNORECASE)
+TURN_RE = re.compile(r"\*\*\* TURN \*\*\* \[([2-9TJQKA][shdc]) ([2-9TJQKA][shdc]) ([2-9TJQKA][shdc])\] \[([2-9TJQKA][shdc])\]", re.IGNORECASE)
+RIVER_RE = re.compile(r"\*\*\* RIVER \*\*\* \[([2-9TJQKA][shdc]) ([2-9TJQKA][shdc]) ([2-9TJQKA][shdc]) ([2-9TJQKA][shdc])\] \[([2-9TJQKA][shdc])\]", re.IGNORECASE)
+SEAT_RE = re.compile(r"^Seat\s+\d+:\s+([^\s]+)")
+
+
+def to_card(token: str) -> Card:
+	t = token.strip()
+	rank_token = t[0].upper()
+	suit_token = t[1].upper()
+	rank = Rank(rank_token)
+	suit = Suit(suit_token)
+	return Card(rank, suit)
+
+
+def to_hole_cards(fst: str, snd: str) -> HoleCards:
+	fst_card = to_card(fst)
+	snd_card = to_card(snd)
+	return HoleCards(fst_card, snd_card)
 
 BUTTON_RE = re.compile(r"Seat #(\d+) is the button")
 SEAT_STACK_RE = re.compile(r"^Seat\s+(\d+):\s+(\S+)\s+\(\$(\d+\.?\d*)\s+in chips\)")

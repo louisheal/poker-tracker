@@ -6,10 +6,10 @@ from playing_cards_lib.core import Card
 from playing_cards_lib.poker import BoardType, PotType, PokerPosition
 
 from app.models.enums import (
-	FlopActionSequence, TurnRunout, RiverRunout,
-	FlopRankTexture, TurnActionSequence, RiverActionSequence, ShowdownType,
+	ActionSequence, Runout,
+	FlopRankTexture, ShowdownType,
 )
-from app.models.events import RangeEvent, CBetEvent, TurnEvent, RiverEvent, LineEvent, FlopAction
+from app.models.events import RangeEvent, FlopEvent, TurnEvent, RiverEvent, LineEvent, FlopAction
 
 from .ast import HandAST, HandContext, Action, ActionType
 
@@ -48,32 +48,32 @@ def _classify_rank_texture(cards: list[Card]) -> FlopRankTexture:
 	return FlopRankTexture.UNPAIRED
 
 
-def _classify_turn_runout(flop_cards: list[Card], turn_card: Card) -> TurnRunout:
+def _classify_turn_runout(flop_cards: list[Card], turn_card: Card) -> Runout:
 	flop_ranks = {c.rank for c in flop_cards}
 	flop_suits = {c.suit for c in flop_cards}
 
 	if all(turn_card.rank.value > r.value for r in flop_ranks):
-		return TurnRunout.OVERCARD
+		return Runout.OVERCARD
 	if turn_card.rank in flop_ranks:
-		return TurnRunout.PAIRED
+		return Runout.PAIRED
 	if turn_card.suit in flop_suits:
 		suited_count = sum(1 for c in flop_cards if c.suit == turn_card.suit)
 		if suited_count == 2:
-			return TurnRunout.FLUSH_COMPLETING
-	return TurnRunout.OTHER
+			return Runout.FLUSH_COMPLETING
+	return Runout.OTHER
 
 
-def _classify_river_runout(flop_cards: list[Card], turn_card: Card, river_card: Card) -> RiverRunout:
+def _classify_river_runout(flop_cards: list[Card], turn_card: Card, river_card: Card) -> Runout:
 	board_ranks = {c.rank for c in flop_cards} | {turn_card.rank}
 	board_suits = [c.suit for c in flop_cards] + [turn_card.suit]
 
 	if all(river_card.rank.value > r.value for r in board_ranks):
-		return RiverRunout.OVERCARD
+		return Runout.OVERCARD
 	if river_card.rank in board_ranks:
-		return RiverRunout.PAIRED
+		return Runout.PAIRED
 	if sum(1 for s in board_suits if s == river_card.suit) >= 2:
-		return RiverRunout.FLUSH_COMPLETING
-	return RiverRunout.OTHER
+		return Runout.FLUSH_COMPLETING
+	return Runout.OTHER
 
 
 def _classify_showdown_type(actions: list[Action]) -> ShowdownType:
@@ -367,7 +367,7 @@ def build_context(ast: HandAST) -> HandContext:
 		ctx.board_type = _classify_board(ast.flop.cards)
 		ctx.flop_rank_texture = _classify_rank_texture(ast.flop.cards)
 		ctx.hero_in_position = _compute_hero_ip(ast.flop.actions)
-		ctx.flop_action_sequence = _compute_action_sequence(ast.flop.actions, FlopActionSequence)
+		ctx.flop_action_sequence = _compute_action_sequence(ast.flop.actions, ActionSequence)
 
 	# Pot at flop
 	pot = _compute_pot_at_flop(ast)
@@ -383,12 +383,12 @@ def build_context(ast: HandAST) -> HandContext:
 	# Turn-derived
 	if ast.turn and ast.flop:
 		ctx.turn_runout = _classify_turn_runout(ast.flop.cards, ast.turn.cards[0])
-		ctx.turn_action_sequence = _compute_action_sequence(ast.turn.actions, TurnActionSequence)
+		ctx.turn_action_sequence = _compute_action_sequence(ast.turn.actions, ActionSequence)
 
 	# River-derived
 	if ast.river and ast.turn and ast.flop:
 		ctx.river_runout = _classify_river_runout(ast.flop.cards, ast.turn.cards[0], ast.river.cards[0])
-		ctx.river_action_sequence = _compute_action_sequence(ast.river.actions, RiverActionSequence, include_folds=True)
+		ctx.river_action_sequence = _compute_action_sequence(ast.river.actions, ActionSequence, include_folds=True)
 
 	# Showdown
 	ctx.went_to_showdown = ast.hero_showed_won is not None
@@ -430,14 +430,14 @@ def analyze_range(ast: HandAST) -> list[RangeEvent]:
 
 		if pot_type == PotType.SRP:
 			if action.is_hero:
-				ev = RangeEvent()
-				ev.played_on = ast.played_on
-				ev.hand_key = ast.hero_hole_cards.key()
-				ev.position = position
-				ev.action = _ACTION_NAMES[action.type]
-				ev.pot_type = pot_type
-				ev.villain = None
-				events.append(ev)
+				events.append(RangeEvent(
+					played_on=ast.played_on,
+					hand_key=ast.hero_hole_cards.key(),
+					position=position,
+					action=_ACTION_NAMES[action.type],
+					pot_type=pot_type,
+					villain=None,
+				))
 				pot_type = PotType.FOUR_BET
 				continue
 			else:
@@ -447,14 +447,14 @@ def analyze_range(ast: HandAST) -> list[RangeEvent]:
 
 		if pot_type == PotType.THREE_BET:
 			if action.is_hero:
-				ev = RangeEvent()
-				ev.played_on = ast.played_on
-				ev.hand_key = ast.hero_hole_cards.key()
-				ev.position = position
-				ev.action = _ACTION_NAMES[action.type]
-				ev.pot_type = pot_type
-				ev.villain = villain
-				events.append(ev)
+				events.append(RangeEvent(
+					played_on=ast.played_on,
+					hand_key=ast.hero_hole_cards.key(),
+					position=position,
+					action=_ACTION_NAMES[action.type],
+					pot_type=pot_type,
+					villain=villain,
+				))
 				return events
 			if action.type == ActionType.RAISE:
 				pot_type = PotType.FOUR_BET
@@ -462,14 +462,14 @@ def analyze_range(ast: HandAST) -> list[RangeEvent]:
 
 		if pot_type == PotType.FOUR_BET:
 			if action.is_hero:
-				ev = RangeEvent()
-				ev.played_on = ast.played_on
-				ev.hand_key = ast.hero_hole_cards.key()
-				ev.position = position
-				ev.action = _ACTION_NAMES[action.type]
-				ev.pot_type = pot_type
-				ev.villain = None
-				events.append(ev)
+				events.append(RangeEvent(
+					played_on=ast.played_on,
+					hand_key=ast.hero_hole_cards.key(),
+					position=position,
+					action=_ACTION_NAMES[action.type],
+					pot_type=pot_type,
+					villain=None,
+				))
 				return events
 			if action.type == ActionType.RAISE:
 				return events
@@ -477,7 +477,7 @@ def analyze_range(ast: HandAST) -> list[RangeEvent]:
 	return events
 
 
-def analyze_cbet(ctx: HandContext) -> CBetEvent | None:
+def analyze_cbet(ctx: HandContext) -> FlopEvent | None:
 	if ctx.board_type is None or not ctx.hero_sees_flop:
 		return None
 
@@ -486,18 +486,21 @@ def analyze_cbet(ctx: HandContext) -> CBetEvent | None:
 	 donk_bet, fold_to_donk_bet, raise_to_donk_bet,
 	 cbet_amount, donk_bet_amount) = _analyze_cbet_result(flop_actions, ctx.hero_preflop_raiser)
 
-	event = CBetEvent()
-	event.played_on = ctx.ast.played_on
-	event.pot_type = ctx.pot_type
-	event.board_type = ctx.board_type
-	event.hero_preflop_raiser = ctx.hero_preflop_raiser
-	event.hero_in_position = ctx.hero_in_position
-	event.cbet = cbet
-	event.fold_to_cbet = fold_to_cbet
-	event.raise_to_cbet = raise_to_cbet
-	event.donk_bet = donk_bet
-	event.fold_to_donk_bet = fold_to_donk_bet
-	event.raise_to_donk_bet = raise_to_donk_bet
+	event = FlopEvent(
+		played_on=ctx.ast.played_on,
+		pot_type=ctx.pot_type,
+		board_type=ctx.board_type,
+		hero_preflop_raiser=ctx.hero_preflop_raiser,
+		hero_in_position=ctx.hero_in_position,
+		cbet=cbet,
+		fold_to_cbet=fold_to_cbet,
+		raise_to_cbet=raise_to_cbet,
+		donk_bet=donk_bet,
+		fold_to_donk_bet=fold_to_donk_bet,
+		raise_to_donk_bet=raise_to_donk_bet,
+		cbet_size_pct=None,
+		donk_bet_size_pct=None,
+	)
 
 	if ctx.pot_at_flop_bb > 0:
 		pot_dollars = ctx.pot_at_flop_bb * BB
@@ -521,20 +524,21 @@ def analyze_turn(ctx: HandContext) -> TurnEvent | None:
 	(hero_bet, v_fold, v_raise,
 	 v_bet, h_fold, h_raise) = _analyze_street_actions(turn_actions)
 
-	event = TurnEvent()
-	event.played_on = ctx.ast.played_on
-	event.pot_type = ctx.pot_type
-	event.board_type = ctx.board_type
-	event.hero_preflop_raiser = ctx.hero_preflop_raiser
-	event.hero_in_position = ctx.hero_in_position
-	event.flop_action_sequence = ctx.flop_action_sequence
-	event.turn_runout = ctx.turn_runout
-	event.hero_bet_turn = hero_bet
-	event.villain_fold_to_hero_bet = v_fold
-	event.villain_raise_to_hero_bet = v_raise
-	event.villain_bet_turn = v_bet
-	event.hero_fold_to_villain_bet = h_fold
-	event.hero_raise_to_villain_bet = h_raise
+	event = TurnEvent(
+		played_on=ctx.ast.played_on,
+		pot_type=ctx.pot_type,
+		board_type=ctx.board_type,
+		hero_preflop_raiser=ctx.hero_preflop_raiser,
+		hero_in_position=ctx.hero_in_position,
+		flop_action_sequence=ctx.flop_action_sequence,
+		turn_runout=ctx.turn_runout,
+		hero_bet_turn=hero_bet,
+		villain_fold_to_hero_bet=v_fold,
+		villain_raise_to_hero_bet=v_raise,
+		villain_bet_turn=v_bet,
+		hero_fold_to_villain_bet=h_fold,
+		hero_raise_to_villain_bet=h_raise,
+	)
 	return event
 
 
@@ -555,27 +559,28 @@ def analyze_river(ctx: HandContext) -> RiverEvent | None:
 	(hero_bet, v_fold, v_raise,
 	 v_bet, h_fold, h_raise) = _analyze_street_actions(river_actions)
 
-	event = RiverEvent()
-	event.played_on = ast.played_on
-	event.pot_type = ctx.pot_type
-	event.board_type = ctx.board_type
-	event.hero_in_position = ctx.hero_in_position
-	event.flop_action_sequence = ctx.flop_action_sequence
-	event.flop_rank_texture = ctx.flop_rank_texture
-	event.turn_runout = ctx.turn_runout
-	event.turn_action_sequence = ctx.turn_action_sequence
-	event.river_runout = ctx.river_runout
-	event.river_action_sequence = ctx.river_action_sequence
-	event.hero_bet_river = hero_bet
-	event.villain_fold_to_hero_bet = v_fold
-	event.villain_raise_to_hero_bet = v_raise
-	event.villain_bet_river = v_bet
-	event.hero_fold_to_villain_bet = h_fold
-	event.hero_raise_to_villain_bet = h_raise
-	event.went_to_showdown = ctx.went_to_showdown
-	event.showdown_type = ctx.showdown_type
-	event.hero_won_showdown = ctx.hero_won_showdown
-	event.pot_size_bb = ctx.pot_size_bb
+	event = RiverEvent(
+		played_on=ast.played_on,
+		pot_type=ctx.pot_type,
+		board_type=ctx.board_type,
+		hero_in_position=ctx.hero_in_position,
+		flop_action_sequence=ctx.flop_action_sequence,
+		flop_rank_texture=ctx.flop_rank_texture,
+		turn_runout=ctx.turn_runout,
+		turn_action_sequence=ctx.turn_action_sequence,
+		river_runout=ctx.river_runout,
+		river_action_sequence=ctx.river_action_sequence,
+		hero_bet_river=hero_bet,
+		villain_fold_to_hero_bet=v_fold,
+		villain_raise_to_hero_bet=v_raise,
+		villain_bet_river=v_bet,
+		hero_fold_to_villain_bet=h_fold,
+		hero_raise_to_villain_bet=h_raise,
+		went_to_showdown=ctx.went_to_showdown,
+		showdown_type=ctx.showdown_type,
+		hero_won_showdown=ctx.hero_won_showdown,
+		pot_size_bb=ctx.pot_size_bb,
+	)
 	return event
 
 
@@ -595,32 +600,37 @@ def analyze_line(ctx: HandContext) -> LineEvent | None:
 	 donk_bet, fold_to_donk_bet, raise_to_donk_bet,
 	 cbet_amount, donk_bet_amount) = _analyze_cbet_result(flop_actions, hero_is_pfr)
 
-	event = LineEvent()
-	event.played_on = ast.played_on
-	event.pot_type = ctx.pot_type
-	event.board_type = ctx.board_type
-	event.hero_in_position = ctx.hero_in_position
-	event.hero_preflop_raiser = hero_is_pfr
-	event.hero_pnl_bb = ctx.hero_pnl_bb
-	event.hero_preflop_invested_bb = ctx.hero_preflop_invested_bb
-	event.pot_at_flop_bb = ctx.pot_at_flop_bb
-
-	event.flop_actions = _build_flop_actions_detailed(flop_actions, ctx.pot_at_flop_bb)
-
-	event.cbet = cbet
-	event.fold_to_cbet = fold_to_cbet
-	event.raise_to_cbet = raise_to_cbet
-	event.donk_bet = donk_bet
-	event.fold_to_donk_bet = fold_to_donk_bet
-	event.raise_to_donk_bet = raise_to_donk_bet
-
+	flop_actions_detailed = _build_flop_actions_detailed(flop_actions, ctx.pot_at_flop_bb)
 	pot_dollars = ctx.pot_at_flop_bb * BB
+	
+	cbet_size = None
 	if cbet_amount is not None:
-		event.cbet_size_pct = (cbet_amount / pot_dollars) * 100
+		cbet_size = (cbet_amount / pot_dollars) * 100
+	
+	donk_size = None
 	if donk_bet_amount is not None:
-		event.donk_bet_size_pct = (donk_bet_amount / pot_dollars) * 100
+		donk_size = (donk_bet_amount / pot_dollars) * 100
 
-	event.fold_to_cbet_raise = _analyze_fold_to_raise(flop_actions, hero_is_pfr, is_cbet=True)
-	event.fold_to_donk_raise = _analyze_fold_to_raise(flop_actions, hero_is_pfr, is_cbet=False)
+	event = LineEvent(
+		played_on=ast.played_on,
+		pot_type=ctx.pot_type,
+		board_type=ctx.board_type,
+		hero_in_position=ctx.hero_in_position,
+		hero_preflop_raiser=hero_is_pfr,
+		hero_pnl_bb=ctx.hero_pnl_bb,
+		hero_preflop_invested_bb=ctx.hero_preflop_invested_bb,
+		pot_at_flop_bb=ctx.pot_at_flop_bb,
+		flop_actions=flop_actions_detailed,
+		cbet=cbet,
+		fold_to_cbet=fold_to_cbet,
+		raise_to_cbet=raise_to_cbet,
+		donk_bet=donk_bet,
+		fold_to_donk_bet=fold_to_donk_bet,
+		raise_to_donk_bet=raise_to_donk_bet,
+		cbet_size_pct=cbet_size,
+		donk_bet_size_pct=donk_size,
+		fold_to_cbet_raise=_analyze_fold_to_raise(flop_actions, hero_is_pfr, is_cbet=True),
+		fold_to_donk_raise=_analyze_fold_to_raise(flop_actions, hero_is_pfr, is_cbet=False),
+	)
 
 	return event

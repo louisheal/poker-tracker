@@ -1,11 +1,16 @@
 from dataclasses import dataclass, field
 from datetime import date
+from typing import TYPE_CHECKING
 
 from playing_cards_lib.poker import PokerPosition, PotType, BoardType
 
-from .enums import FlopActionSequence, TurnRunout, RiverRunout, FlopRankTexture, TurnActionSequence, RiverActionSequence, ShowdownType
+from .enums import ActionSequence, Runout, FlopRankTexture, ShowdownType
+
+if TYPE_CHECKING:
+	from .filters import FlopFilter, TurnFilter, RiverFilter
 
 
+@dataclass
 class RangeEvent:
 	played_on: date
 	hand_key: str
@@ -15,7 +20,8 @@ class RangeEvent:
 	villain: PokerPosition | None
 
 
-class CBetEvent:
+@dataclass
+class FlopEvent:
 	played_on: date
 	pot_type: PotType
 	board_type: BoardType
@@ -27,14 +33,10 @@ class CBetEvent:
 	donk_bet: bool
 	fold_to_donk_bet: bool
 	raise_to_donk_bet: bool
-	cbet_size_pct: float | None
-	donk_bet_size_pct: float | None
+	cbet_size_pct: float | None = None
+	donk_bet_size_pct: float | None = None
 
-	def __init__(self):
-		self.cbet_size_pct = None
-		self.donk_bet_size_pct = None
-
-	def filter(self, filters) -> bool:
+	def filter(self, filters: "FlopFilter") -> bool:
 		if self.pot_type not in filters.pot_types:
 			return False
 		if self.board_type not in filters.board_types:
@@ -44,24 +46,23 @@ class CBetEvent:
 		if self.hero_in_position not in filters.hero_in_position:
 			return False
 		if filters.bet_size_min is not None or filters.bet_size_max is not None:
-			# Determine the relevant bet size for this hand
 			bet_pct = self.cbet_size_pct if self.cbet else self.donk_bet_size_pct if self.donk_bet else None
 			if bet_pct is not None:
 				lo = filters.bet_size_min if filters.bet_size_min is not None else 0
 				hi = filters.bet_size_max if filters.bet_size_max is not None else 200
 				if bet_pct < lo or bet_pct > hi:
 					return False
-			# Hands with no bet (XX) pass through — no bet size to filter on
 		return True
 
 
 @dataclass
 class FlopAction:
-	actor: str           # "hero" or "villain"
-	action: str          # "X" (check), "B" (bet), "C" (call), "R" (raise), "F" (fold)
-	size_pct: float | None = None  # pot-relative % for B/R, None for X/C/F
+	actor: str
+	action: str
+	size_pct: float | None = None
 
 
+@dataclass
 class LineEvent:
 	played_on: date
 	pot_type: PotType
@@ -71,36 +72,28 @@ class LineEvent:
 	hero_pnl_bb: float
 	hero_preflop_invested_bb: float
 	pot_at_flop_bb: float
-	flop_actions: list[FlopAction]
-	# Legacy cbet/donk stats for StreetStatsPanel
-	cbet: bool
-	fold_to_cbet: bool
-	raise_to_cbet: bool
-	donk_bet: bool
-	fold_to_donk_bet: bool
-	raise_to_donk_bet: bool
-	cbet_size_pct: float | None
-	donk_bet_size_pct: float | None
-	fold_to_cbet_raise: bool
-	fold_to_donk_raise: bool
-
-	def __init__(self):
-		self.flop_actions = []
-		self.cbet_size_pct = None
-		self.donk_bet_size_pct = None
-		self.fold_to_cbet_raise = False
-		self.fold_to_donk_raise = False
-		self.hero_preflop_invested_bb = 0.0
+	flop_actions: list[FlopAction] = field(default_factory=list)
+	cbet: bool = False
+	fold_to_cbet: bool = False
+	raise_to_cbet: bool = False
+	donk_bet: bool = False
+	fold_to_donk_bet: bool = False
+	raise_to_donk_bet: bool = False
+	cbet_size_pct: float | None = None
+	donk_bet_size_pct: float | None = None
+	fold_to_cbet_raise: bool = False
+	fold_to_donk_raise: bool = False
 
 
+@dataclass
 class TurnEvent:
 	played_on: date
 	pot_type: PotType
 	board_type: BoardType
 	hero_preflop_raiser: bool
 	hero_in_position: bool
-	flop_action_sequence: FlopActionSequence
-	turn_runout: TurnRunout
+	flop_action_sequence: ActionSequence
+	turn_runout: Runout
 	hero_bet_turn: bool
 	villain_fold_to_hero_bet: bool
 	villain_raise_to_hero_bet: bool
@@ -122,17 +115,18 @@ class TurnEvent:
 		return True
 
 
+@dataclass
 class RiverEvent:
 	played_on: date
 	pot_type: PotType
 	board_type: BoardType
 	hero_in_position: bool
-	flop_action_sequence: FlopActionSequence
+	flop_action_sequence: ActionSequence
 	flop_rank_texture: FlopRankTexture
-	turn_runout: TurnRunout
-	turn_action_sequence: TurnActionSequence
-	river_runout: RiverRunout
-	river_action_sequence: RiverActionSequence
+	turn_runout: Runout
+	turn_action_sequence: ActionSequence
+	river_runout: Runout
+	river_action_sequence: ActionSequence
 	hero_bet_river: bool
 	villain_fold_to_hero_bet: bool
 	villain_raise_to_hero_bet: bool

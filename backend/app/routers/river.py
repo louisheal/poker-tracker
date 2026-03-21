@@ -5,9 +5,8 @@ from app.loader import EventStore
 from app.models import RiverFilter, Rivers
 from app.routers.params import (
     parse_bool_list, parse_board_type_list, parse_pot_type_list,
-    parse_flop_action_list, parse_flop_rank_texture_list,
-    parse_turn_runout_list, parse_turn_action_sequence_list,
-    parse_river_runout_list, in_date_range,
+    parse_action_sequence_list, parse_flop_rank_texture_list,
+    parse_runout_list, in_date_range,
 )
 
 router = APIRouter()
@@ -31,11 +30,11 @@ def get_river(
         hero_in_position=parse_bool_list(hero_in_position),
         board_types=parse_board_type_list(board_types),
         pot_types=parse_pot_type_list(pot_types),
-        flop_actions=parse_flop_action_list(flop_actions),
+        flop_actions=parse_action_sequence_list(flop_actions),
         flop_rank_textures=parse_flop_rank_texture_list(flop_rank_textures),
-        turn_runouts=parse_turn_runout_list(turn_runouts),
-        turn_action_sequences=parse_turn_action_sequence_list(turn_action_sequences),
-        river_runouts=parse_river_runout_list(river_runouts),
+        turn_runouts=parse_runout_list(turn_runouts),
+        turn_action_sequences=parse_action_sequence_list(turn_action_sequences),
+        river_runouts=parse_runout_list(river_runouts),
     )
     filtered = [e for e in store.river_events if in_date_range(e.played_on, start, end)]
     rivers = Rivers()

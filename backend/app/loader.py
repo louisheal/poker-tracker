@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from datetime import date
 
 from app.models import (
-    CBetEvent, LineEvent, LineEvents, RangeEvent,
+    FlopEvent, LineEvent, LineEvents, RangeEvent,
     RiverEvent, TurnEvent,
 )
 from app.parsers import parse_histories, parse_hand_dates
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class EventStore:
     range_events: list[RangeEvent] = field(default_factory=list)
-    cbet_events: list[CBetEvent] = field(default_factory=list)
+    cbet_events: list[FlopEvent] = field(default_factory=list)
     turn_events: list[TurnEvent] = field(default_factory=list)
     river_events: list[RiverEvent] = field(default_factory=list)
     line_events: LineEvents = field(default_factory=LineEvents)

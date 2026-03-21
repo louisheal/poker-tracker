@@ -4,13 +4,13 @@ from mcp.server.fastmcp import FastMCP
 
 from app.loader import load_hand_histories
 from app.models import (
-	CBetFilter, CBets, FlopActionSequence, FlopRankTexture,
-	RiverActionSequence, RiverFilter, RiverRunout, Rivers,
-	TurnActionSequence, TurnFilter, TurnRunout, Turns, Ranges,
+	FlopFilter, Flops, ActionSequence, Runout, FlopRankTexture,
+	RiverFilter, Rivers,
+	TurnFilter, Turns, Ranges,
 )
 from app.routers.params import (
-	BOARD_TYPE_MAP, POT_TYPE_MAP, TURN_RUNOUT_MAP, RIVER_RUNOUT_MAP,
-	FLOP_ACTION_MAP, FLOP_RANK_MAP, TURN_ACTION_MAP,
+	BOARD_TYPE_MAP, POT_TYPE_MAP, RUNOUT_MAP,
+	ACTION_SEQUENCE_MAP, FLOP_RANK_MAP,
 	in_date_range, parse_optional_date,
 )
 from playing_cards_lib.poker import BoardType, PotType
@@ -65,7 +65,7 @@ def get_cbet_stats(
 	"""
 	start = _parse_date(start_date)
 	end = _parse_date(end_date)
-	f = CBetFilter(
+	f = FlopFilter(
 		hero_in_position=_resolve_bool(hero_in_position),
 		hero_preflop_raiser=_resolve_bool(hero_preflop_raiser),
 		board_types=_resolve(board_types, BOARD_TYPE_MAP, BoardType),
@@ -74,7 +74,7 @@ def get_cbet_stats(
 		bet_size_max=bet_size_max,
 	)
 	filtered = [e for e in store.cbet_events if in_date_range(e.played_on, start, end)]
-	cbets = CBets()
+	cbets = Flops()
 	for e in filtered:
 		cbets.add_event(e)
 	return cbets.json(f)
@@ -105,7 +105,7 @@ def get_turn_stats(
 		hero_preflop_raiser=_resolve_bool(hero_preflop_raiser),
 		board_types=_resolve(board_types, BOARD_TYPE_MAP, BoardType),
 		pot_types=_resolve(pot_types, POT_TYPE_MAP, PotType),
-		turn_runouts=_resolve(turn_runouts, TURN_RUNOUT_MAP, TurnRunout),
+		turn_runouts=_resolve(turn_runouts, RUNOUT_MAP, Runout),
 	)
 	filtered = [e for e in store.turn_events if in_date_range(e.played_on, start, end)]
 	turns = Turns()
@@ -145,11 +145,11 @@ def get_river_stats(
 		hero_in_position=_resolve_bool(hero_in_position),
 		board_types=_resolve(board_types, BOARD_TYPE_MAP, BoardType),
 		pot_types=_resolve(pot_types, POT_TYPE_MAP, PotType),
-		flop_actions=_resolve(flop_actions, FLOP_ACTION_MAP, FlopActionSequence),
+		flop_actions=_resolve(flop_actions, ACTION_SEQUENCE_MAP, ActionSequence),
 		flop_rank_textures=_resolve(flop_rank_textures, FLOP_RANK_MAP, FlopRankTexture),
-		turn_runouts=_resolve(turn_runouts, TURN_RUNOUT_MAP, TurnRunout),
-		turn_action_sequences=_resolve(turn_action_sequences, TURN_ACTION_MAP, TurnActionSequence),
-		river_runouts=_resolve(river_runouts, RIVER_RUNOUT_MAP, RiverRunout),
+		turn_runouts=_resolve(turn_runouts, RUNOUT_MAP, Runout),
+		turn_action_sequences=_resolve(turn_action_sequences, ACTION_SEQUENCE_MAP, ActionSequence),
+		river_runouts=_resolve(river_runouts, RUNOUT_MAP, Runout),
 	)
 	filtered = [e for e in store.river_events if in_date_range(e.played_on, start, end)]
 	rivers = Rivers()
@@ -239,14 +239,14 @@ def find_leaks(
 			if villain_fold > 55:
 				leaks.append({"spot": f"River hero bets {ip_label}", "stat": "villain_fold_to_hero_bet_pct", "value": round(villain_fold, 1), "concern": "Villain overfolds river — increase bluff frequency on river", "hand_count": actions["hand_count"]})
 
-		for seq in RiverActionSequence:
+		for seq in ActionSequence:
 			sd = stats["showdown"].get(seq.value, {})
 			if sd.get("hand_count", 0) >= min_hands:
 				bb = sd["bb_per_hand"]
 				if bb < -3:
 					leaks.append({"spot": f"Showdown {seq.value} {ip_label}", "stat": "bb_per_hand", "value": bb, "concern": f"Losing badly at showdown in {seq.value} line — review hand selection", "hand_count": sd["hand_count"]})
 
-	for runout in TurnRunout:
+	for runout in Runout:
 		f = TurnFilter(turn_runouts=[runout])
 		filtered = [e for e in store.turn_events if in_date_range(e.played_on, start, end)]
 		turns = Turns()
@@ -299,9 +299,9 @@ def compare_lines(
 			hero_in_position=_resolve_bool(hero_ip),
 			board_types=_resolve(board_types, BOARD_TYPE_MAP, BoardType),
 			pot_types=_resolve(pot_types, POT_TYPE_MAP, PotType),
-			flop_actions=_resolve(flop_actions, FLOP_ACTION_MAP, FlopActionSequence),
-			turn_runouts=_resolve(turn_runouts, TURN_RUNOUT_MAP, TurnRunout),
-			river_runouts=_resolve(river_runouts, RIVER_RUNOUT_MAP, RiverRunout),
+			flop_actions=_resolve(flop_actions, ACTION_SEQUENCE_MAP, ActionSequence),
+			turn_runouts=_resolve(turn_runouts, RUNOUT_MAP, Runout),
+			river_runouts=_resolve(river_runouts, RUNOUT_MAP, Runout),
 		)
 		rivers = Rivers()
 		for e in filtered:

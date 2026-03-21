@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Query
 
 from app.dependencies import get_store, get_date_range
 from app.loader import EventStore
-from app.models import CBetFilter, CBets
+from app.models import FlopFilter, Flops
 from app.routers.params import parse_bool_list, parse_board_type_list, parse_pot_type_list, in_date_range
 
 router = APIRouter()
@@ -20,7 +20,7 @@ def get_cbets(
     dates: tuple = Depends(get_date_range),
 ):
     start, end = dates
-    f = CBetFilter(
+    f = FlopFilter(
         hero_preflop_raiser=parse_bool_list(hero_preflop_raiser),
         hero_in_position=parse_bool_list(hero_in_position),
         board_types=parse_board_type_list(board_types),
@@ -29,7 +29,7 @@ def get_cbets(
         bet_size_max=bet_size_max,
     )
     filtered = [e for e in store.cbet_events if in_date_range(e.played_on, start, end)]
-    cbets = CBets()
+    cbets = Flops()
     for event in filtered:
         cbets.add_event(event)
     return cbets.json(f)
@@ -45,14 +45,14 @@ def get_cbet_bet_sizes(
     dates: tuple = Depends(get_date_range),
 ):
     start, end = dates
-    f = CBetFilter(
+    f = FlopFilter(
         hero_preflop_raiser=parse_bool_list(hero_preflop_raiser),
         hero_in_position=parse_bool_list(hero_in_position),
         board_types=parse_board_type_list(board_types),
         pot_types=parse_pot_type_list(pot_types),
     )
     filtered = [e for e in store.cbet_events if in_date_range(e.played_on, start, end)]
-    cbets = CBets()
+    cbets = Flops()
     for event in filtered:
         cbets.add_event(event)
     return {"villain_bet_sizes": cbets.bet_sizes(f)}

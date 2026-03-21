@@ -5,7 +5,7 @@ from app.loader import EventStore
 from app.models import TurnFilter, Turns
 from app.routers.params import (
     parse_bool_list, parse_board_type_list, parse_pot_type_list,
-    parse_turn_runout_list, in_date_range,
+    parse_runout_list, in_date_range,
 )
 
 router = APIRouter()
@@ -27,7 +27,7 @@ def get_turn(
         hero_in_position=parse_bool_list(hero_in_position),
         board_types=parse_board_type_list(board_types),
         pot_types=parse_pot_type_list(pot_types),
-        turn_runouts=parse_turn_runout_list(turn_runouts),
+        turn_runouts=parse_runout_list(turn_runouts),
     )
     filtered = [e for e in store.turn_events if in_date_range(e.played_on, start, end)]
     turns = Turns()
