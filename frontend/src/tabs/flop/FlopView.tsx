@@ -3,20 +3,37 @@ import { FilterGroup } from "@/components/FilterGroup";
 import { BetSizeDistribution } from "@/components/BetSizeDistribution";
 import { Slider } from "@/components/ui/slider";
 import { useCallback } from "react";
-import type {
-  CbetStats,
-  DateRangeFilter,
-} from "@/models";
+import type { CbetStats, DateRangeFilter } from "@/models";
 import { useEffect, useState } from "react";
 import { useToggleFilter } from "@/hooks/useToggleFilter";
 import { FlopStatsPanel } from "./components/FlopStatsPanel";
 
 const POSITION_MAP = { ip: true as const, oop: false as const };
-const BOARD_TYPE_MAP = { monotone: "MONOTONE" as const, twoTone: "TWO_TONE" as const, rainbow: "RAINBOW" as const };
-const POT_TYPE_MAP = { srp: "SRP" as const, threeBet: "THREE_BET" as const, fourBet: "FOUR_BET" as const };
+const BOARD_TYPE_MAP = {
+  monotone: "MONOTONE" as const,
+  twoTone: "TWO_TONE" as const,
+  rainbow: "RAINBOW" as const,
+};
+const POT_TYPE_MAP = {
+  srp: "SRP" as const,
+  threeBet: "THREE_BET" as const,
+  fourBet: "FOUR_BET" as const,
+};
 
 const BET_SIZE_MIN = 0;
 const BET_SIZE_MAX = 200;
+
+const INITIAL_POSITION_FILTERS = { ip: false, oop: false };
+const INITIAL_BOARD_TYPE_FILTERS = {
+  monotone: false,
+  twoTone: false,
+  rainbow: false,
+};
+const INITIAL_POT_TYPE_FILTERS = {
+  srp: false,
+  threeBet: false,
+  fourBet: false,
+};
 
 interface Props {
   dateRange: DateRangeFilter;
@@ -24,13 +41,16 @@ interface Props {
 
 export const FlopView = ({ dateRange }: Props) => {
   const [positionFilters, togglePosition, heroInPosition] = useToggleFilter(
-    { ip: false, oop: false }, POSITION_MAP,
+    INITIAL_POSITION_FILTERS,
+    POSITION_MAP,
   );
   const [boardTypeFilters, toggleBoard, boardTypes] = useToggleFilter(
-    { monotone: false, twoTone: false, rainbow: false }, BOARD_TYPE_MAP,
+    INITIAL_BOARD_TYPE_FILTERS,
+    BOARD_TYPE_MAP,
   );
   const [potTypeFilters, togglePot, potTypes] = useToggleFilter(
-    { srp: false, threeBet: false, fourBet: false }, POT_TYPE_MAP,
+    INITIAL_POT_TYPE_FILTERS,
+    POT_TYPE_MAP,
   );
 
   const [pfrStats, setPfrStats] = useState<CbetStats>();
@@ -41,9 +61,10 @@ export const FlopView = ({ dateRange }: Props) => {
     BET_SIZE_MAX,
   ]);
 
-  const onBetSizeChange = useCallback((values: number[]) => {
-    setBetSizeRange([values[0], values[1]]);
-  }, []);
+  const onBetSizeChange = useCallback(
+    (values: number[]) => setBetSizeRange([values[0], values[1]]),
+    [],
+  );
 
   const isDefaultBetSize =
     betSizeRange[0] === BET_SIZE_MIN && betSizeRange[1] === BET_SIZE_MAX;
@@ -52,19 +73,66 @@ export const FlopView = ({ dateRange }: Props) => {
     const betMin = isDefaultBetSize ? undefined : betSizeRange[0];
     const betMax = isDefaultBetSize ? undefined : betSizeRange[1];
 
-    Promise.all([
-      getCbets(heroInPosition, [true], boardTypes, potTypes, dateRange.startDate, dateRange.endDate, betMin, betMax),
-      getCbets(heroInPosition, [false], boardTypes, potTypes, dateRange.startDate, dateRange.endDate, betMin, betMax),
-    ]).then(([pfr, def]) => {
+    const fetchPfr = async () => {
+      const pfr = await getCbets(
+        heroInPosition,
+        [true],
+        boardTypes,
+        potTypes,
+        dateRange.startDate,
+        dateRange.endDate,
+        betMin,
+        betMax,
+      );
       setPfrStats(pfr);
+    };
+
+    const fetchDef = async () => {
+      const def = await getCbets(
+        heroInPosition,
+        [false],
+        boardTypes,
+        potTypes,
+        dateRange.startDate,
+        dateRange.endDate,
+        betMin,
+        betMax,
+      );
       setDefStats(def);
-    });
-  }, [heroInPosition, boardTypes, potTypes, dateRange.startDate, dateRange.endDate, betSizeRange, isDefaultBetSize]);
+    };
+
+    fetchPfr();
+    fetchDef();
+  }, [
+    heroInPosition,
+    boardTypes,
+    potTypes,
+    dateRange.startDate,
+    dateRange.endDate,
+    betSizeRange,
+    isDefaultBetSize,
+  ]);
 
   useEffect(() => {
-    getVillainBetSizes(heroInPosition, boardTypes, potTypes, dateRange.startDate, dateRange.endDate)
-      .then((res) => setVillainBetSizes(res.villain_bet_sizes));
-  }, [heroInPosition, boardTypes, potTypes, dateRange.startDate, dateRange.endDate]);
+    const fetchBetSizes = async () => {
+      const betSizes = await getVillainBetSizes(
+        heroInPosition,
+        boardTypes,
+        potTypes,
+        dateRange.startDate,
+        dateRange.endDate,
+      );
+      setVillainBetSizes(betSizes.villain_bet_sizes);
+    };
+
+    fetchBetSizes();
+  }, [
+    heroInPosition,
+    boardTypes,
+    potTypes,
+    dateRange.startDate,
+    dateRange.endDate,
+  ]);
 
   return (
     <div className="p-8 h-full content-start flex flex-col gap-6">

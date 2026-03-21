@@ -58,7 +58,7 @@ const CustomTooltip = ({
   );
 };
 
-export const BetSizeDistribution = ({ sizes, title }: BetSizeDistributionProps) => {
+export const BetSizeDistribution = ({ sizes = [], title }: BetSizeDistributionProps) => {
   const data = useMemo(() => buildDistribution(sizes), [sizes]);
 
   const median = useMemo(() => {
