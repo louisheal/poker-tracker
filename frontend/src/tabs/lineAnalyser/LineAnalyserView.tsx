@@ -6,14 +6,11 @@ import {
   type LineAnalysisFlopResponse,
 } from "@/api";
 import type {
-  BoardTypeFilter,
-  BoardTypeFilters,
-  PotTypeFilter,
-  PotTypeFilters,
   DateRangeFilter,
   ActionLine as ActionLineType,
   LineActionItem,
 } from "@/models";
+import { useToggleFilter } from "@/hooks/useToggleFilter";
 import { RadioFilter } from "./components/RadioFilter";
 import { ActionLine } from "./components/ActionLine";
 import { StreetStatsPanel } from "./components/StreetStatsPanel";
@@ -49,28 +46,16 @@ function actionToPrefix(la: LineActionItem): string {
   return la.action;
 }
 
-const INITIAL_BOARD_TYPE_FILTERS: BoardTypeFilters = {
-  monotone: false,
-  twoTone: false,
-  rainbow: false,
+const BOARD_TYPE_MAP = {
+  monotone: "MONOTONE" as const,
+  twoTone: "TWO_TONE" as const,
+  rainbow: "RAINBOW" as const,
 };
 
-const INITIAL_POT_TYPE_FILTERS: PotTypeFilters = {
-  srp: false,
-  threeBet: false,
-  fourBet: false,
-};
-
-const BOARD_TYPE_MAP: Record<string, BoardTypeFilter> = {
-  monotone: "MONOTONE",
-  twoTone: "TWO_TONE",
-  rainbow: "RAINBOW",
-};
-
-const POT_TYPE_MAP: Record<string, PotTypeFilter> = {
-  srp: "SRP",
-  threeBet: "THREE_BET",
-  fourBet: "FOUR_BET",
+const POT_TYPE_MAP = {
+  srp: "SRP" as const,
+  threeBet: "THREE_BET" as const,
+  fourBet: "FOUR_BET" as const,
 };
 
 const EMPTY_RESPONSE: LineAnalysisFlopResponse = {
@@ -103,11 +88,13 @@ export const LineAnalyserView = ({
 }: Props) => {
   const [position, setPosition] = useState<string>("ip");
   const [role, setRole] = useState<string>("pfr");
-  const [boardTypeFilters, setBoardTypeFilters] = useState<BoardTypeFilters>(
-    INITIAL_BOARD_TYPE_FILTERS,
+  const [boardTypeFilters, toggleBoard, activeBoards] = useToggleFilter(
+    { monotone: false, twoTone: false, rainbow: false },
+    BOARD_TYPE_MAP,
   );
-  const [potTypeFilters, setPotTypeFilters] = useState<PotTypeFilters>(
-    INITIAL_POT_TYPE_FILTERS,
+  const [potTypeFilters, togglePot, activePots] = useToggleFilter(
+    { srp: false, threeBet: false, fourBet: false },
+    POT_TYPE_MAP,
   );
   const [data, setData] = useState<LineAnalysisFlopResponse>(EMPTY_RESPONSE);
 
@@ -122,34 +109,6 @@ export const LineAnalyserView = ({
       cursor: -1,
     });
   }, []);
-
-  const toggleBoardTypeFilter = (key: string) => {
-    setBoardTypeFilters((prev) => ({
-      ...prev,
-      [key as keyof BoardTypeFilters]: !prev[key as keyof BoardTypeFilters],
-    }));
-  };
-
-  const togglePotTypeFilter = (key: string) => {
-    setPotTypeFilters((prev) => ({
-      ...prev,
-      [key as keyof PotTypeFilters]: !prev[key as keyof PotTypeFilters],
-    }));
-  };
-
-  const activeBoards = useMemo(() => {
-    const active = Object.entries(boardTypeFilters)
-      .filter(([, v]) => v)
-      .map(([k]) => BOARD_TYPE_MAP[k]);
-    return active.length > 0 ? active : Object.values(BOARD_TYPE_MAP);
-  }, [boardTypeFilters]);
-
-  const activePots = useMemo(() => {
-    const active = Object.entries(potTypeFilters)
-      .filter(([, v]) => v)
-      .map(([k]) => POT_TYPE_MAP[k]);
-    return active.length > 0 ? active : Object.values(POT_TYPE_MAP);
-  }, [potTypeFilters]);
 
   const actionPrefix = useMemo(() => {
     if (actionLine.cursor < 0 || actionLine.actions.length === 0) return undefined;
@@ -297,7 +256,7 @@ export const LineAnalyserView = ({
                 active: potTypeFilters.fourBet,
               },
             ]}
-            onToggle={togglePotTypeFilter}
+            onToggle={togglePot}
           />
         </div>
       </div>
@@ -326,7 +285,7 @@ export const LineAnalyserView = ({
                 active: boardTypeFilters.rainbow,
               },
             ]}
-            onToggle={toggleBoardTypeFilter}
+            onToggle={toggleBoard}
           />
         </div>
       </div>

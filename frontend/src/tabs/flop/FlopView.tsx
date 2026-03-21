@@ -2,32 +2,18 @@ import { getCbets, getVillainBetSizes } from "@/api";
 import { FilterGroup } from "@/components/FilterGroup";
 import { BetSizeDistribution } from "@/components/BetSizeDistribution";
 import { Slider } from "@/components/ui/slider";
-import { useMemo, useCallback } from "react";
+import { useCallback } from "react";
 import type {
-  BoardTypeFilter,
-  PotTypeFilter,
   CbetStats,
-  PositionFilters,
-  BoardTypeFilters,
-  PotTypeFilters,
   DateRangeFilter,
 } from "@/models";
 import { useEffect, useState } from "react";
+import { useToggleFilter } from "@/hooks/useToggleFilter";
 import { FlopStatsPanel } from "./components/FlopStatsPanel";
 
-const INITIAL_POSITION_FILTERS: PositionFilters = { ip: false, oop: false };
-
-const INITIAL_BOARD_TYPE_FILTERS: BoardTypeFilters = {
-  monotone: false,
-  twoTone: false,
-  rainbow: false,
-};
-
-const INITIAL_POT_TYPE_FILTERS: PotTypeFilters = {
-  srp: false,
-  threeBet: false,
-  fourBet: false,
-};
+const POSITION_MAP = { ip: true as const, oop: false as const };
+const BOARD_TYPE_MAP = { monotone: "MONOTONE" as const, twoTone: "TWO_TONE" as const, rainbow: "RAINBOW" as const };
+const POT_TYPE_MAP = { srp: "SRP" as const, threeBet: "THREE_BET" as const, fourBet: "FOUR_BET" as const };
 
 const BET_SIZE_MIN = 0;
 const BET_SIZE_MAX = 200;
@@ -37,43 +23,23 @@ interface Props {
 }
 
 export const FlopView = ({ dateRange }: Props) => {
+  const [positionFilters, togglePosition, heroInPosition] = useToggleFilter(
+    { ip: false, oop: false }, POSITION_MAP,
+  );
+  const [boardTypeFilters, toggleBoard, boardTypes] = useToggleFilter(
+    { monotone: false, twoTone: false, rainbow: false }, BOARD_TYPE_MAP,
+  );
+  const [potTypeFilters, togglePot, potTypes] = useToggleFilter(
+    { srp: false, threeBet: false, fourBet: false }, POT_TYPE_MAP,
+  );
+
   const [pfrStats, setPfrStats] = useState<CbetStats>();
   const [defStats, setDefStats] = useState<CbetStats>();
   const [villainBetSizes, setVillainBetSizes] = useState<number[]>([]);
-  const [positionFilters, setPositionFilters] = useState<PositionFilters>(
-    INITIAL_POSITION_FILTERS,
-  );
-  const [boardTypeFilters, setBoardTypeFilters] = useState<BoardTypeFilters>(
-    INITIAL_BOARD_TYPE_FILTERS,
-  );
-  const [potTypeFilters, setPotTypeFilters] = useState<PotTypeFilters>(
-    INITIAL_POT_TYPE_FILTERS,
-  );
   const [betSizeRange, setBetSizeRange] = useState<[number, number]>([
     BET_SIZE_MIN,
     BET_SIZE_MAX,
   ]);
-
-  const togglePositionFilter = (key: string) => {
-    setPositionFilters((prev) => ({
-      ...prev,
-      [key as keyof PositionFilters]: !prev[key as keyof PositionFilters],
-    }));
-  };
-
-  const toggleBoardTypeFilter = (key: string) => {
-    setBoardTypeFilters((prev) => ({
-      ...prev,
-      [key as keyof BoardTypeFilters]: !prev[key as keyof BoardTypeFilters],
-    }));
-  };
-
-  const togglePotTypeFilter = (key: string) => {
-    setPotTypeFilters((prev) => ({
-      ...prev,
-      [key as keyof PotTypeFilters]: !prev[key as keyof PotTypeFilters],
-    }));
-  };
 
   const onBetSizeChange = useCallback((values: number[]) => {
     setBetSizeRange([values[0], values[1]]);
@@ -82,72 +48,22 @@ export const FlopView = ({ dateRange }: Props) => {
   const isDefaultBetSize =
     betSizeRange[0] === BET_SIZE_MIN && betSizeRange[1] === BET_SIZE_MAX;
 
-  const { heroInPosition, boardTypes, potTypes } = useMemo(() => {
-    const heroInPosition: boolean[] = [];
-    const boardTypes: BoardTypeFilter[] = [];
-    const potTypes: PotTypeFilter[] = [];
-
-    if (positionFilters.ip) heroInPosition.push(true);
-    if (positionFilters.oop) heroInPosition.push(false);
-
-    if (boardTypeFilters.monotone) boardTypes.push("MONOTONE");
-    if (boardTypeFilters.twoTone) boardTypes.push("TWO_TONE");
-    if (boardTypeFilters.rainbow) boardTypes.push("RAINBOW");
-
-    if (potTypeFilters.srp) potTypes.push("SRP");
-    if (potTypeFilters.threeBet) potTypes.push("THREE_BET");
-    if (potTypeFilters.fourBet) potTypes.push("FOUR_BET");
-
-    return { heroInPosition, boardTypes, potTypes };
-  }, [positionFilters, boardTypeFilters, potTypeFilters]);
-
   useEffect(() => {
     const betMin = isDefaultBetSize ? undefined : betSizeRange[0];
     const betMax = isDefaultBetSize ? undefined : betSizeRange[1];
 
     Promise.all([
-      getCbets(
-        heroInPosition,
-        [true],
-        boardTypes,
-        potTypes,
-        dateRange.startDate,
-        dateRange.endDate,
-        betMin,
-        betMax,
-      ),
-      getCbets(
-        heroInPosition,
-        [false],
-        boardTypes,
-        potTypes,
-        dateRange.startDate,
-        dateRange.endDate,
-        betMin,
-        betMax,
-      ),
+      getCbets(heroInPosition, [true], boardTypes, potTypes, dateRange.startDate, dateRange.endDate, betMin, betMax),
+      getCbets(heroInPosition, [false], boardTypes, potTypes, dateRange.startDate, dateRange.endDate, betMin, betMax),
     ]).then(([pfr, def]) => {
       setPfrStats(pfr);
       setDefStats(def);
     });
-  }, [
-    heroInPosition,
-    boardTypes,
-    potTypes,
-    dateRange.startDate,
-    dateRange.endDate,
-    betSizeRange,
-    isDefaultBetSize,
-  ]);
+  }, [heroInPosition, boardTypes, potTypes, dateRange.startDate, dateRange.endDate, betSizeRange, isDefaultBetSize]);
 
   useEffect(() => {
-    getVillainBetSizes(
-      heroInPosition,
-      boardTypes,
-      potTypes,
-      dateRange.startDate,
-      dateRange.endDate,
-    ).then((res) => setVillainBetSizes(res.villain_bet_sizes));
+    getVillainBetSizes(heroInPosition, boardTypes, potTypes, dateRange.startDate, dateRange.endDate)
+      .then((res) => setVillainBetSizes(res.villain_bet_sizes));
   }, [heroInPosition, boardTypes, potTypes, dateRange.startDate, dateRange.endDate]);
 
   return (
@@ -158,7 +74,7 @@ export const FlopView = ({ dateRange }: Props) => {
             { key: "ip", label: "IP", active: positionFilters.ip },
             { key: "oop", label: "OOP", active: positionFilters.oop },
           ]}
-          onToggle={togglePositionFilter}
+          onToggle={togglePosition}
         />
 
         <FilterGroup
@@ -179,7 +95,7 @@ export const FlopView = ({ dateRange }: Props) => {
               active: boardTypeFilters.rainbow,
             },
           ]}
-          onToggle={toggleBoardTypeFilter}
+          onToggle={toggleBoard}
         />
 
         <FilterGroup
@@ -188,12 +104,12 @@ export const FlopView = ({ dateRange }: Props) => {
             { key: "threeBet", label: "3BET", active: potTypeFilters.threeBet },
             { key: "fourBet", label: "4BET", active: potTypeFilters.fourBet },
           ]}
-          onToggle={togglePotTypeFilter}
+          onToggle={togglePot}
         />
 
         <div className="flex flex-col gap-1.5 min-w-48 max-w-64">
           <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
-            Bet Size {betSizeRange[0]}% – {betSizeRange[1]}%
+            Bet Size {betSizeRange[0]}% - {betSizeRange[1]}%
           </span>
           <Slider
             min={BET_SIZE_MIN}

@@ -1,41 +1,18 @@
 import { getTurnStats } from "@/api";
 import { FilterGroup } from "@/components/FilterGroup";
-import { useMemo } from "react";
 import type {
-  BoardTypeFilter,
-  PotTypeFilter,
   TurnStats,
-  PositionFilters,
-  BoardTypeFilters,
-  PotTypeFilters,
   DateRangeFilter,
   FlopActionLine,
-  TurnRunoutFilters,
-  TurnRunoutFilter,
 } from "@/models";
 import { useEffect, useState } from "react";
+import { useToggleFilter } from "@/hooks/useToggleFilter";
 import { TurnStatsPanel } from "./components/TurnStatsPanel";
 
-const INITIAL_POSITION_FILTERS: PositionFilters = { ip: false, oop: false };
-
-const INITIAL_BOARD_TYPE_FILTERS: BoardTypeFilters = {
-  monotone: false,
-  twoTone: false,
-  rainbow: false,
-};
-
-const INITIAL_POT_TYPE_FILTERS: PotTypeFilters = {
-  srp: false,
-  threeBet: false,
-  fourBet: false,
-};
-
-const INITIAL_TURN_RUNOUT_FILTERS: TurnRunoutFilters = {
-  overcard: false,
-  flushCompleting: false,
-  paired: false,
-  other: false,
-};
+const POSITION_MAP = { ip: true as const, oop: false as const };
+const BOARD_TYPE_MAP = { monotone: "MONOTONE" as const, twoTone: "TWO_TONE" as const, rainbow: "RAINBOW" as const };
+const POT_TYPE_MAP = { srp: "SRP" as const, threeBet: "THREE_BET" as const, fourBet: "FOUR_BET" as const };
+const TURN_RUNOUT_MAP = { overcard: "OVERCARD" as const, flushCompleting: "FLUSH_COMPLETING" as const, paired: "PAIRED" as const, other: "OTHER" as const };
 
 const FLOP_ACTION_LINES: FlopActionLine[] = ["XX", "XBC", "XBRC", "BC"];
 
@@ -44,6 +21,19 @@ interface Props {
 }
 
 export const TurnView = ({ dateRange }: Props) => {
+  const [positionFilters, togglePosition, heroInPosition] = useToggleFilter(
+    { ip: false, oop: false }, POSITION_MAP,
+  );
+  const [boardTypeFilters, toggleBoard, boardTypes] = useToggleFilter(
+    { monotone: false, twoTone: false, rainbow: false }, BOARD_TYPE_MAP,
+  );
+  const [potTypeFilters, togglePot, potTypes] = useToggleFilter(
+    { srp: false, threeBet: false, fourBet: false }, POT_TYPE_MAP,
+  );
+  const [turnRunoutFilters, toggleTurnRunout, turnRunouts] = useToggleFilter(
+    { overcard: false, flushCompleting: false, paired: false, other: false }, TURN_RUNOUT_MAP,
+  );
+
   const [turnStats, setTurnStats] = useState<
     { [key in FlopActionLine]: TurnStats | undefined }
   >({
@@ -52,71 +42,6 @@ export const TurnView = ({ dateRange }: Props) => {
     XBRC: undefined,
     BC: undefined,
   });
-  const [positionFilters, setPositionFilters] = useState<PositionFilters>(
-    INITIAL_POSITION_FILTERS,
-  );
-  const [boardTypeFilters, setBoardTypeFilters] = useState<BoardTypeFilters>(
-    INITIAL_BOARD_TYPE_FILTERS,
-  );
-  const [potTypeFilters, setPotTypeFilters] = useState<PotTypeFilters>(
-    INITIAL_POT_TYPE_FILTERS,
-  );
-  const [turnRunoutFilters, setTurnRunoutFilters] = useState<TurnRunoutFilters>(
-    INITIAL_TURN_RUNOUT_FILTERS,
-  );
-
-  const togglePositionFilter = (key: string) => {
-    setPositionFilters((prev) => ({
-      ...prev,
-      [key as keyof PositionFilters]: !prev[key as keyof PositionFilters],
-    }));
-  };
-
-  const toggleBoardTypeFilter = (key: string) => {
-    setBoardTypeFilters((prev) => ({
-      ...prev,
-      [key as keyof BoardTypeFilters]: !prev[key as keyof BoardTypeFilters],
-    }));
-  };
-
-  const togglePotTypeFilter = (key: string) => {
-    setPotTypeFilters((prev) => ({
-      ...prev,
-      [key as keyof PotTypeFilters]: !prev[key as keyof PotTypeFilters],
-    }));
-  };
-
-  const toggleTurnRunoutFilter = (key: string) => {
-    setTurnRunoutFilters((prev) => ({
-      ...prev,
-      [key as keyof TurnRunoutFilters]: !prev[key as keyof TurnRunoutFilters],
-    }));
-  };
-
-  const { heroInPosition, boardTypes, potTypes, turnRunouts } = useMemo(() => {
-    const heroInPosition: boolean[] = [];
-    const boardTypes: BoardTypeFilter[] = [];
-    const potTypes: PotTypeFilter[] = [];
-    const turnRunouts: TurnRunoutFilter[] = [];
-
-    if (positionFilters.ip) heroInPosition.push(true);
-    if (positionFilters.oop) heroInPosition.push(false);
-
-    if (boardTypeFilters.monotone) boardTypes.push("MONOTONE");
-    if (boardTypeFilters.twoTone) boardTypes.push("TWO_TONE");
-    if (boardTypeFilters.rainbow) boardTypes.push("RAINBOW");
-
-    if (potTypeFilters.srp) potTypes.push("SRP");
-    if (potTypeFilters.threeBet) potTypes.push("THREE_BET");
-    if (potTypeFilters.fourBet) potTypes.push("FOUR_BET");
-
-    if (turnRunoutFilters.overcard) turnRunouts.push("OVERCARD");
-    if (turnRunoutFilters.flushCompleting) turnRunouts.push("FLUSH_COMPLETING");
-    if (turnRunoutFilters.paired) turnRunouts.push("PAIRED");
-    if (turnRunoutFilters.other) turnRunouts.push("OTHER");
-
-    return { heroInPosition, boardTypes, potTypes, turnRunouts };
-  }, [positionFilters, boardTypeFilters, potTypeFilters, turnRunoutFilters]);
 
   useEffect(() => {
     getTurnStats(
@@ -147,7 +72,7 @@ export const TurnView = ({ dateRange }: Props) => {
             { key: "ip", label: "IP", active: positionFilters.ip },
             { key: "oop", label: "OOP", active: positionFilters.oop },
           ]}
-          onToggle={togglePositionFilter}
+          onToggle={togglePosition}
         />
 
         <FilterGroup
@@ -168,7 +93,7 @@ export const TurnView = ({ dateRange }: Props) => {
               active: boardTypeFilters.rainbow,
             },
           ]}
-          onToggle={toggleBoardTypeFilter}
+          onToggle={toggleBoard}
         />
 
         <FilterGroup
@@ -177,7 +102,7 @@ export const TurnView = ({ dateRange }: Props) => {
             { key: "threeBet", label: "3BET", active: potTypeFilters.threeBet },
             { key: "fourBet", label: "4BET", active: potTypeFilters.fourBet },
           ]}
-          onToggle={togglePotTypeFilter}
+          onToggle={togglePot}
         />
 
         <FilterGroup
@@ -203,7 +128,7 @@ export const TurnView = ({ dateRange }: Props) => {
               active: turnRunoutFilters.other,
             },
           ]}
-          onToggle={toggleTurnRunoutFilter}
+          onToggle={toggleTurnRunout}
         />
       </div>
 

@@ -1,69 +1,19 @@
 import { getRiverStats } from "@/api";
 import { FilterGroup } from "@/components/FilterGroup";
-import { useMemo } from "react";
-import type {
-  BoardTypeFilter,
-  PositionFilters,
-  BoardTypeFilters,
-  DateRangeFilter,
-  FlopActionFilters,
-  FlopActionLine,
-  FlopRankTextureFilter,
-  FlopRankTextureFilters,
-  TurnRunoutFilters,
-  TurnRunoutFilter,
-  TurnActionFilters,
-  TurnActionLine,
-  RiverRunoutFilter,
-  RiverRunoutFilters,
-} from "@/models";
+import { useToggleFilter } from "@/hooks/useToggleFilter";
+import type { DateRangeFilter, RiverStats } from "@/models";
 import { useEffect, useState } from "react";
-import type { RiverStats } from "@/models";
 import { RiverActionPanel } from "./components/RiverActionPanel";
 import { ShowdownPanel } from "./components/ShowdownPanel";
 import { AvgPotPanel } from "./components/AvgPotPanel";
 
-const INITIAL_POSITION_FILTERS: PositionFilters = { ip: false, oop: false };
-
-const INITIAL_BOARD_TYPE_FILTERS: BoardTypeFilters = {
-  monotone: false,
-  twoTone: false,
-  rainbow: false,
-};
-
-const INITIAL_FLOP_ACTION_FILTERS: FlopActionFilters = {
-  xx: false,
-  xbc: false,
-  xbrc: false,
-  bc: false,
-};
-
-const INITIAL_FLOP_RANK_TEXTURE_FILTERS: FlopRankTextureFilters = {
-  trips: false,
-  paired: false,
-  unpaired: false,
-};
-
-const INITIAL_TURN_ACTION_FILTERS: TurnActionFilters = {
-  xx: false,
-  xbc: false,
-  xbrc: false,
-  bc: false,
-};
-
-const INITIAL_TURN_RUNOUT_FILTERS: TurnRunoutFilters = {
-  overcard: false,
-  flushCompleting: false,
-  paired: false,
-  other: false,
-};
-
-const INITIAL_RIVER_RUNOUT_FILTERS: RiverRunoutFilters = {
-  overcard: false,
-  flushCompleting: false,
-  paired: false,
-  other: false,
-};
+const POSITION_MAP = { ip: true as const, oop: false as const };
+const BOARD_TYPE_MAP = { monotone: "MONOTONE" as const, twoTone: "TWO_TONE" as const, rainbow: "RAINBOW" as const };
+const FLOP_ACTION_MAP = { xx: "XX" as const, xbc: "XBC" as const, xbrc: "XBRC" as const, bc: "BC" as const };
+const FLOP_RANK_TEXTURE_MAP = { trips: "TRIPS" as const, paired: "PAIRED" as const, unpaired: "UNPAIRED" as const };
+const TURN_ACTION_MAP = { xx: "XX" as const, xbc: "XBC" as const, xbrc: "XBRC" as const, bc: "BC" as const };
+const TURN_RUNOUT_MAP = { overcard: "OVERCARD" as const, flushCompleting: "FLUSH_COMPLETING" as const, paired: "PAIRED" as const, other: "OTHER" as const };
+const RIVER_RUNOUT_MAP = { overcard: "OVERCARD" as const, flushCompleting: "FLUSH_COMPLETING" as const, paired: "PAIRED" as const, other: "OTHER" as const };
 
 interface Props {
   dateRange: DateRangeFilter;
@@ -71,142 +21,13 @@ interface Props {
 
 export const RiverView = ({ dateRange }: Props) => {
   const [riverStats, setRiverStats] = useState<RiverStats>();
-  const [positionFilters, setPositionFilters] = useState<PositionFilters>(
-    INITIAL_POSITION_FILTERS,
-  );
-  const [boardTypeFilters, setBoardTypeFilters] = useState<BoardTypeFilters>(
-    INITIAL_BOARD_TYPE_FILTERS,
-  );
-  const [flopActionFilters, setFlopActionFilters] =
-    useState<FlopActionFilters>(INITIAL_FLOP_ACTION_FILTERS);
-  const [flopRankTextureFilters, setFlopRankTextureFilters] =
-    useState<FlopRankTextureFilters>(INITIAL_FLOP_RANK_TEXTURE_FILTERS);
-  const [turnActionFilters, setTurnActionFilters] =
-    useState<TurnActionFilters>(INITIAL_TURN_ACTION_FILTERS);
-  const [turnRunoutFilters, setTurnRunoutFilters] =
-    useState<TurnRunoutFilters>(INITIAL_TURN_RUNOUT_FILTERS);
-  const [riverRunoutFilters, setRiverRunoutFilters] =
-    useState<RiverRunoutFilters>(INITIAL_RIVER_RUNOUT_FILTERS);
-
-  const togglePositionFilter = (key: string) => {
-    setPositionFilters((prev) => ({
-      ...prev,
-      [key as keyof PositionFilters]: !prev[key as keyof PositionFilters],
-    }));
-  };
-
-  const toggleBoardTypeFilter = (key: string) => {
-    setBoardTypeFilters((prev) => ({
-      ...prev,
-      [key as keyof BoardTypeFilters]: !prev[key as keyof BoardTypeFilters],
-    }));
-  };
-
-  const toggleFlopActionFilter = (key: string) => {
-    setFlopActionFilters((prev) => ({
-      ...prev,
-      [key as keyof FlopActionFilters]: !prev[key as keyof FlopActionFilters],
-    }));
-  };
-
-  const toggleFlopRankTextureFilter = (key: string) => {
-    setFlopRankTextureFilters((prev) => ({
-      ...prev,
-      [key as keyof FlopRankTextureFilters]:
-        !prev[key as keyof FlopRankTextureFilters],
-    }));
-  };
-
-  const toggleTurnActionFilter = (key: string) => {
-    setTurnActionFilters((prev) => ({
-      ...prev,
-      [key as keyof TurnActionFilters]: !prev[key as keyof TurnActionFilters],
-    }));
-  };
-
-  const toggleTurnRunoutFilter = (key: string) => {
-    setTurnRunoutFilters((prev) => ({
-      ...prev,
-      [key as keyof TurnRunoutFilters]: !prev[key as keyof TurnRunoutFilters],
-    }));
-  };
-
-  const toggleRiverRunoutFilter = (key: string) => {
-    setRiverRunoutFilters((prev) => ({
-      ...prev,
-      [key as keyof RiverRunoutFilters]:
-        !prev[key as keyof RiverRunoutFilters],
-    }));
-  };
-
-  const {
-    heroInPosition,
-    boardTypes,
-    flopActions,
-    flopRankTextures,
-    turnActions,
-    turnRunouts,
-    riverRunouts,
-  } = useMemo(() => {
-    const heroInPosition: boolean[] = [];
-    const boardTypes: BoardTypeFilter[] = [];
-    const flopActions: FlopActionLine[] = [];
-    const flopRankTextures: FlopRankTextureFilter[] = [];
-    const turnActions: TurnActionLine[] = [];
-    const turnRunouts: TurnRunoutFilter[] = [];
-    const riverRunouts: RiverRunoutFilter[] = [];
-
-    if (positionFilters.ip) heroInPosition.push(true);
-    if (positionFilters.oop) heroInPosition.push(false);
-
-    if (boardTypeFilters.monotone) boardTypes.push("MONOTONE");
-    if (boardTypeFilters.twoTone) boardTypes.push("TWO_TONE");
-    if (boardTypeFilters.rainbow) boardTypes.push("RAINBOW");
-
-    if (flopActionFilters.xx) flopActions.push("XX");
-    if (flopActionFilters.xbc) flopActions.push("XBC");
-    if (flopActionFilters.xbrc) flopActions.push("XBRC");
-    if (flopActionFilters.bc) flopActions.push("BC");
-
-    if (flopRankTextureFilters.trips) flopRankTextures.push("TRIPS");
-    if (flopRankTextureFilters.paired) flopRankTextures.push("PAIRED");
-    if (flopRankTextureFilters.unpaired) flopRankTextures.push("UNPAIRED");
-
-    if (turnActionFilters.xx) turnActions.push("XX");
-    if (turnActionFilters.xbc) turnActions.push("XBC");
-    if (turnActionFilters.xbrc) turnActions.push("XBRC");
-    if (turnActionFilters.bc) turnActions.push("BC");
-
-    if (turnRunoutFilters.overcard) turnRunouts.push("OVERCARD");
-    if (turnRunoutFilters.flushCompleting)
-      turnRunouts.push("FLUSH_COMPLETING");
-    if (turnRunoutFilters.paired) turnRunouts.push("PAIRED");
-    if (turnRunoutFilters.other) turnRunouts.push("OTHER");
-
-    if (riverRunoutFilters.overcard) riverRunouts.push("OVERCARD");
-    if (riverRunoutFilters.flushCompleting)
-      riverRunouts.push("FLUSH_COMPLETING");
-    if (riverRunoutFilters.paired) riverRunouts.push("PAIRED");
-    if (riverRunoutFilters.other) riverRunouts.push("OTHER");
-
-    return {
-      heroInPosition,
-      boardTypes,
-      flopActions,
-      flopRankTextures,
-      turnActions,
-      turnRunouts,
-      riverRunouts,
-    };
-  }, [
-    positionFilters,
-    boardTypeFilters,
-    flopActionFilters,
-    flopRankTextureFilters,
-    turnActionFilters,
-    turnRunoutFilters,
-    riverRunoutFilters,
-  ]);
+  const [positionFilters, togglePosition, heroInPosition] = useToggleFilter({ ip: false, oop: false }, POSITION_MAP);
+  const [boardTypeFilters, toggleBoard, boardTypes] = useToggleFilter({ monotone: false, twoTone: false, rainbow: false }, BOARD_TYPE_MAP);
+  const [flopActionFilters, toggleFlopAction, flopActions] = useToggleFilter({ xx: false, xbc: false, xbrc: false, bc: false }, FLOP_ACTION_MAP);
+  const [flopRankTextureFilters, toggleFlopRankTexture, flopRankTextures] = useToggleFilter({ trips: false, paired: false, unpaired: false }, FLOP_RANK_TEXTURE_MAP);
+  const [turnActionFilters, toggleTurnAction, turnActions] = useToggleFilter({ xx: false, xbc: false, xbrc: false, bc: false }, TURN_ACTION_MAP);
+  const [turnRunoutFilters, toggleTurnRunout, turnRunouts] = useToggleFilter({ overcard: false, flushCompleting: false, paired: false, other: false }, TURN_RUNOUT_MAP);
+  const [riverRunoutFilters, toggleRiverRunout, riverRunouts] = useToggleFilter({ overcard: false, flushCompleting: false, paired: false, other: false }, RIVER_RUNOUT_MAP);
 
   useEffect(() => {
     getRiverStats(
@@ -248,7 +69,7 @@ export const RiverView = ({ dateRange }: Props) => {
                 { key: "ip", label: "IP", active: positionFilters.ip },
                 { key: "oop", label: "OOP", active: positionFilters.oop },
               ]}
-              onToggle={togglePositionFilter}
+              onToggle={togglePosition}
             />
           </div>
         </div>
@@ -265,7 +86,7 @@ export const RiverView = ({ dateRange }: Props) => {
                 { key: "xbrc", label: "XBRC", active: flopActionFilters.xbrc },
                 { key: "bc", label: "BC", active: flopActionFilters.bc },
               ]}
-              onToggle={toggleFlopActionFilter}
+              onToggle={toggleFlopAction}
             />
 
             <FilterGroup
@@ -286,7 +107,7 @@ export const RiverView = ({ dateRange }: Props) => {
                   active: boardTypeFilters.rainbow,
                 },
               ]}
-              onToggle={toggleBoardTypeFilter}
+              onToggle={toggleBoard}
             />
 
             <FilterGroup
@@ -307,7 +128,7 @@ export const RiverView = ({ dateRange }: Props) => {
                   active: flopRankTextureFilters.unpaired,
                 },
               ]}
-              onToggle={toggleFlopRankTextureFilter}
+              onToggle={toggleFlopRankTexture}
             />
           </div>
         </div>
@@ -328,7 +149,7 @@ export const RiverView = ({ dateRange }: Props) => {
                 },
                 { key: "bc", label: "BC", active: turnActionFilters.bc },
               ]}
-              onToggle={toggleTurnActionFilter}
+              onToggle={toggleTurnAction}
             />
 
             <FilterGroup
@@ -354,7 +175,7 @@ export const RiverView = ({ dateRange }: Props) => {
                   active: turnRunoutFilters.other,
                 },
               ]}
-              onToggle={toggleTurnRunoutFilter}
+              onToggle={toggleTurnRunout}
             />
           </div>
         </div>
@@ -387,7 +208,7 @@ export const RiverView = ({ dateRange }: Props) => {
                   active: riverRunoutFilters.other,
                 },
               ]}
-              onToggle={toggleRiverRunoutFilter}
+              onToggle={toggleRiverRunout}
             />
           </div>
         </div>
