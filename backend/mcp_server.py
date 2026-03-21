@@ -74,10 +74,10 @@ def get_cbet_stats(
 		bet_size_max=bet_size_max,
 	)
 	filtered = [e for e in store.cbet_events if in_date_range(e.played_on, start, end)]
-	cbets = Flops()
+	flops = Flops()
 	for e in filtered:
-		cbets.add_event(e)
-	return cbets.json(f)
+		flops.add_event(e)
+	return flops.json(f)
 
 
 @mcp.tool()
@@ -202,17 +202,17 @@ def find_leaks(
 	leaks: list[dict] = []
 
 	for ip_label, ip_val in [("IP", [True]), ("OOP", [False])]:
-		f = CBetFilter(
+		f = FlopFilter(
 			hero_in_position=ip_val,
 			hero_preflop_raiser=[True],
 			board_types=list(BoardType),
 			pot_types=list(PotType),
 		)
 		filtered = [e for e in store.cbet_events if in_date_range(e.played_on, start, end)]
-		cbets = CBets()
+		flops = Flops()
 		for e in filtered:
-			cbets.add_event(e)
-		stats = cbets.json(f)
+			flops.add_event(e)
+		stats = flops.json(f)
 		if stats["hand_count"] >= min_hands:
 			cbet_pct = stats["cbet_pct"]
 			if cbet_pct > 75:

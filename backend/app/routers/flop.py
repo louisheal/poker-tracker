@@ -9,7 +9,7 @@ router = APIRouter()
 
 
 @router.get("")
-def get_cbets(
+def get_flop(
     hero_preflop_raiser: list[str] | None = Query(default=None),
     hero_in_position: list[str] | None = Query(default=None),
     board_types: list[str] | None = Query(default=None),
@@ -36,7 +36,7 @@ def get_cbets(
 
 
 @router.get("/bet-sizes")
-def get_cbet_bet_sizes(
+def get_flop_bet_sizes(
     hero_preflop_raiser: list[str] | None = Query(default=None),
     hero_in_position: list[str] | None = Query(default=None),
     board_types: list[str] | None = Query(default=None),
