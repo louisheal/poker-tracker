@@ -11,7 +11,6 @@ import type {
   LineActionItem,
 } from "@/models";
 import { useToggleFilter } from "@/hooks/useToggleFilter";
-import { RadioGroup } from "./components/RadioGroup";
 import { ActionLine } from "./components/ActionLine";
 import { StreetStatsPanel } from "./components/StreetStatsPanel";
 import { EvPanel } from "./components/EvPanel";
@@ -236,7 +235,8 @@ export const LineAnalyserView = ({
           General
         </span>
         <div className="flex flex-wrap items-end gap-4">
-          <RadioGroup
+          <FilterGroup
+            radio
             options={[
               { key: "ip", label: "IP" },
               { key: "oop", label: "OOP" },
@@ -244,7 +244,8 @@ export const LineAnalyserView = ({
             selected={position}
             onSelect={handlePositionChange}
           />
-          <RadioGroup
+          <FilterGroup
+            radio
             options={[
               { key: "pfr", label: "PFR" },
               { key: "def", label: "DEF" },
