@@ -417,17 +417,17 @@ export const LineAnalyserView = ({
   );
   const [data, setData] = useState<LineAnalysisFlopResponse>(EMPTY_RESPONSE);
 
-  // Action line state - cursor starts at 0
+  // Action line state - cursor starts at -1 (Flop selected)
   const [actionLine, setActionLine] = useState<ActionLine>({
     actions: [],
-    cursor: 0,
+    cursor: -1,
   });
 
   // Reset line when position/role change
   const resetLine = useCallback(() => {
     setActionLine({
       actions: [],
-      cursor: 0,
+      cursor: -1,
     });
   }, []);
 
