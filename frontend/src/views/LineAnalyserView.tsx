@@ -487,7 +487,7 @@ export const LineAnalyserView = ({
 
   useEffect(() => {
     fetchData();
-  }, [fetchData]);
+  }, [position, role, activeBoards, activePots, actionPrefix, dateRange]);
 
   // Handle clicking an action in the EV panel
   const handleActionClick = useCallback((action: string, sizeRange?: [number, number]) => {
