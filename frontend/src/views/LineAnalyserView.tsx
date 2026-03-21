@@ -14,6 +14,8 @@ import type {
   PotTypeFilter,
   PotTypeFilters,
   DateRangeFilter,
+  ActionLine,
+  LineActionItem,
 } from "@/models";
 
 // --- Single-select filter (always one selected) ---
@@ -40,12 +42,20 @@ const RadioFilter = ({ options, selected, onSelect }: RadioFilterProps) => (
 
 // --- Action line types ---
 
-interface LineAction {
-  actor: "hero" | "villain";
-  action: string; // "X", "B", "C", "R", "F"
-  sizeRange?: [number, number]; // for B/R: [min%, max%]
-  label: string;
+interface FlopAnchorProps {
+  onClick: () => void;
 }
+
+const FlopAnchor = ({ onClick }: FlopAnchorProps) => {
+  return (
+    <button
+      onClick={onClick}
+      className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-primary/20 text-primary border border-primary/40 hover:bg-primary/30 cursor-pointer transition-colors"
+    >
+      Flop
+    </button>
+  );
+};
 
 const ACTION_LABELS: Record<string, string> = {
   X: "Check",
@@ -67,7 +77,7 @@ function buildActionLabel(actor: "hero" | "villain" | "", action: string, sizeRa
   return `${actorStr} ${actionStr}`;
 }
 
-function actionToPrefix(la: LineAction): string {
+function actionToPrefix(la: LineActionItem): string {
   if (la.sizeRange) {
     if (la.sizeRange[1] >= 999) {
       return `${la.action}${la.sizeRange[0]}+`;
@@ -80,25 +90,25 @@ function actionToPrefix(la: LineAction): string {
 // --- Action line tag bar ---
 
 interface ActionLineProps {
-  line: LineAction[];
-  cursor: number;
+  actionLine: ActionLine;
+  onClickFlop: () => void;
   onClickTag: (index: number) => void;
   onRemoveLast: () => void;
 }
 
-const ActionLine = ({ line, cursor, onClickTag, onRemoveLast }: ActionLineProps) => {
-  if (line.length === 0) return null;
-
+const ActionLineComponent = ({ actionLine, onClickFlop, onClickTag, onRemoveLast }: ActionLineProps) => {
   return (
     <div className="flex items-center gap-1 flex-wrap">
-      {line.map((la, i) => {
-        const isActive = i === cursor;
-        const isFuture = i > cursor;
+      {/* Immutable flop anchor */}
+      <FlopAnchor onClick={onClickFlop} />
+
+      {/* Action tags */}
+      {actionLine.actions.map((la, i) => {
+        const isActive = i === actionLine.cursor;
+        const isFuture = i > actionLine.cursor;
         return (
           <div key={i} className="flex items-center gap-1">
-            {i > 0 && (
-              <span className={`text-xs ${isFuture ? "text-muted-foreground/40" : "text-muted-foreground"}`}>→</span>
-            )}
+            <span className={`text-xs ${isFuture ? "text-muted-foreground/40" : "text-muted-foreground"}`}>→</span>
             <button
               onClick={() => onClickTag(i)}
               className={`
@@ -112,7 +122,7 @@ const ActionLine = ({ line, cursor, onClickTag, onRemoveLast }: ActionLineProps)
               `}
             >
               {la.label}
-              {i === line.length - 1 && (
+              {i === actionLine.actions.length - 1 && (
                 <span
                   role="button"
                   onClick={(e) => { e.stopPropagation(); onRemoveLast(); }}
@@ -393,14 +403,18 @@ export const LineAnalyserView = ({
   );
   const [data, setData] = useState<LineAnalysisFlopResponse>(EMPTY_RESPONSE);
 
-  // Action line state
-  const [line, setLine] = useState<LineAction[]>([]);
-  const [cursor, setCursor] = useState<number>(-1);
+  // Action line state - simplified to always show flop
+  const [actionLine, setActionLine] = useState<ActionLine>({
+    actions: [],
+    cursor: -1,
+  });
 
-  // Reset line when filters change
+  // Reset line when position/role change
   const resetLine = useCallback(() => {
-    setLine([]);
-    setCursor(-1);
+    setActionLine({
+      actions: [],
+      cursor: -1,
+    });
   }, []);
 
   const toggleBoardTypeFilter = (key: string) => {
@@ -432,11 +446,11 @@ export const LineAnalyserView = ({
     return active.length > 0 ? active : Object.values(POT_TYPE_MAP);
   }, [potTypeFilters]);
 
-  // Build action prefix from line up to cursor
+  // Build action prefix from actions up to cursor
   const actionPrefix = useMemo(() => {
-    if (cursor < 0 || line.length === 0) return undefined;
-    return line.slice(0, cursor + 1).map(actionToPrefix);
-  }, [line, cursor]);
+    if (actionLine.cursor < 0 || actionLine.actions.length === 0) return undefined;
+    return actionLine.actions.slice(0, actionLine.cursor + 1).map(actionToPrefix);
+  }, [actionLine]);
 
   const fetchData = useCallback(async () => {
     try {
@@ -463,30 +477,47 @@ export const LineAnalyserView = ({
   const handleActionClick = useCallback((action: string, sizeRange?: [number, number]) => {
     const actor = data.next_actor;
     if (!actor) return;
-    const newAction: LineAction = {
+    const newAction: LineActionItem = {
       actor,
       action,
       sizeRange,
       label: buildActionLabel(actor, action, sizeRange),
     };
 
-    setLine((prev) => {
-      const trimmed = prev.slice(0, cursor + 1);
-      return [...trimmed, newAction];
+    setActionLine((prev) => {
+      const trimmed = prev.actions.slice(0, prev.cursor + 1);
+      return {
+        ...prev,
+        actions: [...trimmed, newAction],
+        cursor: prev.cursor + 1,
+      };
     });
-    setCursor((prev) => prev + 1);
-  }, [data.next_actor, cursor]);
+  }, [data.next_actor]);
 
   // Navigate to a tag
   const handleClickTag = useCallback((index: number) => {
-    setCursor(index);
+    setActionLine((prev) => ({
+      ...prev,
+      cursor: index,
+    }));
   }, []);
 
   // Remove last tag
   const handleRemoveLast = useCallback(() => {
-    setLine((prev) => prev.slice(0, -1));
-    setCursor((prev) => Math.min(prev, line.length - 2));
-  }, [line.length]);
+    setActionLine((prev) => ({
+      ...prev,
+      actions: prev.actions.slice(0, -1),
+      cursor: Math.min(prev.cursor, prev.actions.length - 2),
+    }));
+  }, []);
+
+  // Reset to flop (cursor = -1)
+  const handleClickFlop = useCallback(() => {
+    setActionLine((prev) => ({
+      ...prev,
+      cursor: -1,
+    }));
+  }, []);
 
   // Reset line on position/role change (action line depends on who acts first)
   const handlePositionChange = useCallback((key: string) => {
@@ -583,14 +614,12 @@ export const LineAnalyserView = ({
       </div>
 
       {/* Action line tags */}
-      {line.length > 0 && (
-        <ActionLine
-          line={line}
-          cursor={cursor}
-          onClickTag={handleClickTag}
-          onRemoveLast={handleRemoveLast}
-        />
-      )}
+      <ActionLineComponent
+        actionLine={actionLine}
+        onClickFlop={handleClickFlop}
+        onClickTag={handleClickTag}
+        onRemoveLast={handleRemoveLast}
+      />
 
       {/* Divider */}
       <div className="border-t border-border" />

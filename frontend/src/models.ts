@@ -139,3 +139,17 @@ export interface DateRangeFilter {
   startDate?: string;
   endDate?: string;
 }
+
+// --- Flop Anchor Types ---
+
+export interface ActionLine {
+  actions: LineActionItem[];
+  cursor: number;
+}
+
+export interface LineActionItem {
+  actor: "hero" | "villain";
+  action: string;
+  sizeRange?: [number, number];
+  label: string;
+}
