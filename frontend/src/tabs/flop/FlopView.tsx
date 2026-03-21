@@ -2,7 +2,6 @@ import { getCbets, getVillainBetSizes } from "@/api";
 import { FilterGroup } from "@/components/FilterGroup";
 import { BetSizeDistribution } from "@/components/BetSizeDistribution";
 import { Slider } from "@/components/ui/slider";
-import { useCallback } from "react";
 import type { CbetStats, DateRangeFilter } from "@/models";
 import { useEffect, useState } from "react";
 import { useToggleFilter } from "@/hooks/useToggleFilter";
@@ -61,10 +60,8 @@ export const FlopView = ({ dateRange }: Props) => {
     BET_SIZE_MAX,
   ]);
 
-  const onBetSizeChange = useCallback(
-    (values: number[]) => setBetSizeRange([values[0], values[1]]),
-    [],
-  );
+  const onBetSizeChange = (values: number[]) =>
+    setBetSizeRange([values[0], values[1]]);
 
   const isDefaultBetSize =
     betSizeRange[0] === BET_SIZE_MIN && betSizeRange[1] === BET_SIZE_MAX;

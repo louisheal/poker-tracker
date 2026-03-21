@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { FilterGroup } from "@/components/FilterGroup";
 import { BetSizeDistribution } from "@/components/BetSizeDistribution";
 import {
@@ -114,12 +114,12 @@ export const LineAnalyserView = ({
     cursor: 0,
   });
 
-  const resetLine = useCallback(() => {
+  const resetLine = () => {
     setActionLine({
       actions: [],
       cursor: 0,
     });
-  }, []);
+  };
 
   const actionPrefix = useMemo(() => {
     if (actionLine.cursor === 0 || actionLine.actions.length === 0) return undefined;
@@ -144,7 +144,7 @@ export const LineAnalyserView = ({
     fetchLineData();
   }, [position, role, activeBoards, activePots, actionPrefix, dateRange]);
 
-  const handleActionClick = useCallback((action: string, sizeRange?: [number, number]) => {
+  const handleActionClick = (action: string, sizeRange?: [number, number]) => {
     const actor = data.next_actor;
     if (!actor) return;
     const newAction: LineActionItem = {
@@ -162,39 +162,39 @@ export const LineAnalyserView = ({
         cursor: prev.cursor + 1,
       };
     });
-  }, [data.next_actor]);
+  };
 
-  const handleClickTag = useCallback((index: number) => {
+  const handleClickTag = (index: number) => {
     setActionLine((prev) => ({
       ...prev,
       cursor: index,
     }));
-  }, []);
+  };
 
-  const handleRemoveLast = useCallback(() => {
+  const handleRemoveLast = () => {
     setActionLine((prev) => ({
       ...prev,
       actions: prev.actions.slice(0, -1),
       cursor: Math.min(prev.cursor, prev.actions.length - 1),
     }));
-  }, []);
+  };
 
-  const handleClickFlop = useCallback(() => {
+  const handleClickFlop = () => {
     setActionLine((prev) => ({
       ...prev,
       cursor: 0,
     }));
-  }, []);
+  };
 
-  const handlePositionChange = useCallback((key: string) => {
+  const handlePositionChange = (key: string) => {
     setPosition(key);
     resetLine();
-  }, [resetLine]);
+  };
 
-  const handleRoleChange = useCallback((key: string) => {
+  const handleRoleChange = (key: string) => {
     setRole(key);
     resetLine();
-  }, [resetLine]);
+  };
 
   const betSizeTitle = useMemo(() => {
     const heroIsOop = position === "oop";
