@@ -468,25 +468,23 @@ export const LineAnalyserView = ({
     return actionLine.actions.slice(0, actionLine.cursor + 1).map(actionToPrefix);
   }, [actionLine]);
 
-  const fetchData = useCallback(async () => {
-    try {
-      const result = await getLineAnalysisFlop(
-        position === "ip",
-        role === "pfr",
-        activeBoards,
-        activePots,
-        actionPrefix,
-        dateRange.startDate,
-        dateRange.endDate,
-      );
-      setData(result);
-    } catch (err) {
-      console.error("Failed to fetch line analysis data:", err);
-    }
-  }, [position, role, activeBoards, activePots, actionPrefix, dateRange]);
-
   useEffect(() => {
-    fetchData();
+    (async () => {
+      try {
+        const result = await getLineAnalysisFlop(
+          position === "ip",
+          role === "pfr",
+          activeBoards,
+          activePots,
+          actionPrefix,
+          dateRange.startDate,
+          dateRange.endDate,
+        );
+        setData(result);
+      } catch (err) {
+        console.error("Failed to fetch line analysis data:", err);
+      }
+    })();
   }, [position, role, activeBoards, activePots, actionPrefix, dateRange]);
 
   // Handle clicking an action in the EV panel
