@@ -23,11 +23,13 @@ const ACTION_LABELS: Record<string, string> = {
   F: "Fold",
 };
 
+const UNCAPPED_BET_SIZE = 999;
+
 function buildActionLabel(actor: "hero" | "villain" | "", action: string, sizeRange?: [number, number]): string {
   const actorStr = actor === "hero" ? "Hero" : "Villain";
   const actionStr = ACTION_LABELS[action] || action;
   if (sizeRange) {
-    if (sizeRange[1] >= 999) {
+    if (sizeRange[1] >= UNCAPPED_BET_SIZE) {
       return `${actorStr} ${actionStr} ${sizeRange[0]}%+`;
     }
     return `${actorStr} ${actionStr} ${sizeRange[0]}-${sizeRange[1]}%`;
@@ -37,7 +39,7 @@ function buildActionLabel(actor: "hero" | "villain" | "", action: string, sizeRa
 
 function actionToPrefix(lineAction: LineActionItem): string {
   if (lineAction.sizeRange) {
-    if (lineAction.sizeRange[1] >= 999) {
+    if (lineAction.sizeRange[1] >= UNCAPPED_BET_SIZE) {
       return `${lineAction.action}${lineAction.sizeRange[0]}+`;
     }
     return `${lineAction.action}${lineAction.sizeRange[0]}-${lineAction.sizeRange[1]}`;
