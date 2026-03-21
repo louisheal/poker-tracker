@@ -11,6 +11,7 @@ import { useMemo } from "react";
 
 interface BetSizeDistributionProps {
   sizes: number[];
+  title?: string;
 }
 
 const BIN_WIDTH = 16;
@@ -57,7 +58,7 @@ const CustomTooltip = ({
   );
 };
 
-export const BetSizeDistribution = ({ sizes }: BetSizeDistributionProps) => {
+export const BetSizeDistribution = ({ sizes, title }: BetSizeDistributionProps) => {
   const data = useMemo(() => buildDistribution(sizes), [sizes]);
 
   const median = useMemo(() => {
@@ -71,7 +72,7 @@ export const BetSizeDistribution = ({ sizes }: BetSizeDistributionProps) => {
     return (
       <div className="bg-card border border-border rounded-xl p-6">
         <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2">
-          Villain C-Bet Size Distribution
+          {title ?? "Villain C-Bet Size Distribution"}
         </h3>
         <p className="text-xs text-muted-foreground">No bet data available</p>
       </div>
@@ -82,7 +83,7 @@ export const BetSizeDistribution = ({ sizes }: BetSizeDistributionProps) => {
     <div className="bg-card border border-border rounded-xl p-6 flex flex-col gap-4">
       <div className="flex items-baseline justify-between">
         <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
-          Villain C-Bet Size Distribution
+          {title ?? "Villain C-Bet Size Distribution"}
         </h3>
         <span className="text-xs text-muted-foreground">
           {sizes.length} bets · median {median.toFixed(0)}% pot

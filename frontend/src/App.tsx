@@ -1,24 +1,26 @@
 import "./App.css";
 
 import { useEffect, useState } from "react";
-import { BarChart2, Grid2x2, TrendingUp, CircleDollarSign } from "lucide-react";
+import { BarChart2, Grid2x2, TrendingUp, CircleDollarSign, Search } from "lucide-react";
 import { ThemeProvider } from "@/components/theme-provider";
 import { cn } from "@/lib/utils";
 import { RangeView } from "./views/RangeView";
 import { CbetView } from "./views/CbetView";
 import { TurnView } from "./views/TurnView";
 import { RiverView } from "./views/RiverView";
+import { LineAnalyserView } from "./views/LineAnalyserView";
 import { DateRangeDock } from "./components/DateRangeDock";
 import { getHandVolume } from "./api";
 import type { DailyVolumePoint, DateRangeFilter } from "./models";
 
-type View = "ranges" | "flop" | "turn" | "river";
+type View = "ranges" | "flop" | "turn" | "river" | "lineAnalyser";
 
 const NAV_ITEMS = [
   { id: "ranges" as View, label: "Ranges", icon: Grid2x2 },
   { id: "flop" as View, label: "Flop", icon: BarChart2 },
   { id: "turn" as View, label: "Turn", icon: TrendingUp },
   { id: "river" as View, label: "River", icon: CircleDollarSign },
+  { id: "lineAnalyser" as View, label: "Line Analyser", icon: Search },
 ];
 
 function App() {
@@ -78,8 +80,10 @@ function App() {
               <CbetView dateRange={dateRange} />
             ) : view === "turn" ? (
               <TurnView dateRange={dateRange} />
-            ) : (
+            ) : view === "river" ? (
               <RiverView dateRange={dateRange} />
+            ) : (
+              <LineAnalyserView dateRange={dateRange} />
             )}
           </main>
           <DateRangeDock

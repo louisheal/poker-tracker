@@ -3,7 +3,7 @@ from datetime import date, datetime
 import re
 from typing import Generator
 
-from models import CBetEvent, FlopActionSequence, FlopRankTexture, RangeEvent, RiverActionSequence, RiverEvent, RiverRunout, ShowdownType, TurnActionSequence, TurnEvent, TurnRunout
+from models import CBetEvent, FlopAction, FlopActionSequence, FlopRankTexture, LineEvent, RangeEvent, RiverActionSequence, RiverEvent, RiverRunout, ShowdownType, TurnActionSequence, TurnEvent, TurnRunout
 
 logger = logging.getLogger(__name__)
 from playing_cards_lib.core import Card, Rank, Suit
@@ -24,6 +24,8 @@ BET_AMOUNT_RE = re.compile(r": bets \$(\d+\.?\d*)")
 CALL_AMOUNT_RE = re.compile(r": calls \$(\d+\.?\d*)")
 RAISE_TO_AMOUNT_RE = re.compile(r": raises \$[\d.]+ to \$(\d+\.?\d*)")
 UNCALLED_RE = re.compile(r"Uncalled bet \(\$(\d+\.?\d*)\)")
+HERO_COLLECTED_RE = re.compile(r"Hero collected \$(\d+\.?\d*)")
+HERO_WON_RE = re.compile(r"Hero.*and won \(\$(\d+\.?\d*)\)")
 
 def to_card(token: str) -> Card:
 	t = token.strip()
@@ -38,11 +40,12 @@ def to_hole_cards(fst: str, snd: str) -> HoleCards:
 	snd_card = to_card(snd)
 	return HoleCards(fst_card, snd_card)
 
-def parse_histories(files: list[str]) -> tuple[list[RangeEvent], list[CBetEvent], list[TurnEvent], list[RiverEvent]]:
+def parse_histories(files: list[str]) -> tuple[list[RangeEvent], list[CBetEvent], list[TurnEvent], list[RiverEvent], list[LineEvent]]:
 	range_events: list[RangeEvent] = []
 	cbet_events: list[CBetEvent] = []
 	turn_events: list[TurnEvent] = []
 	river_events: list[RiverEvent] = []
+	line_events: list[LineEvent] = []
 	include_multiway = False
 	hand_count = 0
 
@@ -77,9 +80,13 @@ def parse_histories(files: list[str]) -> tuple[list[RangeEvent], list[CBetEvent]
 			if river_event:
 				river_event.played_on = played_on
 				river_events.append(river_event)
+			line_event = parse_line_event(hand)
+			if line_event:
+				line_event.played_on = played_on
+				line_events.append(line_event)
 
 	logger.info(f"Parsing complete. Total hands: {hand_count}")
-	return range_events, cbet_events, turn_events, river_events
+	return range_events, cbet_events, turn_events, river_events, line_events
 
 
 def parse_hand_dates(files: list[str]) -> list[date]:
@@ -420,6 +427,85 @@ def parse_pot_at_flop(lines: list[str]) -> float | None:
 	return pot_dollars / 0.02
 
 
+def parse_hero_pnl(lines: list[str]) -> tuple[float, float] | None:
+	"""Compute hero's net profit/loss in BB for this hand.
+	
+	Returns (hero_pnl_bb, hero_preflop_invested_bb) or None if hero had no action.
+	
+	hero_pnl_bb = whole hand P&L in BB
+	hero_preflop_invested_bb = hero's preflop contribution in BB
+	
+	Flop-onwards EV = hero_pnl_bb + hero_preflop_invested_bb
+	"""
+	hero_invested = 0.0
+	hero_collected = 0.0
+	hero_round_invested = 0.0
+	hero_preflop_invested = 0.0
+	past_preflop = False
+
+	for line in lines:
+		# Reset per-round tracking at street boundaries
+		if any(marker in line for marker in ["*** FLOP ***", "*** TURN ***", "*** RIVER ***"]):
+			if not past_preflop:
+				hero_preflop_invested = hero_invested
+				past_preflop = True
+			hero_round_invested = 0.0
+
+		# Track hero's contributions
+		if "Hero:" in line or ("Hero" in line and "posts" in line):
+			if "posts" in line and "blind" in line:
+				m = BLIND_RE.search(line)
+				if m:
+					amt = float(m.group(1))
+					hero_invested += amt
+					hero_round_invested += amt
+			elif ": calls" in line:
+				m = CALL_AMOUNT_RE.search(line)
+				if m:
+					amt = float(m.group(1))
+					hero_invested += amt
+					hero_round_invested += amt
+			elif ": bets" in line:
+				m = BET_AMOUNT_RE.search(line)
+				if m:
+					amt = float(m.group(1))
+					hero_invested += amt
+					hero_round_invested += amt
+			elif ": raises" in line:
+				m = RAISE_TO_AMOUNT_RE.search(line)
+				if m:
+					total_round = float(m.group(1))
+					new_money = total_round - hero_round_invested
+					hero_invested += new_money
+					hero_round_invested = total_round
+
+		# Track uncalled bets returned to hero
+		if "Uncalled bet" in line and "returned to Hero" in line:
+			m = UNCALLED_RE.search(line)
+			if m:
+				hero_invested -= float(m.group(1))
+
+		# Track hero's winnings
+		m = HERO_COLLECTED_RE.search(line)
+		if m:
+			hero_collected += float(m.group(1))
+			continue
+		m = HERO_WON_RE.search(line)
+		if m:
+			hero_collected = float(m.group(1))
+
+	if hero_invested == 0.0 and hero_collected == 0.0:
+		return None
+
+	# If hand never reached flop, all investment is preflop
+	if not past_preflop:
+		hero_preflop_invested = hero_invested
+
+	pnl_bb = (hero_collected - hero_invested) / 0.02
+	preflop_bb = hero_preflop_invested / 0.02
+	return (pnl_bb, preflop_bb)
+
+
 def parse_flop_cbet(lines: list[str], hero_is_pfr: bool) -> tuple[bool, bool, bool, bool, bool, bool, float | None, float | None]:
 
 	in_flop = False
@@ -484,6 +570,64 @@ def parse_flop_cbet(lines: list[str], hero_is_pfr: bool) -> tuple[bool, bool, bo
 			continue
 	
 	return cbet, fold_to_cbet, raise_to_cbet, donk_bet, fold_to_donk_bet, raise_to_donk_bet, cbet_amount, donk_bet_amount
+
+
+RAISE_INC_RE = re.compile(r": raises \$(\d+\.?\d*) to \$(\d+\.?\d*)")
+
+def parse_flop_actions_detailed(lines: list[str], hero_ip: bool, pot_at_flop_bb: float) -> list[FlopAction]:
+	"""Parse the full ordered sequence of flop actions with sizes as pot %."""
+	actions: list[FlopAction] = []
+	in_flop = False
+	# Track running pot in dollars for sizing calculations
+	pot = pot_at_flop_bb * 0.02
+
+	for line in lines:
+		if FLOP_RE.search(line):
+			in_flop = True
+			continue
+		if not in_flop:
+			continue
+		if any(m in line for m in ["*** TURN ***", "*** RIVER ***", "*** SHOWDOWN ***", "*** SUMMARY ***"]):
+			break
+
+		action_m = ACTION_RE.search(line)
+		if not action_m:
+			continue
+
+		actor_name = action_m.group(1)
+		act = action_m.group(2).lower()
+		actor = "hero" if actor_name == "Hero" else "villain"
+
+		if act == "checks":
+			actions.append(FlopAction(actor=actor, action="X"))
+		elif act == "folds":
+			actions.append(FlopAction(actor=actor, action="F"))
+			break  # Hand over on this street
+		elif act == "bets":
+			m = BET_AMOUNT_RE.search(line)
+			size_pct = None
+			if m and pot > 0:
+				amt = float(m.group(1))
+				size_pct = round((amt / pot) * 100, 1)
+				pot += amt
+			actions.append(FlopAction(actor=actor, action="B", size_pct=size_pct))
+		elif act == "calls":
+			m = CALL_AMOUNT_RE.search(line)
+			if m:
+				pot += float(m.group(1))
+			actions.append(FlopAction(actor=actor, action="C"))
+		elif act == "raises":
+			m = RAISE_INC_RE.search(line)
+			size_pct = None
+			if m and pot > 0:
+				inc = float(m.group(1))
+				total = float(m.group(2))
+				# Raise size relative to pot before the raise
+				size_pct = round((total / pot) * 100, 1)
+				pot += inc
+			actions.append(FlopAction(actor=actor, action="R", size_pct=size_pct))
+
+	return actions
 
 
 def parse_flop_action_sequence(lines: list[str], hero_is_pfr: bool) -> FlopActionSequence | None:
@@ -643,6 +787,103 @@ def parse_cbet_event(lines: list[str]) -> CBetEvent | None:
 			event.donk_bet_size_pct = (donk_bet_amount / pot_dollars) * 100
 
 	return event
+
+
+def parse_line_event(lines: list[str]) -> LineEvent | None:
+	board_type = parse_board_type(lines)
+	if board_type is None:
+		return None
+	if not parse_hero_sees_flop(lines):
+		return None
+
+	pnl_result = parse_hero_pnl(lines)
+	if pnl_result is None:
+		return None
+	hero_pnl_bb, hero_preflop_invested_bb = pnl_result
+
+	pot_at_flop = parse_pot_at_flop(lines)
+	if pot_at_flop is None or pot_at_flop <= 0:
+		return None
+
+	hero_is_pfr = parse_hero_preflop_raiser(lines)
+	hero_ip = parse_hero_in_position(lines)
+
+	# Parse flop actions (legacy for StreetStatsPanel)
+	cbet, fold_to_cbet, raise_to_cbet, donk_bet, fold_to_donk_bet, raise_to_donk_bet, cbet_amount, donk_bet_amount = parse_flop_cbet(lines, hero_is_pfr)
+
+	event = LineEvent()
+	event.pot_type = parse_preflop_pot_type(lines)
+	event.board_type = board_type
+	event.hero_in_position = hero_ip
+	event.hero_preflop_raiser = hero_is_pfr
+	event.hero_pnl_bb = hero_pnl_bb
+	event.hero_preflop_invested_bb = hero_preflop_invested_bb
+	event.pot_at_flop_bb = pot_at_flop
+
+	# Detailed flop action sequence
+	event.flop_actions = parse_flop_actions_detailed(lines, hero_ip, pot_at_flop)
+
+	# Legacy cbet/donk stats
+	event.cbet = cbet
+	event.fold_to_cbet = fold_to_cbet
+	event.raise_to_cbet = raise_to_cbet
+	event.donk_bet = donk_bet
+	event.fold_to_donk_bet = fold_to_donk_bet
+	event.raise_to_donk_bet = raise_to_donk_bet
+
+	pot_dollars = pot_at_flop * 0.02
+	if cbet_amount is not None:
+		event.cbet_size_pct = (cbet_amount / pot_dollars) * 100
+	if donk_bet_amount is not None:
+		event.donk_bet_size_pct = (donk_bet_amount / pot_dollars) * 100
+
+	event.fold_to_cbet_raise = _parse_fold_to_raise(lines, hero_is_pfr, is_cbet=True)
+	event.fold_to_donk_raise = _parse_fold_to_raise(lines, hero_is_pfr, is_cbet=False)
+
+	return event
+
+
+def _parse_fold_to_raise(lines: list[str], hero_is_pfr: bool, is_cbet: bool) -> bool:
+	"""Check if the initial bettor folded after being raised on flop."""
+	in_flop = False
+	bet_seen = False
+	raise_seen = False
+
+	for line in lines:
+		if FLOP_RE.search(line):
+			in_flop = True
+			continue
+		if not in_flop:
+			continue
+		if any(m in line for m in ["*** TURN ***", "*** RIVER ***", "*** SHOWDOWN ***", "*** SUMMARY ***"]):
+			break
+
+		action = ACTION_RE.search(line)
+		if not action:
+			continue
+
+		actor = action.group(1)
+		act = action.group(2).lower()
+		pfr_actor = actor == "Hero" if hero_is_pfr else actor != "Hero"
+
+		if is_cbet:
+			# Track: PFR bets (cbet), non-PFR raises, PFR folds
+			if not bet_seen and pfr_actor and act == "bets":
+				bet_seen = True
+			elif bet_seen and not raise_seen and not pfr_actor and act == "raises":
+				raise_seen = True
+			elif raise_seen and pfr_actor and act == "folds":
+				return True
+		else:
+			# Track: non-PFR bets (donk), PFR raises, non-PFR folds
+			if not bet_seen and not pfr_actor and act == "bets":
+				bet_seen = True
+			elif bet_seen and not raise_seen and pfr_actor and act == "raises":
+				raise_seen = True
+			elif raise_seen and not pfr_actor and act == "folds":
+				return True
+
+	return False
 
 
 def parse_hero_preflop_raiser(lines: list[str]) -> bool:

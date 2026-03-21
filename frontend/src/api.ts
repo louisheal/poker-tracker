@@ -200,3 +200,65 @@ export const getRiverStats = async (
   const response = await fetch(`http://localhost:8000/river?${params}`);
   return response.json();
 };
+
+export interface NextAction {
+  action: string;
+  ev: number;
+  count: number;
+}
+
+export interface LineAnalysisFlopResponse {
+  hand_count: number;
+  street_stats: {
+    cbet_pct: number;
+    fold_to_cbet_pct: number;
+    raise_to_cbet_pct: number;
+    fold_to_cbet_raise_pct: number;
+    donk_bet_pct: number;
+    fold_to_donk_pct: number;
+    raise_to_donk_pct: number;
+    fold_to_donk_raise_pct: number;
+  };
+  ev_stats: {
+    overall_ev: number;
+    next_actions: NextAction[];
+  };
+  bet_sizes: number[];
+  next_actor: "hero" | "villain" | "";
+  action_depth: number;
+}
+
+export const getLineAnalysisFlop = async (
+  heroInPosition: boolean,
+  heroPfr: boolean,
+  boardTypes: BoardTypeFilter[],
+  potTypes: PotTypeFilter[],
+  actions?: string[],
+  startDate?: string,
+  endDate?: string,
+): Promise<LineAnalysisFlopResponse> => {
+  const params = new URLSearchParams();
+  params.append("hero_in_position", String(heroInPosition));
+  params.append("hero_preflop_raiser", String(heroPfr));
+  for (const value of boardTypes) {
+    params.append("board_types", value);
+  }
+  for (const value of potTypes) {
+    params.append("pot_types", value);
+  }
+  if (actions) {
+    for (const a of actions) {
+      params.append("actions", a);
+    }
+  }
+  if (startDate) {
+    params.append("start_date", startDate);
+  }
+  if (endDate) {
+    params.append("end_date", endDate);
+  }
+  const response = await fetch(
+    `http://localhost:8000/line-analysis/flop?${params}`,
+  );
+  return response.json();
+};
