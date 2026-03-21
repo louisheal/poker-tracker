@@ -42,20 +42,45 @@ const RadioFilter = ({ options, selected, onSelect }: RadioFilterProps) => (
 
 // --- Action line types ---
 
-interface FlopAnchorProps {
+interface ActionTagProps {
+  label: string;
+  isActive: boolean;
+  isFuture: boolean;
   onClick: () => void;
+  onRemove?: () => void;
+  showArrow?: boolean;
 }
 
-const FlopAnchor = ({ onClick }: FlopAnchorProps) => {
-  return (
+const ActionTag = ({ label, isActive, isFuture, onClick, onRemove, showArrow = true }: ActionTagProps) => (
+  <div className="flex items-center gap-1">
+    {showArrow && (
+      <span className={`text-xs ${isFuture ? "text-muted-foreground/40" : "text-muted-foreground"}`}>→</span>
+    )}
     <button
       onClick={onClick}
-      className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-primary/20 text-primary border border-primary/40 hover:bg-primary/30 cursor-pointer transition-colors"
+      className={`
+        inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-colors
+        ${isActive
+          ? "bg-primary text-primary-foreground"
+          : isFuture
+            ? "bg-muted/40 text-muted-foreground/50 hover:bg-muted/60"
+            : "bg-muted text-muted-foreground hover:bg-muted/80"
+        }
+      `}
     >
-      Flop
+      {label}
+      {onRemove && (
+        <span
+          role="button"
+          onClick={(e) => { e.stopPropagation(); onRemove(); }}
+          className="ml-1 hover:text-destructive cursor-pointer"
+        >
+          ×
+        </span>
+      )}
     </button>
-  );
-};
+  </div>
+);
 
 const ACTION_LABELS: Record<string, string> = {
   X: "Check",
@@ -99,40 +124,29 @@ interface ActionLineProps {
 const ActionLineComponent = ({ actionLine, onClickFlop, onClickTag, onRemoveLast }: ActionLineProps) => {
   return (
     <div className="flex items-center gap-1 flex-wrap">
-      {/* Immutable flop anchor */}
-      <FlopAnchor onClick={onClickFlop} />
+      {/* Flop - cursor = -1 means at flop */}
+      <ActionTag
+        label="Flop"
+        isActive={actionLine.cursor === -1}
+        isFuture={false}
+        onClick={onClickFlop}
+        showArrow={false}
+      />
 
       {/* Action tags */}
       {actionLine.actions.map((la, i) => {
         const isActive = i === actionLine.cursor;
         const isFuture = i > actionLine.cursor;
         return (
-          <div key={i} className="flex items-center gap-1">
-            <span className={`text-xs ${isFuture ? "text-muted-foreground/40" : "text-muted-foreground"}`}>→</span>
-            <button
-              onClick={() => onClickTag(i)}
-              className={`
-                inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-colors
-                ${isActive
-                  ? "bg-primary text-primary-foreground"
-                  : isFuture
-                    ? "bg-muted/40 text-muted-foreground/50 hover:bg-muted/60"
-                    : "bg-muted text-muted-foreground hover:bg-muted/80"
-                }
-              `}
-            >
-              {la.label}
-              {i === actionLine.actions.length - 1 && (
-                <span
-                  role="button"
-                  onClick={(e) => { e.stopPropagation(); onRemoveLast(); }}
-                  className="ml-1 hover:text-destructive cursor-pointer"
-                >
-                  ×
-                </span>
-              )}
-            </button>
-          </div>
+          <ActionTag
+            key={i}
+            label={la.label}
+            isActive={isActive}
+            isFuture={isFuture}
+            onClick={() => onClickTag(i)}
+            onRemove={i === actionLine.actions.length - 1 ? onRemoveLast : undefined}
+            showArrow={true}
+          />
         );
       })}
     </div>
@@ -403,17 +417,17 @@ export const LineAnalyserView = ({
   );
   const [data, setData] = useState<LineAnalysisFlopResponse>(EMPTY_RESPONSE);
 
-  // Action line state - simplified to always show flop
+  // Action line state - cursor starts at 0
   const [actionLine, setActionLine] = useState<ActionLine>({
     actions: [],
-    cursor: -1,
+    cursor: 0,
   });
 
   // Reset line when position/role change
   const resetLine = useCallback(() => {
     setActionLine({
       actions: [],
-      cursor: -1,
+      cursor: 0,
     });
   }, []);
 
@@ -449,6 +463,8 @@ export const LineAnalyserView = ({
   // Build action prefix from actions up to cursor
   const actionPrefix = useMemo(() => {
     if (actionLine.cursor < 0 || actionLine.actions.length === 0) return undefined;
+    // cursor is now 0-indexed into actions, so cursor + 1 is the count
+    if (actionLine.cursor >= actionLine.actions.length) return undefined;
     return actionLine.actions.slice(0, actionLine.cursor + 1).map(actionToPrefix);
   }, [actionLine]);
 
@@ -511,7 +527,7 @@ export const LineAnalyserView = ({
     }));
   }, []);
 
-  // Reset to flop (cursor = -1)
+  // Reset to flop (cursor = -1, before any actions)
   const handleClickFlop = useCallback(() => {
     setActionLine((prev) => ({
       ...prev,
