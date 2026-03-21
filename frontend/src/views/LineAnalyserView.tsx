@@ -548,16 +548,41 @@ export const LineAnalyserView = ({
   const betSizeTitle = useMemo(() => {
     const heroIsOop = position === "oop";
     const nextActor = data.next_actor;
-    
-    // Determine whose bet we're looking at
     const isHeroNextToAct = nextActor === "hero";
+    const actorName = isHeroNextToAct ? "Hero" : "Villain";
     
-    if (heroIsOop) {
-      return isHeroNextToAct ? "Hero C-Bet Size Distribution" : "Hero Donk Bet Size Distribution";
+    // Determine action type based on depth in action line
+    // Depth 0 (at flop): first actor either donks (if OOP) or c-bets (if IP)
+    // Depth 1+: could be bet, raise, or call response
+    const depth = actionLine.cursor;
+    let actionType = "";
+    
+    if (depth === -1) {
+      // At flop: if next actor is OOP, they donk; if IP, they c-bet
+      actionType = isHeroNextToAct && heroIsOop ? "Donk Bet" : "C-Bet";
+      if (isHeroNextToAct && !heroIsOop) actionType = "C-Bet";
+      if (!isHeroNextToAct && heroIsOop) actionType = "C-Bet";
+      if (!isHeroNextToAct && !heroIsOop) actionType = "Donk Bet";
     } else {
-      return isHeroNextToAct ? "Hero C-Bet Size Distribution" : "Villain Donk Bet Size Distribution";
+      // Post-flop: look at last action to determine next action type
+      const lastAction = actionLine.actions[depth];
+      if (lastAction?.action === "X") {
+        // Last was check, so next is bet or donk
+        actionType = isHeroNextToAct && heroIsOop ? "Donk Bet" : "C-Bet";
+        if (isHeroNextToAct && !heroIsOop) actionType = "C-Bet";
+        if (!isHeroNextToAct && heroIsOop) actionType = "C-Bet";
+        if (!isHeroNextToAct && !heroIsOop) actionType = "Donk Bet";
+      } else if (lastAction?.action === "B" || lastAction?.action.startsWith("B")) {
+        // Last was bet, so next is raise or call
+        actionType = "Raise";
+      } else if (lastAction?.action === "R" || lastAction?.action.startsWith("R")) {
+        // Last was raise, so next is reraise
+        actionType = "Raise";
+      }
     }
-  }, [position, data.next_actor]);
+    
+    return `${actorName} ${actionType} Size Distribution`;
+  }, [position, data.next_actor, actionLine]);
 
   return (
     <div className="p-8 h-full content-start flex flex-col gap-6">
