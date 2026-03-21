@@ -546,14 +546,18 @@ export const LineAnalyserView = ({
 
   // Determine bet size chart title based on context
   const betSizeTitle = useMemo(() => {
-    const isHeroPfr = role === "pfr";
     const heroIsOop = position === "oop";
+    const nextActor = data.next_actor;
+    
+    // Determine whose bet we're looking at
+    const isHeroNextToAct = nextActor === "hero";
+    
     if (heroIsOop) {
-      return isHeroPfr ? "Hero C-Bet Size Distribution" : "Hero Donk Bet Size Distribution";
+      return isHeroNextToAct ? "Hero C-Bet Size Distribution" : "Hero Donk Bet Size Distribution";
     } else {
-      return isHeroPfr ? "Villain Donk Bet Size Distribution" : "Villain C-Bet Size Distribution";
+      return isHeroNextToAct ? "Hero C-Bet Size Distribution" : "Villain Donk Bet Size Distribution";
     }
-  }, [position, role]);
+  }, [position, data.next_actor]);
 
   return (
     <div className="p-8 h-full content-start flex flex-col gap-6">
