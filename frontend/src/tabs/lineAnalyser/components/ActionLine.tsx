@@ -11,26 +11,27 @@ interface Props {
 export const ActionLine = ({ actionLine, onClickFlop, onClickTag, onRemoveLast }: Props) => {
   return (
     <div className="flex items-center gap-1 flex-wrap">
-      {/* Flop - cursor = -1 means at flop */}
+      {/* Flop - cursor 0 */}
       <ActionTag
         label="Flop"
-        isActive={actionLine.cursor === -1}
+        isActive={actionLine.cursor === 0}
         isFuture={false}
         onClick={onClickFlop}
         showArrow={false}
       />
 
-      {/* Action tags */}
+      {/* Action tags - cursor 1+ */}
       {actionLine.actions.map((la, i) => {
-        const isActive = i === actionLine.cursor;
-        const isFuture = i > actionLine.cursor;
+        const actionCursor = i + 1;
+        const isActive = actionCursor === actionLine.cursor;
+        const isFuture = actionCursor > actionLine.cursor;
         return (
           <ActionTag
             key={i}
             label={la.label}
             isActive={isActive}
             isFuture={isFuture}
-            onClick={() => onClickTag(i)}
+            onClick={() => onClickTag(actionCursor)}
             onRemove={i === actionLine.actions.length - 1 ? onRemoveLast : undefined}
             showArrow={true}
           />

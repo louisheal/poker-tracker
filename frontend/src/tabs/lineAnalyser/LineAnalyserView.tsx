@@ -112,20 +112,20 @@ export const LineAnalyserView = ({
 
   const [actionLine, setActionLine] = useState<ActionLineType>({
     actions: [],
-    cursor: -1,
+    cursor: 0,
   });
 
   const resetLine = useCallback(() => {
     setActionLine({
       actions: [],
-      cursor: -1,
+      cursor: 0,
     });
   }, []);
 
   const actionPrefix = useMemo(() => {
-    if (actionLine.cursor < 0 || actionLine.actions.length === 0) return undefined;
-    if (actionLine.cursor >= actionLine.actions.length) return undefined;
-    return actionLine.actions.slice(0, actionLine.cursor + 1).map(actionToPrefix);
+    if (actionLine.cursor === 0 || actionLine.actions.length === 0) return undefined;
+    if (actionLine.cursor > actionLine.actions.length) return undefined;
+    return actionLine.actions.slice(0, actionLine.cursor).map(actionToPrefix);
   }, [actionLine]);
 
   useEffect(() => {
@@ -160,7 +160,7 @@ export const LineAnalyserView = ({
     };
 
     setActionLine((prev) => {
-      const trimmed = prev.actions.slice(0, prev.cursor + 1);
+      const trimmed = prev.actions.slice(0, prev.cursor);
       return {
         ...prev,
         actions: [...trimmed, newAction],
@@ -180,14 +180,14 @@ export const LineAnalyserView = ({
     setActionLine((prev) => ({
       ...prev,
       actions: prev.actions.slice(0, -1),
-      cursor: Math.min(prev.cursor, prev.actions.length - 2),
+      cursor: Math.min(prev.cursor, prev.actions.length - 1),
     }));
   }, []);
 
   const handleClickFlop = useCallback(() => {
     setActionLine((prev) => ({
       ...prev,
-      cursor: -1,
+      cursor: 0,
     }));
   }, []);
 
@@ -210,13 +210,13 @@ export const LineAnalyserView = ({
     const depth = actionLine.cursor;
     let actionType = "";
     
-    if (depth === -1) {
+    if (depth === 0) {
       actionType = isHeroNextToAct && heroIsOop ? "Donk Bet" : "C-Bet";
       if (isHeroNextToAct && !heroIsOop) actionType = "C-Bet";
       if (!isHeroNextToAct && heroIsOop) actionType = "C-Bet";
       if (!isHeroNextToAct && !heroIsOop) actionType = "Donk Bet";
     } else {
-      const lastAction = actionLine.actions[depth];
+      const lastAction = actionLine.actions[depth - 1];
       if (lastAction?.action === "X") {
         actionType = isHeroNextToAct && heroIsOop ? "Donk Bet" : "C-Bet";
         if (isHeroNextToAct && !heroIsOop) actionType = "C-Bet";
