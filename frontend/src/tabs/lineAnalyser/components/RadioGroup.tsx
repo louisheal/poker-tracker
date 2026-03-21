@@ -6,7 +6,7 @@ interface Props {
   onSelect: (key: string) => void;
 }
 
-export const RadioFilter = ({ options, selected, onSelect }: Props) => (
+export const RadioGroup = ({ options, selected, onSelect }: Props) => (
   <div className="flex items-center gap-2">
     {options.map((opt) => (
       <Button
