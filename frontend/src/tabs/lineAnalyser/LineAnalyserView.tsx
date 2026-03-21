@@ -130,8 +130,7 @@ export const LineAnalyserView = ({
 
   useEffect(() => {
     const fetchLineData = async () => {
-      try {
-        const result = await getLineAnalysisFlop(
+      const result = await getLineAnalysisFlop(
           position === "ip",
           role === "pfr",
           activeBoards,
@@ -141,9 +140,6 @@ export const LineAnalyserView = ({
           dateRange.endDate,
         );
         setData(result);
-      } catch (err) {
-        console.error("Failed to fetch line analysis data:", err);
-      }
     };
 
     fetchLineData();
