@@ -49,6 +49,8 @@ interface Props {
   onActionClick: (action: string, sizeRange?: [number, number]) => void;
   showTurnTransition?: boolean;
   onContinueToTurn?: () => void;
+  showRiverTransition?: boolean;
+  onContinueToRiver?: () => void;
 }
 
 export const EvPanel = ({
@@ -59,6 +61,8 @@ export const EvPanel = ({
   onActionClick,
   showTurnTransition,
   onContinueToTurn,
+  showRiverTransition,
+  onContinueToRiver,
 }: Props) => {
   const actorLabel = nextActor === "hero" ? "Hero" : "Villain";
   const overallColor =
@@ -108,7 +112,15 @@ export const EvPanel = ({
             Continue to Turn →
           </button>
         )}
-        {nextActions.length === 0 && !showTurnTransition && (
+        {nextActions.length === 0 && showRiverTransition && (
+          <button
+            onClick={onContinueToRiver}
+            className="text-sm font-medium text-primary hover:underline py-2 text-left"
+          >
+            Continue to River →
+          </button>
+        )}
+        {nextActions.length === 0 && !showTurnTransition && !showRiverTransition && (
           <p className="text-xs text-muted-foreground py-2">
             No further actions (hand complete)
           </p>

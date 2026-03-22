@@ -2,6 +2,7 @@ import type { ActionLine as ActionLineType } from "@/models";
 import { ActionTag } from "./ActionTag";
 
 const TURN_MARKER = "TURN";
+const RIVER_MARKER = "RIVER";
 
 interface Props {
   actionLine: ActionLineType;
@@ -31,7 +32,7 @@ export const ActionLine = ({
         const actionCursor = i + 1;
         const isActive = actionCursor === actionLine.cursor;
         const isFuture = actionCursor > actionLine.cursor;
-        const isMarker = lineAction.action === TURN_MARKER;
+        const isMarker = lineAction.action === TURN_MARKER || lineAction.action === RIVER_MARKER;
         return (
           <ActionTag
             key={i}

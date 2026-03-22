@@ -59,6 +59,17 @@ export const turnRunoutOptions = (filters: FilterState | string) =>
     filters,
   );
 
+export const riverRunoutOptions = (filters: FilterState | string) =>
+  withActive(
+    [
+      { key: "OVERCARD", label: "OVERCARD" },
+      { key: "FLUSH_COMPLETING", label: "FLUSH" },
+      { key: "PAIRED", label: "PAIRED" },
+      { key: "OTHER", label: "OTHER" },
+    ],
+    filters,
+  );
+
 export const actionLineOptions = (filters: FilterState | string) =>
   withActive(
     [

@@ -211,7 +211,7 @@ export interface NextAction {
 
 export interface LineAnalysisResponse {
   hand_count: number;
-  street: "flop" | "turn";
+  street: "flop" | "turn" | "river";
   street_stats: Record<string, number>;
   ev_stats: {
     overall_ev: number;
@@ -222,6 +222,8 @@ export interface LineAnalysisResponse {
   action_depth: number;
   flop_complete: boolean;
   turn_available: boolean;
+  turn_complete: boolean;
+  river_available: boolean;
 }
 
 export const getLineAnalysis = async (
@@ -231,6 +233,7 @@ export const getLineAnalysis = async (
   potTypes: PotTypeFilter[],
   actions?: string[],
   turnRunouts?: TurnRunoutFilter[],
+  riverRunouts?: RiverRunoutFilter[],
   startDate?: string,
   endDate?: string,
 ): Promise<LineAnalysisResponse> => {
@@ -251,6 +254,11 @@ export const getLineAnalysis = async (
   if (turnRunouts) {
     for (const value of turnRunouts) {
       params.append("turn_runouts", value);
+    }
+  }
+  if (riverRunouts) {
+    for (const value of riverRunouts) {
+      params.append("river_runouts", value);
     }
   }
   if (startDate) {

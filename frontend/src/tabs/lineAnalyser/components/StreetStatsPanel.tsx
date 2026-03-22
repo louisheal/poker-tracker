@@ -1,18 +1,19 @@
 import { SpeedDial } from "@/components/SpeedDial";
 
 interface Props {
-  street: "flop" | "turn";
+  street: "flop" | "turn" | "river";
   stats: Record<string, number> & { hand_count: number };
   isPfr: boolean;
 }
 
 export const StreetStatsPanel = ({ street, stats, isPfr }: Props) => {
-  if (street === "turn") {
+  if (street === "turn" || street === "river") {
+    const streetLabel = street === "turn" ? "Turn" : "River";
     return (
       <div className="bg-card border border-border rounded-xl p-6 flex flex-col gap-6">
         <div className="flex flex-col gap-1">
           <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
-            {isPfr ? "PFR" : "DEF"} — Turn Stats
+            {isPfr ? "PFR" : "DEF"} — {streetLabel} Stats
           </h3>
           <p className="text-xs text-muted-foreground">
             {stats.hand_count} hands
