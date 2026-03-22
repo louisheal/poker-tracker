@@ -55,9 +55,9 @@ const BOARD_TYPE_MAP = {
 };
 
 const POT_TYPE_MAP = {
-  srp: "SRP" as const,
-  threeBet: "THREE_BET" as const,
-  fourBet: "FOUR_BET" as const,
+  srp: "srp" as const,
+  threeBet: "threeBet" as const,
+  fourBet: "fourBet" as const,
 };
 
 const INITIAL_BOARD_TYPE_FILTERS = {

@@ -3,31 +3,32 @@ import { RangeGrid } from "./components/RangeGrid";
 import { GridSkeleton } from "./components/GridSkeleton";
 import { RangeLegend } from "./components/RangeLegend";
 import { FilterGroup } from "@/components/FilterGroup";
+import { potTypeOptions } from "@/common/filterOptions";
 import type { DateRangeFilter, Ranges } from "@/models";
 import { useEffect, useState } from "react";
 
 type Positions = "LJ" | "HJ" | "CO" | "BTN" | "SB" | "BB";
-type PotType = "SRP" | "THREE_BET" | "FOUR_BET";
+type PotType = "srp" | "threeBet" | "fourBet";
 
 const INIT_POS = "LJ";
-const INIT_TYPE = "SRP";
+const INIT_TYPE: PotType = "srp";
 
 const POSITIONS: Record<PotType, { value: Positions; label: string }[]> = {
-  SRP: [
+  srp: [
     { value: "LJ", label: "LJ" },
     { value: "HJ", label: "HJ" },
     { value: "CO", label: "CO" },
     { value: "BTN", label: "BTN" },
     { value: "SB", label: "SB" },
   ],
-  THREE_BET: [
+  threeBet: [
     { value: "LJ", label: "v LJ" },
     { value: "HJ", label: "v HJ" },
     { value: "CO", label: "v CO" },
     { value: "BTN", label: "v BTN" },
     { value: "SB", label: "v SB" },
   ],
-  FOUR_BET: [
+  fourBet: [
     { value: "LJ", label: "LJ" },
     { value: "HJ", label: "HJ" },
     { value: "CO", label: "CO" },
@@ -60,19 +61,7 @@ export const RangeView = ({ dateRange }: Props) => {
         <div className="w-full max-w-3xl flex flex-row justify-between items-end">
           <div className="flex flex-col gap-3">
             <FilterGroup
-              options={[
-                { key: "SRP", label: "SRP", active: potType === "SRP" },
-                {
-                  key: "THREE_BET",
-                  label: "3BET",
-                  active: potType === "THREE_BET",
-                },
-                {
-                  key: "FOUR_BET",
-                  label: "4BET",
-                  active: potType === "FOUR_BET",
-                },
-              ]}
+              options={potTypeOptions(potType)}
               onToggle={(k) => setPotType(k as PotType)}
             />
             <FilterGroup

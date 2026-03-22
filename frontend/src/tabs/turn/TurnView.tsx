@@ -12,7 +12,7 @@ import { TurnStatsPanel } from "./components/TurnStatsPanel";
 
 const POSITION_MAP = { ip: true as const, oop: false as const };
 const BOARD_TYPE_MAP = { monotone: "MONOTONE" as const, twoTone: "TWO_TONE" as const, rainbow: "RAINBOW" as const };
-const POT_TYPE_MAP = { srp: "SRP" as const, threeBet: "THREE_BET" as const, fourBet: "FOUR_BET" as const };
+const POT_TYPE_MAP = { srp: "srp" as const, threeBet: "threeBet" as const, fourBet: "fourBet" as const };
 const TURN_RUNOUT_MAP = { overcard: "OVERCARD" as const, flushCompleting: "FLUSH_COMPLETING" as const, paired: "PAIRED" as const, other: "OTHER" as const };
 
 const FLOP_ACTION_LINES: FlopActionLine[] = ["XX", "XBC", "XBRC", "BC"];
