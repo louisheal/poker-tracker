@@ -332,19 +332,17 @@ export const LineAnalyserView = ({ dateRange }: Props) => {
       </div>
 
       {/* Turn filters */}
-      {isOnTurn && (
-        <div className="flex flex-col gap-3">
-          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
-            Turn
-          </span>
-          <div className="flex flex-wrap items-end gap-4">
-            <FilterGroup
-              options={turnRunoutOptions(turnRunoutFilters)}
-              onToggle={toggleTurnRunout}
-            />
-          </div>
+      <div className="flex flex-col gap-3">
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
+          Turn
+        </span>
+        <div className="flex flex-wrap items-end gap-4">
+          <FilterGroup
+            options={turnRunoutOptions(turnRunoutFilters)}
+            onToggle={toggleTurnRunout}
+          />
         </div>
-      )}
+      </div>
 
       {/* Action line tags */}
       <ActionLine
