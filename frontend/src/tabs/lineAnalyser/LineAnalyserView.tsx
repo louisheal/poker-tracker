@@ -7,6 +7,7 @@ import type {
   ActionLine as ActionLineType,
   LineActionItem,
   TurnRunoutFilter,
+  RiverRunoutFilter,
 } from "@/models";
 import { useToggleFilter } from "@/hooks/useToggleFilter";
 import {
@@ -15,6 +16,7 @@ import {
   positionOptions,
   roleOptions,
   turnRunoutOptions,
+  riverRunoutOptions,
 } from "@/common/filterOptions";
 import { ActionLine } from "./components/ActionLine";
 import { StreetStatsPanel } from "./components/StreetStatsPanel";
@@ -30,6 +32,7 @@ const ACTION_LABELS: Record<string, string> = {
 
 const UNCAPPED_BET_SIZE = 999;
 const TURN_MARKER = "TURN";
+const RIVER_MARKER = "RIVER";
 
 function buildActionLabel(
   actor: "hero" | "villain" | "",
@@ -77,6 +80,13 @@ const TURN_RUNOUT_MAP = {
   OTHER: "OTHER" as const,
 };
 
+const RIVER_RUNOUT_MAP = {
+  OVERCARD: "OVERCARD" as const,
+  FLUSH_COMPLETING: "FLUSH_COMPLETING" as const,
+  PAIRED: "PAIRED" as const,
+  OTHER: "OTHER" as const,
+};
+
 const INITIAL_BOARD_TYPE_FILTERS = {
   monotone: false,
   twoTone: false,
@@ -96,6 +106,13 @@ const INITIAL_TURN_RUNOUT_FILTERS = {
   OTHER: false,
 };
 
+const INITIAL_RIVER_RUNOUT_FILTERS = {
+  OVERCARD: false,
+  FLUSH_COMPLETING: false,
+  PAIRED: false,
+  OTHER: false,
+};
+
 const EMPTY_RESPONSE: LineAnalysisResponse = {
   hand_count: 0,
   street: "flop",
@@ -109,6 +126,8 @@ const EMPTY_RESPONSE: LineAnalysisResponse = {
   action_depth: 0,
   flop_complete: false,
   turn_available: false,
+  turn_complete: false,
+  river_available: false,
 };
 
 interface Props {
@@ -128,6 +147,8 @@ export const LineAnalyserView = ({ dateRange }: Props) => {
   );
   const [turnRunoutFilters, toggleTurnRunout, activeTurnRunouts] =
     useToggleFilter(INITIAL_TURN_RUNOUT_FILTERS, TURN_RUNOUT_MAP);
+  const [riverRunoutFilters, toggleRiverRunout, activeRiverRunouts] =
+    useToggleFilter(INITIAL_RIVER_RUNOUT_FILTERS, RIVER_RUNOUT_MAP);
   const [data, setData] = useState<LineAnalysisResponse>(EMPTY_RESPONSE);
 
   const [actionLine, setActionLine] = useState<ActionLineType>({
@@ -136,8 +157,19 @@ export const LineAnalyserView = ({ dateRange }: Props) => {
   });
 
   const isOnTurn = useMemo(
-    () => actionLine.actions.some((a) => a.action === TURN_MARKER),
-    [actionLine.actions],
+    () =>
+      actionLine.actions
+        .slice(0, actionLine.cursor)
+        .some((a) => a.action === TURN_MARKER),
+    [actionLine.actions, actionLine.cursor],
+  );
+
+  const isOnRiver = useMemo(
+    () =>
+      actionLine.actions
+        .slice(0, actionLine.cursor)
+        .some((a) => a.action === RIVER_MARKER),
+    [actionLine.actions, actionLine.cursor],
   );
 
   const resetLine = () => {
@@ -159,6 +191,9 @@ export const LineAnalyserView = ({ dateRange }: Props) => {
       const turnRunouts: TurnRunoutFilter[] | undefined = isOnTurn
         ? activeTurnRunouts
         : undefined;
+      const riverRunouts: RiverRunoutFilter[] | undefined = isOnRiver
+        ? activeRiverRunouts
+        : undefined;
       const result = await getLineAnalysis(
         position === "ip",
         role === "pfr",
@@ -166,6 +201,7 @@ export const LineAnalyserView = ({ dateRange }: Props) => {
         activePots,
         actionPrefix,
         turnRunouts,
+        riverRunouts,
         dateRange.startDate,
         dateRange.endDate,
       );
@@ -182,6 +218,8 @@ export const LineAnalyserView = ({ dateRange }: Props) => {
     dateRange,
     isOnTurn,
     activeTurnRunouts,
+    isOnRiver,
+    activeRiverRunouts,
   ]);
 
   const handleActionClick = (action: string, sizeRange?: [number, number]) => {
@@ -215,6 +253,22 @@ export const LineAnalyserView = ({ dateRange }: Props) => {
       return {
         ...prev,
         actions: [...trimmed, turnMarker],
+        cursor: prev.cursor + 1,
+      };
+    });
+  };
+
+  const handleContinueToRiver = () => {
+    setActionLine((prev) => {
+      const trimmed = prev.actions.slice(0, prev.cursor);
+      const riverMarker: LineActionItem = {
+        actor: "marker",
+        action: RIVER_MARKER,
+        label: "River",
+      };
+      return {
+        ...prev,
+        actions: [...trimmed, riverMarker],
         cursor: prev.cursor + 1,
       };
     });
@@ -295,6 +349,12 @@ export const LineAnalyserView = ({ dateRange }: Props) => {
     data.ev_stats.next_actions.length === 0 &&
     !isOnTurn;
 
+  const showRiverTransition =
+    data.turn_complete &&
+    data.river_available &&
+    data.ev_stats.next_actions.length === 0 &&
+    !isOnRiver;
+
   return (
     <div className="p-8 h-full content-start flex flex-col gap-6">
       {/* General filters */}
@@ -344,6 +404,19 @@ export const LineAnalyserView = ({ dateRange }: Props) => {
         </div>
       </div>
 
+      {/* River filters */}
+      <div className="flex flex-col gap-3">
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
+          River
+        </span>
+        <div className="flex flex-wrap items-end gap-4">
+          <FilterGroup
+            options={riverRunoutOptions(riverRunoutFilters)}
+            onToggle={toggleRiverRunout}
+          />
+        </div>
+      </div>
+
       {/* Action line tags */}
       <ActionLine
         actionLine={actionLine}
@@ -370,6 +443,8 @@ export const LineAnalyserView = ({ dateRange }: Props) => {
           onActionClick={handleActionClick}
           showTurnTransition={showTurnTransition}
           onContinueToTurn={handleContinueToTurn}
+          showRiverTransition={showRiverTransition}
+          onContinueToRiver={handleContinueToRiver}
         />
       </div>
 

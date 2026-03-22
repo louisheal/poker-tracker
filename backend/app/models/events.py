@@ -76,6 +76,9 @@ class LineEvent:
 	turn_actions: list[StreetAction] = field(default_factory=list)
 	turn_runout: Runout | None = None
 	pot_at_turn_bb: float = 0.0
+	river_actions: list[StreetAction] = field(default_factory=list)
+	river_runout: Runout | None = None
+	pot_at_river_bb: float = 0.0
 	cbet: bool = False
 	fold_to_cbet: bool = False
 	raise_to_cbet: bool = False

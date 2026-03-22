@@ -614,8 +614,14 @@ def analyze_line(ctx: HandContext) -> LineEvent | None:
 
 	turn_actions_detailed: list[StreetAction] = []
 	turn_runout = ctx.turn_runout
+	pot_at_river_bb = 0.0
 	if ast.turn and pot_at_turn_bb > 0:
-		turn_actions_detailed, _ = _build_street_actions(ast.turn.actions, pot_at_turn_bb)
+		turn_actions_detailed, pot_at_river_bb = _build_street_actions(ast.turn.actions, pot_at_turn_bb)
+
+	river_actions_detailed: list[StreetAction] = []
+	river_runout = ctx.river_runout
+	if ast.river and pot_at_river_bb > 0:
+		river_actions_detailed, _ = _build_street_actions(ast.river.actions, pot_at_river_bb)
 
 	event = LineEvent(
 		played_on=ast.played_on,
@@ -630,6 +636,9 @@ def analyze_line(ctx: HandContext) -> LineEvent | None:
 		turn_actions=turn_actions_detailed,
 		turn_runout=turn_runout,
 		pot_at_turn_bb=pot_at_turn_bb,
+		river_actions=river_actions_detailed,
+		river_runout=river_runout,
+		pot_at_river_bb=pot_at_river_bb,
 		cbet=cbet,
 		fold_to_cbet=fold_to_cbet,
 		raise_to_cbet=raise_to_cbet,

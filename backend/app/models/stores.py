@@ -71,9 +71,11 @@ class LineEvents:
 		events = [e for e in events if e.board_type in f.board_types]
 		if f.turn_runouts is not None:
 			events = [e for e in events if e.turn_runout in f.turn_runouts]
+		if f.river_runouts is not None:
+			events = [e for e in events if e.river_runout in f.river_runouts]
 		return events
 
-	def spot_stats(self, f: LineFilter, flop_actions: list[str] | None = None, turn_actions: list[str] | None = None):
+	def spot_stats(self, f: LineFilter, flop_actions: list[str] | None = None, turn_actions: list[str] | None = None, river_actions: list[str] | None = None):
 		events = self._filter(f)
 
 		if flop_actions:
@@ -85,22 +87,46 @@ class LineEvents:
 			if turn_actions:
 				events = self._filter_by_street_prefix(events, "turn", turn_actions)
 
+		on_river = river_actions is not None
+		if on_river:
+			events = [e for e in events if e.river_actions]
+			if river_actions:
+				events = self._filter_by_street_prefix(events, "river", river_actions)
+
+		if on_river:
+			street = "river"
+		elif on_turn:
+			street = "turn"
+		else:
+			street = "flop"
+
 		if not events:
+			empty_stats = {
+				"river": self._empty_river_stats,
+				"turn": self._empty_turn_stats,
+				"flop": self._empty_flop_stats,
+			}
 			return {
 				"hand_count": 0,
-				"street": "turn" if on_turn else "flop",
-				"street_stats": self._empty_turn_stats() if on_turn else self._empty_flop_stats(),
+				"street": street,
+				"street_stats": empty_stats[street](),
 				"ev_stats": self._empty_ev_stats(),
 				"bet_sizes": [],
 				"next_actor": None,
-				"action_depth": len(turn_actions or flop_actions or []),
-				"flop_complete": on_turn,
+				"action_depth": len(river_actions or turn_actions or flop_actions or []),
+				"flop_complete": on_turn or on_river,
 				"turn_available": False,
+				"turn_complete": on_river,
+				"river_available": False,
 			}
 
 		n = len(events)
 
-		if on_turn:
+		if on_river:
+			depth = len(river_actions) if river_actions else 0
+			street_stats = self._compute_river_stats(events)
+			actions_attr = "river_actions"
+		elif on_turn:
 			depth = len(turn_actions) if turn_actions else 0
 			street_stats = self._compute_turn_stats(events)
 			actions_attr = "turn_actions"
@@ -127,12 +153,14 @@ class LineEvents:
 				if a.action in ("B", "R") and a.size_pct is not None:
 					bet_sizes.append(a.size_pct)
 
-		flop_complete = not on_turn and next_actions == [] and any(e.turn_actions for e in events)
+		flop_complete = not on_turn and not on_river and next_actions == [] and any(e.turn_actions for e in events)
 		turn_available = any(e.turn_actions for e in events)
+		turn_complete = on_turn and not on_river and next_actions == [] and any(e.river_actions for e in events)
+		river_available = any(e.river_actions for e in events)
 
 		return {
 			"hand_count": n,
-			"street": "turn" if on_turn else "flop",
+			"street": street,
 			"street_stats": street_stats,
 			"ev_stats": {
 				"overall_ev": overall_ev,
@@ -141,12 +169,14 @@ class LineEvents:
 			"bet_sizes": [round(s, 1) for s in bet_sizes],
 			"next_actor": next_actor,
 			"action_depth": depth,
-			"flop_complete": flop_complete or on_turn,
+			"flop_complete": flop_complete or on_turn or on_river,
 			"turn_available": turn_available,
+			"turn_complete": turn_complete or on_river,
+			"river_available": river_available,
 		}
 
 	def _filter_by_street_prefix(self, events: list[LineEvent], street: str, prefix: list[str]) -> list[LineEvent]:
-		actions_attr = "flop_actions" if street == "flop" else "turn_actions"
+		actions_attr = {"flop": "flop_actions", "turn": "turn_actions", "river": "river_actions"}[street]
 		result = []
 		for e in events:
 			actions = getattr(e, actions_attr)
@@ -237,6 +267,34 @@ class LineEvents:
 			"hero_raise_to_villain_bet_pct": hero_raise_to_villain_bet_pct,
 		}
 
+	def _compute_river_stats(self, events: list[LineEvent]) -> dict:
+		n = len(events)
+		hero_bet_events = [e for e in events if e.river_actions and any(a.actor == "hero" and a.action == "B" for a in e.river_actions)]
+		villain_bet_events = [e for e in events if e.river_actions and any(a.actor == "villain" and a.action == "B" for a in e.river_actions)]
+		hero_bet_pct = (len(hero_bet_events) / n) * 100 if n else 0
+		villain_bet_pct = (len(villain_bet_events) / n) * 100 if n else 0
+
+		villain_fold_to_hero_bet_pct = 0
+		villain_raise_to_hero_bet_pct = 0
+		if hero_bet_events:
+			villain_fold_to_hero_bet_pct = sum(1 for e in hero_bet_events if any(a.actor == "villain" and a.action == "F" for a in e.river_actions)) / len(hero_bet_events) * 100
+			villain_raise_to_hero_bet_pct = sum(1 for e in hero_bet_events if any(a.actor == "villain" and a.action == "R" for a in e.river_actions)) / len(hero_bet_events) * 100
+
+		hero_fold_to_villain_bet_pct = 0
+		hero_raise_to_villain_bet_pct = 0
+		if villain_bet_events:
+			hero_fold_to_villain_bet_pct = sum(1 for e in villain_bet_events if any(a.actor == "hero" and a.action == "F" for a in e.river_actions)) / len(villain_bet_events) * 100
+			hero_raise_to_villain_bet_pct = sum(1 for e in villain_bet_events if any(a.actor == "hero" and a.action == "R" for a in e.river_actions)) / len(villain_bet_events) * 100
+
+		return {
+			"hero_bet_pct": hero_bet_pct,
+			"villain_fold_to_hero_bet_pct": villain_fold_to_hero_bet_pct,
+			"villain_raise_to_hero_bet_pct": villain_raise_to_hero_bet_pct,
+			"villain_bet_pct": villain_bet_pct,
+			"hero_fold_to_villain_bet_pct": hero_fold_to_villain_bet_pct,
+			"hero_raise_to_villain_bet_pct": hero_raise_to_villain_bet_pct,
+		}
+
 	BET_SIZE_BINS = [(0, 50), (50, 100), (100, 200)]
 
 	ACTION_ORDER = ["X", "B0-50", "B50-100", "B100-200", "B200+",
@@ -284,6 +342,9 @@ class LineEvents:
 		return {k: 0 for k in ["cbet_pct", "fold_to_cbet_pct", "raise_to_cbet_pct", "fold_to_cbet_raise_pct", "donk_bet_pct", "fold_to_donk_pct", "raise_to_donk_pct", "fold_to_donk_raise_pct"]}
 
 	def _empty_turn_stats(self):
+		return {k: 0 for k in ["hero_bet_pct", "villain_fold_to_hero_bet_pct", "villain_raise_to_hero_bet_pct", "villain_bet_pct", "hero_fold_to_villain_bet_pct", "hero_raise_to_villain_bet_pct"]}
+
+	def _empty_river_stats(self):
 		return {k: 0 for k in ["hero_bet_pct", "villain_fold_to_hero_bet_pct", "villain_raise_to_hero_bet_pct", "villain_bet_pct", "hero_fold_to_villain_bet_pct", "hero_raise_to_villain_bet_pct"]}
 
 	def _empty_ev_stats(self):
