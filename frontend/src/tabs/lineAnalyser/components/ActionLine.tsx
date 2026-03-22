@@ -1,6 +1,8 @@
 import type { ActionLine as ActionLineType } from "@/models";
 import { ActionTag } from "./ActionTag";
 
+const TURN_MARKER = "TURN";
+
 interface Props {
   actionLine: ActionLineType;
   onClickFlop: () => void;
@@ -16,20 +18,20 @@ export const ActionLine = ({
 }: Props) => {
   return (
     <div className="flex items-center gap-1 flex-wrap">
-      {/* Flop - cursor 0 */}
       <ActionTag
         label="Flop"
         isActive={actionLine.cursor === 0}
         isFuture={false}
         onClick={onClickFlop}
         showArrow={false}
+        isStreetMarker
       />
 
-      {/* Action tags - cursor 1+ */}
       {actionLine.actions.map((lineAction, i) => {
         const actionCursor = i + 1;
         const isActive = actionCursor === actionLine.cursor;
         const isFuture = actionCursor > actionLine.cursor;
+        const isMarker = lineAction.action === TURN_MARKER;
         return (
           <ActionTag
             key={i}
@@ -41,6 +43,7 @@ export const ActionLine = ({
               i === actionLine.actions.length - 1 ? onRemoveLast : undefined
             }
             showArrow={true}
+            isStreetMarker={isMarker}
           />
         );
       })}

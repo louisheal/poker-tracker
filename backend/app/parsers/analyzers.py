@@ -10,7 +10,7 @@ from app.models.enums import (
 	FlopRankTexture, ShowdownType,
 	BoardType, PotType,
 )
-from app.models.events import RangeEvent, FlopEvent, TurnEvent, RiverEvent, LineEvent, FlopAction
+from app.models.events import RangeEvent, FlopEvent, TurnEvent, RiverEvent, LineEvent, StreetAction
 
 from .ast import HandAST, HandContext, Action, ActionType
 
@@ -281,37 +281,37 @@ def _analyze_fold_to_raise(flop_actions: list[Action], hero_is_pfr: bool, is_cbe
 	return False
 
 
-def _build_flop_actions_detailed(flop_actions: list[Action], pot_at_flop_bb: float) -> list[FlopAction]:
-	result: list[FlopAction] = []
-	pot = pot_at_flop_bb * BB
+def _build_street_actions(actions: list[Action], pot_at_street_bb: float) -> tuple[list[StreetAction], float]:
+	result: list[StreetAction] = []
+	pot = pot_at_street_bb * BB
 
-	for action in flop_actions:
+	for action in actions:
 		actor = "hero" if action.is_hero else "villain"
 
 		if action.type == ActionType.CHECK:
-			result.append(FlopAction(actor=actor, action="X"))
+			result.append(StreetAction(actor=actor, action="X"))
 		elif action.type == ActionType.FOLD:
-			result.append(FlopAction(actor=actor, action="F"))
+			result.append(StreetAction(actor=actor, action="F"))
 			break
 		elif action.type == ActionType.BET:
 			size_pct = None
 			if action.amount and pot > 0:
 				size_pct = round((action.amount / pot) * 100, 1)
 				pot += action.amount
-			result.append(FlopAction(actor=actor, action="B", size_pct=size_pct))
+			result.append(StreetAction(actor=actor, action="B", size_pct=size_pct))
 		elif action.type == ActionType.CALL:
 			if action.amount:
 				pot += action.amount
-			result.append(FlopAction(actor=actor, action="C"))
+			result.append(StreetAction(actor=actor, action="C"))
 		elif action.type == ActionType.RAISE:
 			size_pct = None
 			if action.raise_to and pot > 0:
 				size_pct = round((action.raise_to / pot) * 100, 1)
 			if action.amount:
 				pot += action.amount
-			result.append(FlopAction(actor=actor, action="R", size_pct=size_pct))
+			result.append(StreetAction(actor=actor, action="R", size_pct=size_pct))
 
-	return result
+	return result, pot / BB
 
 
 def _analyze_street_actions(actions: list[Action]):
@@ -601,7 +601,7 @@ def analyze_line(ctx: HandContext) -> LineEvent | None:
 	 donk_bet, fold_to_donk_bet, raise_to_donk_bet,
 	 cbet_amount, donk_bet_amount) = _analyze_cbet_result(flop_actions, hero_is_pfr)
 
-	flop_actions_detailed = _build_flop_actions_detailed(flop_actions, ctx.pot_at_flop_bb)
+	flop_actions_detailed, pot_at_turn_bb = _build_street_actions(flop_actions, ctx.pot_at_flop_bb)
 	pot_dollars = ctx.pot_at_flop_bb * BB
 	
 	cbet_size = None
@@ -611,6 +611,11 @@ def analyze_line(ctx: HandContext) -> LineEvent | None:
 	donk_size = None
 	if donk_bet_amount is not None:
 		donk_size = (donk_bet_amount / pot_dollars) * 100
+
+	turn_actions_detailed: list[StreetAction] = []
+	turn_runout = ctx.turn_runout
+	if ast.turn and pot_at_turn_bb > 0:
+		turn_actions_detailed, _ = _build_street_actions(ast.turn.actions, pot_at_turn_bb)
 
 	event = LineEvent(
 		played_on=ast.played_on,
@@ -622,6 +627,9 @@ def analyze_line(ctx: HandContext) -> LineEvent | None:
 		hero_preflop_invested_bb=ctx.hero_preflop_invested_bb,
 		pot_at_flop_bb=ctx.pot_at_flop_bb,
 		flop_actions=flop_actions_detailed,
+		turn_actions=turn_actions_detailed,
+		turn_runout=turn_runout,
+		pot_at_turn_bb=pot_at_turn_bb,
 		cbet=cbet,
 		fold_to_cbet=fold_to_cbet,
 		raise_to_cbet=raise_to_cbet,

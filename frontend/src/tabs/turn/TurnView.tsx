@@ -23,10 +23,10 @@ const POT_TYPE_MAP = {
   FOUR_BET: "FOUR_BET" as const,
 };
 const TURN_RUNOUT_MAP = {
-  overcard: "OVERCARD" as const,
-  flushCompleting: "FLUSH_COMPLETING" as const,
-  paired: "PAIRED" as const,
-  other: "OTHER" as const,
+  OVERCARD: "OVERCARD" as const,
+  FLUSH_COMPLETING: "FLUSH_COMPLETING" as const,
+  PAIRED: "PAIRED" as const,
+  OTHER: "OTHER" as const,
 };
 
 const FLOP_ACTION_LINES: FlopActionLine[] = ["XX", "XBC", "XBRC", "BC"];
@@ -47,10 +47,10 @@ const INITIAL_POT_TYPE_FILTERS = {
   FOUR_BET: false,
 };
 const INITIAL_TURN_RUNOUT_FILTERS = {
-  overcard: false,
-  flushCompleting: false,
-  paired: false,
-  other: false,
+  OVERCARD: false,
+  FLUSH_COMPLETING: false,
+  PAIRED: false,
+  OTHER: false,
 };
 
 export const TurnView = ({ dateRange }: Props) => {
