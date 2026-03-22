@@ -44,5 +44,5 @@ def get_line_analysis(
         board_types=parse_board_type_list(board_types),
         turn_runouts=parse_runout_list(turn_runouts) if turn_runouts else None,
     )
-    flop_prefix, turn_prefix = _split_action_prefix(actions)
-    return filtered_events.spot_stats(f, flop_prefix=flop_prefix, turn_prefix=turn_prefix)
+    flop_actions, turn_actions = _split_action_prefix(actions)
+    return filtered_events.spot_stats(f, flop_actions=flop_actions, turn_actions=turn_actions)

@@ -73,17 +73,17 @@ class LineEvents:
 			events = [e for e in events if e.turn_runout in f.turn_runouts]
 		return events
 
-	def spot_stats(self, f: LineFilter, flop_prefix: list[str] | None = None, turn_prefix: list[str] | None = None):
+	def spot_stats(self, f: LineFilter, flop_actions: list[str] | None = None, turn_actions: list[str] | None = None):
 		events = self._filter(f)
 
-		if flop_prefix:
-			events = self._filter_by_street_prefix(events, "flop", flop_prefix)
+		if flop_actions:
+			events = self._filter_by_street_prefix(events, "flop", flop_actions)
 
-		on_turn = turn_prefix is not None
+		on_turn = turn_actions is not None
 		if on_turn:
 			events = [e for e in events if e.turn_actions]
-			if turn_prefix:
-				events = self._filter_by_street_prefix(events, "turn", turn_prefix)
+			if turn_actions:
+				events = self._filter_by_street_prefix(events, "turn", turn_actions)
 
 		if not events:
 			return {
@@ -93,7 +93,7 @@ class LineEvents:
 				"ev_stats": self._empty_ev_stats(),
 				"bet_sizes": [],
 				"next_actor": None,
-				"action_depth": len(turn_prefix or flop_prefix or []),
+				"action_depth": len(turn_actions or flop_actions or []),
 				"flop_complete": on_turn,
 				"turn_available": False,
 			}
@@ -101,11 +101,11 @@ class LineEvents:
 		n = len(events)
 
 		if on_turn:
-			depth = len(turn_prefix) if turn_prefix else 0
+			depth = len(turn_actions) if turn_actions else 0
 			street_stats = self._compute_turn_stats(events)
 			actions_attr = "turn_actions"
 		else:
-			depth = len(flop_prefix) if flop_prefix else 0
+			depth = len(flop_actions) if flop_actions else 0
 			street_stats = self._compute_flop_stats(events)
 			actions_attr = "flop_actions"
 
