@@ -68,6 +68,7 @@ class HandAST:
 	uncalled_amount: float = 0.0
 	uncalled_to: str | None = None
 	hero_showed_won: bool | None = None  # True=won, False=lost, None=no show
+	shown_cards: dict[str, HoleCards] = field(default_factory=dict)
 
 
 @dataclass

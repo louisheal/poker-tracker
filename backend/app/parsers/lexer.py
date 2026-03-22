@@ -22,6 +22,7 @@ HERO_COLLECTED_RE = re.compile(r"Hero collected \$(\d+\.?\d*)")
 HERO_WON_RE = re.compile(r"Hero.*and won \(\$(\d+\.?\d*)\)")
 HERO_SHOWDOWN_RE = re.compile(r"Hero.*showed.*and (won|lost)")
 TOTAL_POT_RE = re.compile(r"Total pot \$(\d+\.?\d*)")
+SHOWS_RE = re.compile(r"(\S+): shows \[([2-9TJQKA][shdc]) ([2-9TJQKA][shdc])\]", re.IGNORECASE)
 FLOP_RE = re.compile(r"\*\*\* FLOP \*\*\* \[([2-9TJQKA][shdc]) ([2-9TJQKA][shdc]) ([2-9TJQKA][shdc])\]", re.IGNORECASE)
 TURN_RE = re.compile(r"\*\*\* TURN \*\*\* \[([2-9TJQKA][shdc]) ([2-9TJQKA][shdc]) ([2-9TJQKA][shdc])\] \[([2-9TJQKA][shdc])\]", re.IGNORECASE)
 RIVER_RE = re.compile(r"\*\*\* RIVER \*\*\* \[([2-9TJQKA][shdc]) ([2-9TJQKA][shdc]) ([2-9TJQKA][shdc]) ([2-9TJQKA][shdc])\] \[([2-9TJQKA][shdc])\]", re.IGNORECASE)
@@ -124,6 +125,7 @@ def lex_hand(lines: list[str]) -> HandAST | None:
 	uncalled_amount = 0.0
 	uncalled_to: str | None = None
 	hero_showed_won: bool | None = None
+	shown_cards: dict[str, HoleCards] = {}
 
 	state = _State.SEATS
 	current_actions = preflop
@@ -205,6 +207,11 @@ def lex_hand(lines: list[str]) -> HandAST | None:
 				uncalled_to = unc_m.group(2).strip()
 				continue
 
+			shows_m = SHOWS_RE.search(line)
+			if shows_m:
+				shown_cards[shows_m.group(1)] = to_hole_cards(shows_m.group(2), shows_m.group(3))
+				continue
+
 			action_m = ACTION_RE.search(line)
 			if action_m:
 				current_actions.append(_parse_action(line, action_m))
@@ -247,4 +254,5 @@ def lex_hand(lines: list[str]) -> HandAST | None:
 		uncalled_amount=uncalled_amount,
 		uncalled_to=uncalled_to,
 		hero_showed_won=hero_showed_won,
+		shown_cards=shown_cards,
 	)

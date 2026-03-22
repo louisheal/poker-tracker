@@ -2,7 +2,8 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import TYPE_CHECKING
 
-from playing_cards_lib.poker import PokerPosition
+from playing_cards_lib.core import Card
+from playing_cards_lib.poker import HoleCards, PokerPosition
 
 from .enums import ActionSequence, Runout, FlopRankTexture, ShowdownType, BoardType, PotType
 
@@ -89,6 +90,11 @@ class LineEvent:
 	donk_bet_size_pct: float | None = None
 	fold_to_cbet_raise: bool = False
 	fold_to_donk_raise: bool = False
+	hero_hand: HoleCards | None = None
+	villain_hand: HoleCards | None = None
+	flop_cards: list[Card] = field(default_factory=list)
+	turn_card: Card | None = None
+	river_card: Card | None = None
 
 
 @dataclass

@@ -21,6 +21,7 @@ import {
 import { ActionLine } from "./components/ActionLine";
 import { StreetStatsPanel } from "./components/StreetStatsPanel";
 import { EvPanel } from "./components/EvPanel";
+import { TopHandsPanel } from "./components/TopHandsPanel";
 
 const ACTION_LABELS: Record<string, string> = {
   X: "Check",
@@ -128,6 +129,8 @@ const EMPTY_RESPONSE: LineAnalysisResponse = {
   turn_available: false,
   turn_complete: false,
   river_available: false,
+  top_wins: [],
+  top_losses: [],
 };
 
 interface Props {
@@ -428,8 +431,8 @@ export const LineAnalyserView = ({ dateRange }: Props) => {
       {/* Divider */}
       <div className="border-t border-border" />
 
-      {/* Row 1: Street Stats + EV Panel */}
-      <div className="grid gap-4 md:grid-cols-2 max-w-5xl">
+      {/* 2×3 grid: Stats | EV | Wins / BetDist (span 2) | Losses */}
+      <div className="grid gap-4 grid-cols-3">
         <StreetStatsPanel
           street={data.street}
           stats={{ hand_count: data.hand_count, ...data.street_stats }}
@@ -446,11 +449,11 @@ export const LineAnalyserView = ({ dateRange }: Props) => {
           showRiverTransition={showRiverTransition}
           onContinueToRiver={handleContinueToRiver}
         />
-      </div>
-
-      {/* Row 2: Bet size distribution */}
-      <div className="max-w-5xl">
-        <BetSizeDistribution sizes={data.bet_sizes} title={betSizeTitle} />
+        <TopHandsPanel title="Biggest Wins" hands={data.top_wins} />
+        <div className="col-span-2">
+          <BetSizeDistribution sizes={data.bet_sizes} title={betSizeTitle} />
+        </div>
+        <TopHandsPanel title="Biggest Losses" hands={data.top_losses} />
       </div>
     </div>
   );
