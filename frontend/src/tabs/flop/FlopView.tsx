@@ -15,9 +15,9 @@ const BOARD_TYPE_MAP = {
   rainbow: "RAINBOW" as const,
 };
 const POT_TYPE_MAP = {
-  srp: "SRP" as const,
-  threeBet: "THREE_BET" as const,
-  fourBet: "FOUR_BET" as const,
+  srp: "srp" as const,
+  threeBet: "threeBet" as const,
+  fourBet: "fourBet" as const,
 };
 
 const BET_SIZE_MIN = 0;

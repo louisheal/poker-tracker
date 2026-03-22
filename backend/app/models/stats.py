@@ -129,5 +129,11 @@ class Ranges:
 		else:
 			self.ranges[pot_type].add_hand(hand_key, position, action)
 
+	_JSON_KEYS = {
+		PotType.SRP: "srp",
+		PotType.THREE_BET: "threeBet",
+		PotType.FOUR_BET: "fourBet",
+	}
+
 	def json(self):
-		return { k.name: v.json() for k, v in self.ranges.items() }
+		return { self._JSON_KEYS[k]: v.json() for k, v in self.ranges.items() }
