@@ -65,7 +65,7 @@ export const getCbets = async (
   if (betSizeMax !== undefined) {
     params.append("bet_size_max", String(betSizeMax));
   }
-  const response = await fetch(`http://localhost:8000/cbets?${params}`);
+  const response = await fetch(`http://localhost:8000/flop?${params}`);
   return response.json();
 };
 
@@ -96,7 +96,9 @@ export const getVillainBetSizes = async (
   if (endDate) {
     params.append("end_date", endDate);
   }
-  const response = await fetch(`http://localhost:8000/cbets/bet-sizes?${params}`);
+  const response = await fetch(
+    `http://localhost:8000/flop/bet-sizes?${params}`,
+  );
   return response.json();
 };
 

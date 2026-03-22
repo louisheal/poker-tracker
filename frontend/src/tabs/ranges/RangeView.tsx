@@ -1,6 +1,9 @@
 import { getRanges } from "@/api";
-import RangeGrid, { GridSkeleton, RangeLegend } from "@/components/rangeGrid";
+import { RangeGrid } from "./components/RangeGrid";
+import { GridSkeleton } from "./components/GridSkeleton";
+import { RangeLegend } from "./components/RangeLegend";
 import { FilterGroup } from "@/components/FilterGroup";
+import { potTypeOptions } from "@/common/filterOptions";
 import type { DateRangeFilter, Ranges } from "@/models";
 import { useEffect, useState } from "react";
 
@@ -8,7 +11,7 @@ type Positions = "LJ" | "HJ" | "CO" | "BTN" | "SB" | "BB";
 type PotType = "SRP" | "THREE_BET" | "FOUR_BET";
 
 const INIT_POS = "LJ";
-const INIT_TYPE = "SRP";
+const INIT_TYPE: PotType = "SRP";
 
 const POSITIONS: Record<PotType, { value: Positions; label: string }[]> = {
   SRP: [
@@ -34,11 +37,11 @@ const POSITIONS: Record<PotType, { value: Positions; label: string }[]> = {
   ],
 };
 
-interface RangeViewProps {
+interface Props {
   dateRange: DateRangeFilter;
 }
 
-export const RangeView = ({ dateRange }: RangeViewProps) => {
+export const RangeView = ({ dateRange }: Props) => {
   const [ranges, setRanges] = useState<Ranges>();
   const [selectedRange, setSelectedRange] = useState<Positions>(INIT_POS);
   const [potType, setPotType] = useState<PotType>(INIT_TYPE);
@@ -58,19 +61,7 @@ export const RangeView = ({ dateRange }: RangeViewProps) => {
         <div className="w-full max-w-3xl flex flex-row justify-between items-end">
           <div className="flex flex-col gap-3">
             <FilterGroup
-              options={[
-                { key: "SRP", label: "SRP", active: potType === "SRP" },
-                {
-                  key: "THREE_BET",
-                  label: "3BET",
-                  active: potType === "THREE_BET",
-                },
-                {
-                  key: "FOUR_BET",
-                  label: "4BET",
-                  active: potType === "FOUR_BET",
-                },
-              ]}
+              options={potTypeOptions(potType)}
               onToggle={(k) => setPotType(k as PotType)}
             />
             <FilterGroup

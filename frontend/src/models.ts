@@ -15,23 +15,6 @@ export type Ranges = { [potType: string]: RangeGroup };
 export type BoardTypeFilter = "MONOTONE" | "TWO_TONE" | "RAINBOW";
 export type PotTypeFilter = "SRP" | "THREE_BET" | "FOUR_BET";
 
-export interface PositionFilters {
-  ip: boolean;
-  oop: boolean;
-}
-
-export interface BoardTypeFilters {
-  monotone: boolean;
-  twoTone: boolean;
-  rainbow: boolean;
-}
-
-export interface PotTypeFilters {
-  srp: boolean;
-  threeBet: boolean;
-  fourBet: boolean;
-}
-
 export interface CbetStats {
   cbet_pct: number;
   fcbet_pct: number;
@@ -44,40 +27,21 @@ export interface CbetStats {
 
 export type FlopActionLine = "XX" | "XBC" | "XBRC" | "BC";
 
-export type TurnRunoutFilter = "OVERCARD" | "FLUSH_COMPLETING" | "PAIRED" | "OTHER";
+export type TurnRunoutFilter =
+  | "OVERCARD"
+  | "FLUSH_COMPLETING"
+  | "PAIRED"
+  | "OTHER";
 
-export type RiverRunoutFilter = "OVERCARD" | "FLUSH_COMPLETING" | "PAIRED" | "OTHER";
+export type RiverRunoutFilter =
+  | "OVERCARD"
+  | "FLUSH_COMPLETING"
+  | "PAIRED"
+  | "OTHER";
 
 export type FlopRankTextureFilter = "TRIPS" | "PAIRED" | "UNPAIRED";
 
 export type TurnActionLine = "XX" | "XBC" | "XBRC" | "BC";
-
-export interface TurnRunoutFilters {
-  overcard: boolean;
-  flushCompleting: boolean;
-  paired: boolean;
-  other: boolean;
-}
-
-export interface RiverRunoutFilters {
-  overcard: boolean;
-  flushCompleting: boolean;
-  paired: boolean;
-  other: boolean;
-}
-
-export interface FlopRankTextureFilters {
-  trips: boolean;
-  paired: boolean;
-  unpaired: boolean;
-}
-
-export interface TurnActionFilters {
-  xx: boolean;
-  xbc: boolean;
-  xbrc: boolean;
-  bc: boolean;
-}
 
 export interface TurnStats {
   hero_bet_pct: number;
@@ -121,13 +85,6 @@ export interface RiverStats {
   actions: RiverActionStats;
   showdown: ShowdownStatsMap;
   avg_pot: AvgPotStatsMap;
-}
-
-export interface FlopActionFilters {
-  xx: boolean;
-  xbc: boolean;
-  xbrc: boolean;
-  bc: boolean;
 }
 
 export interface DailyVolumePoint {

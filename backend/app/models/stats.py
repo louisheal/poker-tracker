@@ -130,4 +130,4 @@ class Ranges:
 			self.ranges[pot_type].add_hand(hand_key, position, action)
 
 	def json(self):
-		return { k.name: v.json() for k, v in self.ranges.items() }
+		return { k.value: v.json() for k, v in self.ranges.items() }

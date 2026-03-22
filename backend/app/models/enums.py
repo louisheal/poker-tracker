@@ -7,10 +7,10 @@ class BoardType(Enum):
 	RAINBOW = 2
 
 
-class PotType(Enum):
-	SRP = 0
-	THREE_BET = 1
-	FOUR_BET = 2
+class PotType(str, Enum):
+	SRP = "SRP"
+	THREE_BET = "THREE_BET"
+	FOUR_BET = "FOUR_BET"
 
 
 class ActionSequence(str, Enum):

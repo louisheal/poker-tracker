@@ -58,14 +58,19 @@ const CustomTooltip = ({
   );
 };
 
-export const BetSizeDistribution = ({ sizes, title }: BetSizeDistributionProps) => {
+export const BetSizeDistribution = ({
+  sizes = [],
+  title,
+}: BetSizeDistributionProps) => {
   const data = useMemo(() => buildDistribution(sizes), [sizes]);
 
   const median = useMemo(() => {
     if (!sizes.length) return 0;
     const sorted = [...sizes].sort((a, b) => a - b);
     const mid = Math.floor(sorted.length / 2);
-    return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+    return sorted.length % 2
+      ? sorted[mid]
+      : (sorted[mid - 1] + sorted[mid]) / 2;
   }, [sizes]);
 
   if (!sizes.length) {
@@ -90,7 +95,10 @@ export const BetSizeDistribution = ({ sizes, title }: BetSizeDistributionProps) 
         </span>
       </div>
       <ResponsiveContainer width="100%" height={200}>
-        <AreaChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -20 }}>
+        <AreaChart
+          data={data}
+          margin={{ top: 8, right: 8, bottom: 0, left: -20 }}
+        >
           <defs>
             <linearGradient id="betSizeGrad" x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%" stopColor="#ffffff" stopOpacity={0.25} />

@@ -1,0 +1,312 @@
+import { useState, useMemo, useEffect } from "react";
+import { FilterGroup } from "@/components/FilterGroup";
+import { BetSizeDistribution } from "@/components/BetSizeDistribution";
+import { getLineAnalysisFlop, type LineAnalysisFlopResponse } from "@/api";
+import type {
+  DateRangeFilter,
+  ActionLine as ActionLineType,
+  LineActionItem,
+} from "@/models";
+import { useToggleFilter } from "@/hooks/useToggleFilter";
+import {
+  potTypeOptions,
+  boardTypeOptions,
+  positionOptions,
+  roleOptions,
+} from "@/common/filterOptions";
+import { ActionLine } from "./components/ActionLine";
+import { StreetStatsPanel } from "./components/StreetStatsPanel";
+import { EvPanel } from "./components/EvPanel";
+
+const ACTION_LABELS: Record<string, string> = {
+  X: "Check",
+  B: "Bet",
+  C: "Call",
+  R: "Raise",
+  F: "Fold",
+};
+
+const UNCAPPED_BET_SIZE = 999;
+
+function buildActionLabel(
+  actor: "hero" | "villain" | "",
+  action: string,
+  sizeRange?: [number, number],
+): string {
+  const actorStr = actor === "hero" ? "Hero" : "Villain";
+  const actionStr = ACTION_LABELS[action] || action;
+  if (sizeRange) {
+    if (sizeRange[1] >= UNCAPPED_BET_SIZE) {
+      return `${actorStr} ${actionStr} ${sizeRange[0]}%+`;
+    }
+    return `${actorStr} ${actionStr} ${sizeRange[0]}-${sizeRange[1]}%`;
+  }
+  return `${actorStr} ${actionStr}`;
+}
+
+function actionToPrefix(lineAction: LineActionItem): string {
+  if (lineAction.sizeRange) {
+    if (lineAction.sizeRange[1] >= UNCAPPED_BET_SIZE) {
+      return `${lineAction.action}${lineAction.sizeRange[0]}+`;
+    }
+    return `${lineAction.action}${lineAction.sizeRange[0]}-${lineAction.sizeRange[1]}`;
+  }
+  return lineAction.action;
+}
+
+const BOARD_TYPE_MAP = {
+  monotone: "MONOTONE" as const,
+  twoTone: "TWO_TONE" as const,
+  rainbow: "RAINBOW" as const,
+};
+
+const POT_TYPE_MAP = {
+  SRP: "SRP" as const,
+  THREE_BET: "THREE_BET" as const,
+  FOUR_BET: "FOUR_BET" as const,
+};
+
+const INITIAL_BOARD_TYPE_FILTERS = {
+  monotone: false,
+  twoTone: false,
+  rainbow: false,
+};
+
+const INITIAL_POT_TYPE_FILTERS = {
+  SRP: false,
+  THREE_BET: false,
+  FOUR_BET: false,
+};
+
+const EMPTY_RESPONSE: LineAnalysisFlopResponse = {
+  hand_count: 0,
+  street_stats: {
+    cbet_pct: 0,
+    fold_to_cbet_pct: 0,
+    raise_to_cbet_pct: 0,
+    fold_to_cbet_raise_pct: 0,
+    donk_bet_pct: 0,
+    fold_to_donk_pct: 0,
+    raise_to_donk_pct: 0,
+    fold_to_donk_raise_pct: 0,
+  },
+  ev_stats: {
+    overall_ev: 0,
+    next_actions: [],
+  },
+  bet_sizes: [],
+  next_actor: "villain" as const,
+  action_depth: 0,
+};
+
+interface Props {
+  dateRange: DateRangeFilter;
+}
+
+export const LineAnalyserView = ({ dateRange }: Props) => {
+  const [position, setPosition] = useState<string>("ip");
+  const [role, setRole] = useState<string>("pfr");
+  const [boardTypeFilters, toggleBoard, activeBoards] = useToggleFilter(
+    INITIAL_BOARD_TYPE_FILTERS,
+    BOARD_TYPE_MAP,
+  );
+  const [potTypeFilters, togglePot, activePots] = useToggleFilter(
+    INITIAL_POT_TYPE_FILTERS,
+    POT_TYPE_MAP,
+  );
+  const [data, setData] = useState<LineAnalysisFlopResponse>(EMPTY_RESPONSE);
+
+  const [actionLine, setActionLine] = useState<ActionLineType>({
+    actions: [],
+    cursor: 0,
+  });
+
+  const resetLine = () => {
+    setActionLine({
+      actions: [],
+      cursor: 0,
+    });
+  };
+
+  const actionPrefix = useMemo(() => {
+    if (actionLine.cursor === 0 || actionLine.actions.length === 0)
+      return undefined;
+    if (actionLine.cursor > actionLine.actions.length) return undefined;
+    return actionLine.actions.slice(0, actionLine.cursor).map(actionToPrefix);
+  }, [actionLine]);
+
+  useEffect(() => {
+    const fetchLineData = async () => {
+      const result = await getLineAnalysisFlop(
+        position === "ip",
+        role === "pfr",
+        activeBoards,
+        activePots,
+        actionPrefix,
+        dateRange.startDate,
+        dateRange.endDate,
+      );
+      setData(result);
+    };
+
+    fetchLineData();
+  }, [position, role, activeBoards, activePots, actionPrefix, dateRange]);
+
+  const handleActionClick = (action: string, sizeRange?: [number, number]) => {
+    const actor = data.next_actor;
+    if (!actor) return;
+    const newAction: LineActionItem = {
+      actor,
+      action,
+      sizeRange,
+      label: buildActionLabel(actor, action, sizeRange),
+    };
+
+    setActionLine((prev) => {
+      const trimmed = prev.actions.slice(0, prev.cursor);
+      return {
+        ...prev,
+        actions: [...trimmed, newAction],
+        cursor: prev.cursor + 1,
+      };
+    });
+  };
+
+  const handleClickTag = (index: number) => {
+    setActionLine((prev) => ({
+      ...prev,
+      cursor: index,
+    }));
+  };
+
+  const handleRemoveLast = () => {
+    setActionLine((prev) => ({
+      ...prev,
+      actions: prev.actions.slice(0, -1),
+      cursor: Math.min(prev.cursor, prev.actions.length - 1),
+    }));
+  };
+
+  const handleClickFlop = () => {
+    setActionLine((prev) => ({
+      ...prev,
+      cursor: 0,
+    }));
+  };
+
+  const handlePositionChange = (key: string) => {
+    setPosition(key);
+    resetLine();
+  };
+
+  const handleRoleChange = (key: string) => {
+    setRole(key);
+    resetLine();
+  };
+
+  const betSizeTitle = useMemo(() => {
+    const heroIsOop = position === "oop";
+    const nextActor = data.next_actor;
+    const isHeroNextToAct = nextActor === "hero";
+    const actorName = isHeroNextToAct ? "Hero" : "Villain";
+
+    const depth = actionLine.cursor;
+    let actionType = "";
+
+    if (depth === 0) {
+      actionType = isHeroNextToAct && heroIsOop ? "Donk Bet" : "C-Bet";
+      if (isHeroNextToAct && !heroIsOop) actionType = "C-Bet";
+      if (!isHeroNextToAct && heroIsOop) actionType = "C-Bet";
+      if (!isHeroNextToAct && !heroIsOop) actionType = "Donk Bet";
+    } else {
+      const lastAction = actionLine.actions[depth - 1];
+      if (lastAction?.action === "X") {
+        actionType = isHeroNextToAct && heroIsOop ? "Donk Bet" : "C-Bet";
+        if (isHeroNextToAct && !heroIsOop) actionType = "C-Bet";
+        if (!isHeroNextToAct && heroIsOop) actionType = "C-Bet";
+        if (!isHeroNextToAct && !heroIsOop) actionType = "Donk Bet";
+      } else if (
+        lastAction?.action === "B" ||
+        lastAction?.action.startsWith("B")
+      ) {
+        actionType = "Raise";
+      } else if (
+        lastAction?.action === "R" ||
+        lastAction?.action.startsWith("R")
+      ) {
+        actionType = "Raise";
+      }
+    }
+
+    return `${actorName} ${actionType} Size Distribution`;
+  }, [position, data.next_actor, actionLine]);
+
+  return (
+    <div className="p-8 h-full content-start flex flex-col gap-6">
+      {/* General filters */}
+      <div className="flex flex-col gap-3">
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
+          General
+        </span>
+        <div className="flex flex-wrap items-end gap-4">
+          <FilterGroup
+            options={positionOptions(position)}
+            onToggle={handlePositionChange}
+          />
+          <FilterGroup
+            options={roleOptions(role)}
+            onToggle={handleRoleChange}
+          />
+          <FilterGroup
+            options={potTypeOptions(potTypeFilters)}
+            onToggle={togglePot}
+          />
+        </div>
+      </div>
+
+      {/* Flop filters */}
+      <div className="flex flex-col gap-3">
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
+          Flop
+        </span>
+        <div className="flex flex-wrap items-end gap-4">
+          <FilterGroup
+            options={boardTypeOptions(boardTypeFilters)}
+            onToggle={toggleBoard}
+          />
+        </div>
+      </div>
+
+      {/* Action line tags */}
+      <ActionLine
+        actionLine={actionLine}
+        onClickFlop={handleClickFlop}
+        onClickTag={handleClickTag}
+        onRemoveLast={handleRemoveLast}
+      />
+
+      {/* Divider */}
+      <div className="border-t border-border" />
+
+      {/* Row 1: Street Stats + EV Panel */}
+      <div className="grid gap-4 md:grid-cols-2 max-w-5xl">
+        <StreetStatsPanel
+          stats={{ hand_count: data.hand_count, ...data.street_stats }}
+          isPfr={role === "pfr"}
+        />
+        <EvPanel
+          nextActor={data.next_actor}
+          overallEv={data.ev_stats.overall_ev}
+          handCount={data.hand_count}
+          nextActions={data.ev_stats.next_actions}
+          onActionClick={handleActionClick}
+        />
+      </div>
+
+      {/* Row 2: Bet size distribution */}
+      <div className="max-w-5xl">
+        <BetSizeDistribution sizes={data.bet_sizes} title={betSizeTitle} />
+      </div>
+    </div>
+  );
+};
