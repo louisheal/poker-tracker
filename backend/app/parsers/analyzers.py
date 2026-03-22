@@ -623,6 +623,16 @@ def analyze_line(ctx: HandContext) -> LineEvent | None:
 	if ast.river and pot_at_river_bb > 0:
 		river_actions_detailed, _ = _build_street_actions(ast.river.actions, pot_at_river_bb)
 
+	hero_hand = [ast.hero_hole_cards.fst_card.to_json(), ast.hero_hole_cards.snd_card.to_json()] if ast.hero_hole_cards else None
+	villain_hand = None
+	for player, cards in ast.shown_cards.items():
+		if player != "Hero":
+			villain_hand = [cards.fst_card.to_json(), cards.snd_card.to_json()]
+			break
+	flop_cards = [c.to_json() for c in ast.flop.cards] if ast.flop else []
+	turn_card = ast.turn.cards[0].to_json() if ast.turn else None
+	river_card = ast.river.cards[0].to_json() if ast.river else None
+
 	event = LineEvent(
 		played_on=ast.played_on,
 		pot_type=ctx.pot_type,
@@ -649,6 +659,11 @@ def analyze_line(ctx: HandContext) -> LineEvent | None:
 		donk_bet_size_pct=donk_size,
 		fold_to_cbet_raise=_analyze_fold_to_raise(flop_actions, hero_is_pfr, is_cbet=True),
 		fold_to_donk_raise=_analyze_fold_to_raise(flop_actions, hero_is_pfr, is_cbet=False),
+		hero_hand=hero_hand,
+		villain_hand=villain_hand,
+		flop_cards=flop_cards,
+		turn_card=turn_card,
+		river_card=river_card,
 	)
 
 	return event

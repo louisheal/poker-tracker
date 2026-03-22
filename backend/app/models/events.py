@@ -89,6 +89,11 @@ class LineEvent:
 	donk_bet_size_pct: float | None = None
 	fold_to_cbet_raise: bool = False
 	fold_to_donk_raise: bool = False
+	hero_hand: list[dict] | None = None
+	villain_hand: list[dict] | None = None
+	flop_cards: list[dict] = field(default_factory=list)
+	turn_card: dict | None = None
+	river_card: dict | None = None
 
 
 @dataclass

@@ -118,6 +118,8 @@ class LineEvents:
 				"turn_available": False,
 				"turn_complete": on_river,
 				"river_available": False,
+				"top_wins": [],
+				"top_losses": [],
 			}
 
 		n = len(events)
@@ -158,6 +160,11 @@ class LineEvents:
 		turn_complete = on_turn and not on_river and next_actions == [] and any(e.river_actions for e in events)
 		river_available = any(e.river_actions for e in events)
 
+		TOP_N = 5
+		sorted_by_pnl = sorted(events, key=lambda e: e.hero_pnl_bb, reverse=True)
+		top_wins = [self._build_hand_result(e) for e in sorted_by_pnl[:TOP_N]]
+		top_losses = [self._build_hand_result(e) for e in sorted_by_pnl[-TOP_N:][::-1]]
+
 		return {
 			"hand_count": n,
 			"street": street,
@@ -173,6 +180,18 @@ class LineEvents:
 			"turn_available": turn_available,
 			"turn_complete": turn_complete or on_river,
 			"river_available": river_available,
+			"top_wins": top_wins,
+			"top_losses": top_losses,
+		}
+
+	def _build_hand_result(self, e: LineEvent) -> dict:
+		return {
+			"pnl_bb": round(e.hero_pnl_bb, 2),
+			"hero_hand": e.hero_hand,
+			"villain_hand": e.villain_hand,
+			"flop": e.flop_cards,
+			"turn_card": e.turn_card,
+			"river_card": e.river_card,
 		}
 
 	def _filter_by_street_prefix(self, events: list[LineEvent], street: str, prefix: list[str]) -> list[LineEvent]:

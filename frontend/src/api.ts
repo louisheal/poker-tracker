@@ -209,6 +209,20 @@ export interface NextAction {
   count: number;
 }
 
+export interface CardJson {
+  Rank: string;
+  Suit: string;
+}
+
+export interface HandResult {
+  pnl_bb: number;
+  hero_hand: CardJson[] | null;
+  villain_hand: CardJson[] | null;
+  flop: CardJson[];
+  turn_card: CardJson | null;
+  river_card: CardJson | null;
+}
+
 export interface LineAnalysisResponse {
   hand_count: number;
   street: "flop" | "turn" | "river";
@@ -224,6 +238,8 @@ export interface LineAnalysisResponse {
   turn_available: boolean;
   turn_complete: boolean;
   river_available: boolean;
+  top_wins: HandResult[];
+  top_losses: HandResult[];
 }
 
 export const getLineAnalysis = async (
