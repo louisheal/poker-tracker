@@ -209,18 +209,10 @@ export interface NextAction {
   count: number;
 }
 
-export interface LineAnalysisFlopResponse {
+export interface LineAnalysisResponse {
   hand_count: number;
-  street_stats: {
-    cbet_pct: number;
-    fold_to_cbet_pct: number;
-    raise_to_cbet_pct: number;
-    fold_to_cbet_raise_pct: number;
-    donk_bet_pct: number;
-    fold_to_donk_pct: number;
-    raise_to_donk_pct: number;
-    fold_to_donk_raise_pct: number;
-  };
+  street: "flop" | "turn";
+  street_stats: Record<string, number>;
   ev_stats: {
     overall_ev: number;
     next_actions: NextAction[];
@@ -228,17 +220,20 @@ export interface LineAnalysisFlopResponse {
   bet_sizes: number[];
   next_actor: "hero" | "villain" | "";
   action_depth: number;
+  flop_complete: boolean;
+  turn_available: boolean;
 }
 
-export const getLineAnalysisFlop = async (
+export const getLineAnalysis = async (
   heroInPosition: boolean,
   heroPfr: boolean,
   boardTypes: BoardTypeFilter[],
   potTypes: PotTypeFilter[],
   actions?: string[],
+  turnRunouts?: TurnRunoutFilter[],
   startDate?: string,
   endDate?: string,
-): Promise<LineAnalysisFlopResponse> => {
+): Promise<LineAnalysisResponse> => {
   const params = new URLSearchParams();
   params.append("hero_in_position", String(heroInPosition));
   params.append("hero_preflop_raiser", String(heroPfr));
@@ -253,6 +248,11 @@ export const getLineAnalysisFlop = async (
       params.append("actions", a);
     }
   }
+  if (turnRunouts) {
+    for (const value of turnRunouts) {
+      params.append("turn_runouts", value);
+    }
+  }
   if (startDate) {
     params.append("start_date", startDate);
   }
@@ -260,7 +260,7 @@ export const getLineAnalysisFlop = async (
     params.append("end_date", endDate);
   }
   const response = await fetch(
-    `http://localhost:8000/line-analysis/flop?${params}`,
+    `http://localhost:8000/line-analysis?${params}`,
   );
   return response.json();
 };

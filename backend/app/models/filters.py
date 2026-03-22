@@ -28,11 +28,13 @@ class LineFilter:
 		hero_preflop_raiser: bool | None = None,
 		pot_types: list[PotType] | None = None,
 		board_types: list[BoardType] | None = None,
+		turn_runouts: list[Runout] | None = None,
 	):
 		self.hero_in_position = hero_in_position
 		self.hero_preflop_raiser = hero_preflop_raiser
 		self.pot_types = pot_types if pot_types is not None else list(PotType)
 		self.board_types = board_types if board_types is not None else list(BoardType)
+		self.turn_runouts = turn_runouts
 
 
 class TurnFilter:

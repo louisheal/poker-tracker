@@ -56,7 +56,7 @@ class FlopEvent:
 
 
 @dataclass
-class FlopAction:
+class StreetAction:
 	actor: str
 	action: str
 	size_pct: float | None = None
@@ -72,7 +72,10 @@ class LineEvent:
 	hero_pnl_bb: float
 	hero_preflop_invested_bb: float
 	pot_at_flop_bb: float
-	flop_actions: list[FlopAction] = field(default_factory=list)
+	flop_actions: list[StreetAction] = field(default_factory=list)
+	turn_actions: list[StreetAction] = field(default_factory=list)
+	turn_runout: Runout | None = None
+	pot_at_turn_bb: float = 0.0
 	cbet: bool = False
 	fold_to_cbet: bool = False
 	raise_to_cbet: bool = False

@@ -1,4 +1,4 @@
-from .events import FlopEvent, LineEvent, TurnEvent, RiverEvent, FlopAction
+from .events import FlopEvent, LineEvent, TurnEvent, RiverEvent
 from .filters import FlopFilter, LineFilter, TurnFilter, RiverFilter
 from .enums import ActionSequence
 
@@ -69,71 +69,71 @@ class LineEvents:
 			events = [e for e in events if e.hero_preflop_raiser == f.hero_preflop_raiser]
 		events = [e for e in events if e.pot_type in f.pot_types]
 		events = [e for e in events if e.board_type in f.board_types]
+		if f.turn_runouts is not None:
+			events = [e for e in events if e.turn_runout in f.turn_runouts]
 		return events
 
-	def flop_spot_stats(self, f: LineFilter, action_prefix: list[str] | None = None):
+	def spot_stats(self, f: LineFilter, flop_actions: list[str] | None = None, turn_actions: list[str] | None = None):
 		events = self._filter(f)
 
-		# Filter by action prefix if provided
-		if action_prefix:
-			events = self._filter_by_action_prefix(events, action_prefix)
+		if flop_actions:
+			events = self._filter_by_street_prefix(events, "flop", flop_actions)
+
+		on_turn = turn_actions is not None
+		if on_turn:
+			events = [e for e in events if e.turn_actions]
+			if turn_actions:
+				events = self._filter_by_street_prefix(events, "turn", turn_actions)
 
 		if not events:
 			return {
 				"hand_count": 0,
-				"street_stats": self._empty_street_stats(),
+				"street": "turn" if on_turn else "flop",
+				"street_stats": self._empty_turn_stats() if on_turn else self._empty_flop_stats(),
 				"ev_stats": self._empty_ev_stats(),
 				"bet_sizes": [],
 				"next_actor": None,
-				"action_depth": len(action_prefix) if action_prefix else 0,
+				"action_depth": len(turn_actions or flop_actions or []),
+				"flop_complete": on_turn,
+				"turn_available": False,
 			}
 
 		n = len(events)
-		depth = len(action_prefix) if action_prefix else 0
 
-		# Street stats (always computed from full filtered set)
-		cbet_events = [e for e in events if e.cbet]
-		donk_events = [e for e in events if e.donk_bet]
-		cbet_pct = (len(cbet_events) / n) * 100 if n else 0
-		donk_pct = (len(donk_events) / n) * 100 if n else 0
-		fold_to_cbet_pct = (sum(1 for e in cbet_events if e.fold_to_cbet) / len(cbet_events) * 100) if cbet_events else 0
-		raise_to_cbet_pct = (sum(1 for e in cbet_events if e.raise_to_cbet) / len(cbet_events) * 100) if cbet_events else 0
-		fold_to_cbet_raise_pct = (sum(1 for e in cbet_events if e.fold_to_cbet_raise) / max(1, sum(1 for e in cbet_events if e.raise_to_cbet)) * 100) if cbet_events else 0
-		fold_to_donk_pct = (sum(1 for e in donk_events if e.fold_to_donk_bet) / len(donk_events) * 100) if donk_events else 0
-		raise_to_donk_pct = (sum(1 for e in donk_events if e.raise_to_donk_bet) / len(donk_events) * 100) if donk_events else 0
-		fold_to_donk_raise_pct = (sum(1 for e in donk_events if e.fold_to_donk_raise) / max(1, sum(1 for e in donk_events if e.raise_to_donk_bet)) * 100) if donk_events else 0
+		if on_turn:
+			depth = len(turn_actions) if turn_actions else 0
+			street_stats = self._compute_turn_stats(events)
+			actions_attr = "turn_actions"
+		else:
+			depth = len(flop_actions) if flop_actions else 0
+			street_stats = self._compute_flop_stats(events)
+			actions_attr = "flop_actions"
 
-		# Dynamic next actions at current depth
-		next_actions = self._compute_next_actions(events, depth)
-		overall_ev = (sum(e.hero_pnl_bb for e in events) / n) if n else 0
+		next_actions = self._compute_next_actions(events, depth, actions_attr)
+		overall_ev = sum(e.hero_pnl_bb for e in events) / n
 
-		# Determine next actor
 		next_actor = None
 		for e in events:
-			if depth < len(e.flop_actions):
-				next_actor = e.flop_actions[depth].actor
+			actions = getattr(e, actions_attr)
+			if depth < len(actions):
+				next_actor = actions[depth].actor
 				break
 
-		# Bet sizes for next actor's bets
 		bet_sizes = []
 		for e in events:
-			if depth < len(e.flop_actions):
-				a = e.flop_actions[depth]
+			actions = getattr(e, actions_attr)
+			if depth < len(actions):
+				a = actions[depth]
 				if a.action in ("B", "R") and a.size_pct is not None:
 					bet_sizes.append(a.size_pct)
 
+		flop_complete = not on_turn and next_actions == [] and any(e.turn_actions for e in events)
+		turn_available = any(e.turn_actions for e in events)
+
 		return {
 			"hand_count": n,
-			"street_stats": {
-				"cbet_pct": cbet_pct,
-				"fold_to_cbet_pct": fold_to_cbet_pct,
-				"raise_to_cbet_pct": raise_to_cbet_pct,
-				"fold_to_cbet_raise_pct": fold_to_cbet_raise_pct,
-				"donk_bet_pct": donk_pct,
-				"fold_to_donk_pct": fold_to_donk_pct,
-				"raise_to_donk_pct": raise_to_donk_pct,
-				"fold_to_donk_raise_pct": fold_to_donk_raise_pct,
-			},
+			"street": "turn" if on_turn else "flop",
+			"street_stats": street_stats,
 			"ev_stats": {
 				"overall_ev": overall_ev,
 				"next_actions": next_actions,
@@ -141,20 +141,20 @@ class LineEvents:
 			"bet_sizes": [round(s, 1) for s in bet_sizes],
 			"next_actor": next_actor,
 			"action_depth": depth,
+			"flop_complete": flop_complete or on_turn,
+			"turn_available": turn_available,
 		}
 
-	def _filter_by_action_prefix(self, events: list[LineEvent], prefix: list[str]) -> list[LineEvent]:
-		"""Filter events whose flop_actions match the given action prefix.
-		
-		Each prefix entry is: "X", "F", "C", or "Bmin-max" / "Rmin-max" for sized actions.
-		"""
+	def _filter_by_street_prefix(self, events: list[LineEvent], street: str, prefix: list[str]) -> list[LineEvent]:
+		actions_attr = "flop_actions" if street == "flop" else "turn_actions"
 		result = []
 		for e in events:
-			if len(e.flop_actions) < len(prefix):
+			actions = getattr(e, actions_attr)
+			if len(actions) < len(prefix):
 				continue
 			match = True
 			for i, p in enumerate(prefix):
-				a = e.flop_actions[i]
+				a = actions[i]
 				if p in ("X", "F", "C"):
 					if a.action != p:
 						match = False
@@ -164,7 +164,6 @@ class LineEvents:
 					if a.action != expected_action:
 						match = False
 						break
-					# Parse size range (e.g. "B40-80" or "B200+")
 					size_part = p[1:]
 					if size_part and a.size_pct is not None:
 						if size_part.endswith("+"):
@@ -186,6 +185,58 @@ class LineEvents:
 				result.append(e)
 		return result
 
+	def _compute_flop_stats(self, events: list[LineEvent]) -> dict:
+		n = len(events)
+		cbet_events = [e for e in events if e.cbet]
+		donk_events = [e for e in events if e.donk_bet]
+		cbet_pct = (len(cbet_events) / n) * 100 if n else 0
+		donk_pct = (len(donk_events) / n) * 100 if n else 0
+		fold_to_cbet_pct = (sum(1 for e in cbet_events if e.fold_to_cbet) / len(cbet_events) * 100) if cbet_events else 0
+		raise_to_cbet_pct = (sum(1 for e in cbet_events if e.raise_to_cbet) / len(cbet_events) * 100) if cbet_events else 0
+		fold_to_cbet_raise_pct = (sum(1 for e in cbet_events if e.fold_to_cbet_raise) / max(1, sum(1 for e in cbet_events if e.raise_to_cbet)) * 100) if cbet_events else 0
+		fold_to_donk_pct = (sum(1 for e in donk_events if e.fold_to_donk_bet) / len(donk_events) * 100) if donk_events else 0
+		raise_to_donk_pct = (sum(1 for e in donk_events if e.raise_to_donk_bet) / len(donk_events) * 100) if donk_events else 0
+		fold_to_donk_raise_pct = (sum(1 for e in donk_events if e.fold_to_donk_raise) / max(1, sum(1 for e in donk_events if e.raise_to_donk_bet)) * 100) if donk_events else 0
+
+		return {
+			"cbet_pct": cbet_pct,
+			"fold_to_cbet_pct": fold_to_cbet_pct,
+			"raise_to_cbet_pct": raise_to_cbet_pct,
+			"fold_to_cbet_raise_pct": fold_to_cbet_raise_pct,
+			"donk_bet_pct": donk_pct,
+			"fold_to_donk_pct": fold_to_donk_pct,
+			"raise_to_donk_pct": raise_to_donk_pct,
+			"fold_to_donk_raise_pct": fold_to_donk_raise_pct,
+		}
+
+	def _compute_turn_stats(self, events: list[LineEvent]) -> dict:
+		n = len(events)
+		hero_bet_events = [e for e in events if e.turn_actions and any(a.actor == "hero" and a.action == "B" for a in e.turn_actions)]
+		villain_bet_events = [e for e in events if e.turn_actions and any(a.actor == "villain" and a.action == "B" for a in e.turn_actions)]
+		hero_bet_pct = (len(hero_bet_events) / n) * 100 if n else 0
+		villain_bet_pct = (len(villain_bet_events) / n) * 100 if n else 0
+
+		villain_fold_to_hero_bet_pct = 0
+		villain_raise_to_hero_bet_pct = 0
+		if hero_bet_events:
+			villain_fold_to_hero_bet_pct = sum(1 for e in hero_bet_events if any(a.actor == "villain" and a.action == "F" for a in e.turn_actions)) / len(hero_bet_events) * 100
+			villain_raise_to_hero_bet_pct = sum(1 for e in hero_bet_events if any(a.actor == "villain" and a.action == "R" for a in e.turn_actions)) / len(hero_bet_events) * 100
+
+		hero_fold_to_villain_bet_pct = 0
+		hero_raise_to_villain_bet_pct = 0
+		if villain_bet_events:
+			hero_fold_to_villain_bet_pct = sum(1 for e in villain_bet_events if any(a.actor == "hero" and a.action == "F" for a in e.turn_actions)) / len(villain_bet_events) * 100
+			hero_raise_to_villain_bet_pct = sum(1 for e in villain_bet_events if any(a.actor == "hero" and a.action == "R" for a in e.turn_actions)) / len(villain_bet_events) * 100
+
+		return {
+			"hero_bet_pct": hero_bet_pct,
+			"villain_fold_to_hero_bet_pct": villain_fold_to_hero_bet_pct,
+			"villain_raise_to_hero_bet_pct": villain_raise_to_hero_bet_pct,
+			"villain_bet_pct": villain_bet_pct,
+			"hero_fold_to_villain_bet_pct": hero_fold_to_villain_bet_pct,
+			"hero_raise_to_villain_bet_pct": hero_raise_to_villain_bet_pct,
+		}
+
 	BET_SIZE_BINS = [(0, 50), (50, 100), (100, 200)]
 
 	ACTION_ORDER = ["X", "B0-50", "B50-100", "B100-200", "B200+",
@@ -197,13 +248,12 @@ class LineEvents:
 		except ValueError:
 			return len(self.ACTION_ORDER)
 
-	def _compute_next_actions(self, events: list[LineEvent], depth: int) -> list[dict]:
-		"""Compute EV and count for each possible next action at the given depth.
-		Bet/Raise actions are split into size buckets."""
+	def _compute_next_actions(self, events: list[LineEvent], depth: int, actions_attr: str = "flop_actions") -> list[dict]:
 		action_groups: dict[str, list[float]] = {}
 		for e in events:
-			if depth < len(e.flop_actions):
-				a = e.flop_actions[depth]
+			actions = getattr(e, actions_attr)
+			if depth < len(actions):
+				a = actions[depth]
 				if a.action in ("B", "R") and a.size_pct is not None:
 					# Bucket by size range
 					placed = False
@@ -230,8 +280,11 @@ class LineEvents:
 			})
 		return result
 
-	def _empty_street_stats(self):
+	def _empty_flop_stats(self):
 		return {k: 0 for k in ["cbet_pct", "fold_to_cbet_pct", "raise_to_cbet_pct", "fold_to_cbet_raise_pct", "donk_bet_pct", "fold_to_donk_pct", "raise_to_donk_pct", "fold_to_donk_raise_pct"]}
+
+	def _empty_turn_stats(self):
+		return {k: 0 for k in ["hero_bet_pct", "villain_fold_to_hero_bet_pct", "villain_raise_to_hero_bet_pct", "villain_bet_pct", "hero_fold_to_villain_bet_pct", "hero_raise_to_villain_bet_pct"]}
 
 	def _empty_ev_stats(self):
 		return {"overall_ev": 0, "next_actions": []}

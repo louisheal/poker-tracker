@@ -105,8 +105,28 @@ export interface ActionLine {
 }
 
 export interface LineActionItem {
-  actor: "hero" | "villain";
+  actor: "hero" | "villain" | "marker";
   action: string;
   sizeRange?: [number, number];
   label: string;
+}
+
+export interface FlopStreetStats {
+  cbet_pct: number;
+  fold_to_cbet_pct: number;
+  raise_to_cbet_pct: number;
+  fold_to_cbet_raise_pct: number;
+  donk_bet_pct: number;
+  fold_to_donk_pct: number;
+  raise_to_donk_pct: number;
+  fold_to_donk_raise_pct: number;
+}
+
+export interface TurnStreetStats {
+  hero_bet_pct: number;
+  villain_fold_to_hero_bet_pct: number;
+  villain_raise_to_hero_bet_pct: number;
+  villain_bet_pct: number;
+  hero_fold_to_villain_bet_pct: number;
+  hero_raise_to_villain_bet_pct: number;
 }

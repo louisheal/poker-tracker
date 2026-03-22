@@ -1,11 +1,12 @@
 import { useState, useMemo, useEffect } from "react";
 import { FilterGroup } from "@/components/FilterGroup";
 import { BetSizeDistribution } from "@/components/BetSizeDistribution";
-import { getLineAnalysisFlop, type LineAnalysisFlopResponse } from "@/api";
+import { getLineAnalysis, type LineAnalysisResponse } from "@/api";
 import type {
   DateRangeFilter,
   ActionLine as ActionLineType,
   LineActionItem,
+  TurnRunoutFilter,
 } from "@/models";
 import { useToggleFilter } from "@/hooks/useToggleFilter";
 import {
@@ -13,6 +14,7 @@ import {
   boardTypeOptions,
   positionOptions,
   roleOptions,
+  turnRunoutOptions,
 } from "@/common/filterOptions";
 import { ActionLine } from "./components/ActionLine";
 import { StreetStatsPanel } from "./components/StreetStatsPanel";
@@ -27,6 +29,7 @@ const ACTION_LABELS: Record<string, string> = {
 };
 
 const UNCAPPED_BET_SIZE = 999;
+const TURN_MARKER = "TURN";
 
 function buildActionLabel(
   actor: "hero" | "villain" | "",
@@ -45,6 +48,7 @@ function buildActionLabel(
 }
 
 function actionToPrefix(lineAction: LineActionItem): string {
+  if (lineAction.actor === "marker") return lineAction.action;
   if (lineAction.sizeRange) {
     if (lineAction.sizeRange[1] >= UNCAPPED_BET_SIZE) {
       return `${lineAction.action}${lineAction.sizeRange[0]}+`;
@@ -66,6 +70,13 @@ const POT_TYPE_MAP = {
   FOUR_BET: "FOUR_BET" as const,
 };
 
+const TURN_RUNOUT_MAP = {
+  OVERCARD: "OVERCARD" as const,
+  FLUSH_COMPLETING: "FLUSH_COMPLETING" as const,
+  PAIRED: "PAIRED" as const,
+  OTHER: "OTHER" as const,
+};
+
 const INITIAL_BOARD_TYPE_FILTERS = {
   monotone: false,
   twoTone: false,
@@ -78,18 +89,17 @@ const INITIAL_POT_TYPE_FILTERS = {
   FOUR_BET: false,
 };
 
-const EMPTY_RESPONSE: LineAnalysisFlopResponse = {
+const INITIAL_TURN_RUNOUT_FILTERS = {
+  OVERCARD: false,
+  FLUSH_COMPLETING: false,
+  PAIRED: false,
+  OTHER: false,
+};
+
+const EMPTY_RESPONSE: LineAnalysisResponse = {
   hand_count: 0,
-  street_stats: {
-    cbet_pct: 0,
-    fold_to_cbet_pct: 0,
-    raise_to_cbet_pct: 0,
-    fold_to_cbet_raise_pct: 0,
-    donk_bet_pct: 0,
-    fold_to_donk_pct: 0,
-    raise_to_donk_pct: 0,
-    fold_to_donk_raise_pct: 0,
-  },
+  street: "flop",
+  street_stats: {},
   ev_stats: {
     overall_ev: 0,
     next_actions: [],
@@ -97,6 +107,8 @@ const EMPTY_RESPONSE: LineAnalysisFlopResponse = {
   bet_sizes: [],
   next_actor: "villain" as const,
   action_depth: 0,
+  flop_complete: false,
+  turn_available: false,
 };
 
 interface Props {
@@ -114,12 +126,19 @@ export const LineAnalyserView = ({ dateRange }: Props) => {
     INITIAL_POT_TYPE_FILTERS,
     POT_TYPE_MAP,
   );
-  const [data, setData] = useState<LineAnalysisFlopResponse>(EMPTY_RESPONSE);
+  const [turnRunoutFilters, toggleTurnRunout, activeTurnRunouts] =
+    useToggleFilter(INITIAL_TURN_RUNOUT_FILTERS, TURN_RUNOUT_MAP);
+  const [data, setData] = useState<LineAnalysisResponse>(EMPTY_RESPONSE);
 
   const [actionLine, setActionLine] = useState<ActionLineType>({
     actions: [],
     cursor: 0,
   });
+
+  const isOnTurn = useMemo(
+    () => actionLine.actions.some((a) => a.action === TURN_MARKER),
+    [actionLine.actions],
+  );
 
   const resetLine = () => {
     setActionLine({
@@ -137,12 +156,16 @@ export const LineAnalyserView = ({ dateRange }: Props) => {
 
   useEffect(() => {
     const fetchLineData = async () => {
-      const result = await getLineAnalysisFlop(
+      const turnRunouts: TurnRunoutFilter[] | undefined = isOnTurn
+        ? activeTurnRunouts
+        : undefined;
+      const result = await getLineAnalysis(
         position === "ip",
         role === "pfr",
         activeBoards,
         activePots,
         actionPrefix,
+        turnRunouts,
         dateRange.startDate,
         dateRange.endDate,
       );
@@ -150,7 +173,16 @@ export const LineAnalyserView = ({ dateRange }: Props) => {
     };
 
     fetchLineData();
-  }, [position, role, activeBoards, activePots, actionPrefix, dateRange]);
+  }, [
+    position,
+    role,
+    activeBoards,
+    activePots,
+    actionPrefix,
+    dateRange,
+    isOnTurn,
+    activeTurnRunouts,
+  ]);
 
   const handleActionClick = (action: string, sizeRange?: [number, number]) => {
     const actor = data.next_actor;
@@ -167,6 +199,22 @@ export const LineAnalyserView = ({ dateRange }: Props) => {
       return {
         ...prev,
         actions: [...trimmed, newAction],
+        cursor: prev.cursor + 1,
+      };
+    });
+  };
+
+  const handleContinueToTurn = () => {
+    setActionLine((prev) => {
+      const trimmed = prev.actions.slice(0, prev.cursor);
+      const turnMarker: LineActionItem = {
+        actor: "marker",
+        action: TURN_MARKER,
+        label: "Turn",
+      };
+      return {
+        ...prev,
+        actions: [...trimmed, turnMarker],
         cursor: prev.cursor + 1,
       };
     });
@@ -241,6 +289,12 @@ export const LineAnalyserView = ({ dateRange }: Props) => {
     return `${actorName} ${actionType} Size Distribution`;
   }, [position, data.next_actor, actionLine]);
 
+  const showTurnTransition =
+    data.flop_complete &&
+    data.turn_available &&
+    data.ev_stats.next_actions.length === 0 &&
+    !isOnTurn;
+
   return (
     <div className="p-8 h-full content-start flex flex-col gap-6">
       {/* General filters */}
@@ -277,6 +331,19 @@ export const LineAnalyserView = ({ dateRange }: Props) => {
         </div>
       </div>
 
+      {/* Turn filters */}
+      <div className="flex flex-col gap-3">
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
+          Turn
+        </span>
+        <div className="flex flex-wrap items-end gap-4">
+          <FilterGroup
+            options={turnRunoutOptions(turnRunoutFilters)}
+            onToggle={toggleTurnRunout}
+          />
+        </div>
+      </div>
+
       {/* Action line tags */}
       <ActionLine
         actionLine={actionLine}
@@ -291,6 +358,7 @@ export const LineAnalyserView = ({ dateRange }: Props) => {
       {/* Row 1: Street Stats + EV Panel */}
       <div className="grid gap-4 md:grid-cols-2 max-w-5xl">
         <StreetStatsPanel
+          street={data.street}
           stats={{ hand_count: data.hand_count, ...data.street_stats }}
           isPfr={role === "pfr"}
         />
@@ -300,6 +368,8 @@ export const LineAnalyserView = ({ dateRange }: Props) => {
           handCount={data.hand_count}
           nextActions={data.ev_stats.next_actions}
           onActionClick={handleActionClick}
+          showTurnTransition={showTurnTransition}
+          onContinueToTurn={handleContinueToTurn}
         />
       </div>
 

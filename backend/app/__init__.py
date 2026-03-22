@@ -29,6 +29,6 @@ def create_app() -> FastAPI:
     app.include_router(turn.router, prefix="/turn")
     app.include_router(river.router, prefix="/river")
     app.include_router(volume.router, prefix="/hands/volume")
-    app.include_router(line_analysis.router, prefix="/line-analysis/flop")
+    app.include_router(line_analysis.router, prefix="/line-analysis")
 
     return app

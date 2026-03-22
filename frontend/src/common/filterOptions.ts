@@ -51,10 +51,10 @@ export const potTypeOptions = (filters: FilterState | string) =>
 export const turnRunoutOptions = (filters: FilterState | string) =>
   withActive(
     [
-      { key: "overcard", label: "OVERCARD" },
-      { key: "flushCompleting", label: "FLUSH" },
-      { key: "paired", label: "PAIRED" },
-      { key: "other", label: "OTHER" },
+      { key: "OVERCARD", label: "OVERCARD" },
+      { key: "FLUSH_COMPLETING", label: "FLUSH" },
+      { key: "PAIRED", label: "PAIRED" },
+      { key: "OTHER", label: "OTHER" },
     ],
     filters,
   );
