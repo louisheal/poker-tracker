@@ -21,9 +21,7 @@ export const StreetStatsPanel = ({ stats, isPfr }: Props) => (
       <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
         {isPfr ? "PFR" : "DEF"} — Flop Stats
       </h3>
-      <p className="text-xs text-muted-foreground">
-        {stats.hand_count} hands
-      </p>
+      <p className="text-xs text-muted-foreground">{stats.hand_count} hands</p>
     </div>
     {/* C-bet row */}
     <div className="grid grid-cols-4 gap-4">

@@ -1,17 +1,19 @@
 import { useState, useMemo, useEffect } from "react";
 import { FilterGroup } from "@/components/FilterGroup";
 import { BetSizeDistribution } from "@/components/BetSizeDistribution";
-import {
-  getLineAnalysisFlop,
-  type LineAnalysisFlopResponse,
-} from "@/api";
+import { getLineAnalysisFlop, type LineAnalysisFlopResponse } from "@/api";
 import type {
   DateRangeFilter,
   ActionLine as ActionLineType,
   LineActionItem,
 } from "@/models";
 import { useToggleFilter } from "@/hooks/useToggleFilter";
-import { potTypeOptions, boardTypeOptions, positionOptions, roleOptions } from "@/common/filterOptions";
+import {
+  potTypeOptions,
+  boardTypeOptions,
+  positionOptions,
+  roleOptions,
+} from "@/common/filterOptions";
 import { ActionLine } from "./components/ActionLine";
 import { StreetStatsPanel } from "./components/StreetStatsPanel";
 import { EvPanel } from "./components/EvPanel";
@@ -26,7 +28,11 @@ const ACTION_LABELS: Record<string, string> = {
 
 const UNCAPPED_BET_SIZE = 999;
 
-function buildActionLabel(actor: "hero" | "villain" | "", action: string, sizeRange?: [number, number]): string {
+function buildActionLabel(
+  actor: "hero" | "villain" | "",
+  action: string,
+  sizeRange?: [number, number],
+): string {
   const actorStr = actor === "hero" ? "Hero" : "Villain";
   const actionStr = ACTION_LABELS[action] || action;
   if (sizeRange) {
@@ -97,9 +103,7 @@ interface Props {
   dateRange: DateRangeFilter;
 }
 
-export const LineAnalyserView = ({
-  dateRange,
-}: Props) => {
+export const LineAnalyserView = ({ dateRange }: Props) => {
   const [position, setPosition] = useState<string>("ip");
   const [role, setRole] = useState<string>("pfr");
   const [boardTypeFilters, toggleBoard, activeBoards] = useToggleFilter(
@@ -125,7 +129,8 @@ export const LineAnalyserView = ({
   };
 
   const actionPrefix = useMemo(() => {
-    if (actionLine.cursor === 0 || actionLine.actions.length === 0) return undefined;
+    if (actionLine.cursor === 0 || actionLine.actions.length === 0)
+      return undefined;
     if (actionLine.cursor > actionLine.actions.length) return undefined;
     return actionLine.actions.slice(0, actionLine.cursor).map(actionToPrefix);
   }, [actionLine]);
@@ -133,15 +138,15 @@ export const LineAnalyserView = ({
   useEffect(() => {
     const fetchLineData = async () => {
       const result = await getLineAnalysisFlop(
-          position === "ip",
-          role === "pfr",
-          activeBoards,
-          activePots,
-          actionPrefix,
-          dateRange.startDate,
-          dateRange.endDate,
-        );
-        setData(result);
+        position === "ip",
+        role === "pfr",
+        activeBoards,
+        activePots,
+        actionPrefix,
+        dateRange.startDate,
+        dateRange.endDate,
+      );
+      setData(result);
     };
 
     fetchLineData();
@@ -204,10 +209,10 @@ export const LineAnalyserView = ({
     const nextActor = data.next_actor;
     const isHeroNextToAct = nextActor === "hero";
     const actorName = isHeroNextToAct ? "Hero" : "Villain";
-    
+
     const depth = actionLine.cursor;
     let actionType = "";
-    
+
     if (depth === 0) {
       actionType = isHeroNextToAct && heroIsOop ? "Donk Bet" : "C-Bet";
       if (isHeroNextToAct && !heroIsOop) actionType = "C-Bet";
@@ -220,13 +225,19 @@ export const LineAnalyserView = ({
         if (isHeroNextToAct && !heroIsOop) actionType = "C-Bet";
         if (!isHeroNextToAct && heroIsOop) actionType = "C-Bet";
         if (!isHeroNextToAct && !heroIsOop) actionType = "Donk Bet";
-      } else if (lastAction?.action === "B" || lastAction?.action.startsWith("B")) {
+      } else if (
+        lastAction?.action === "B" ||
+        lastAction?.action.startsWith("B")
+      ) {
         actionType = "Raise";
-      } else if (lastAction?.action === "R" || lastAction?.action.startsWith("R")) {
+      } else if (
+        lastAction?.action === "R" ||
+        lastAction?.action.startsWith("R")
+      ) {
         actionType = "Raise";
       }
     }
-    
+
     return `${actorName} ${actionType} Size Distribution`;
   }, [position, data.next_actor, actionLine]);
 
@@ -238,9 +249,18 @@ export const LineAnalyserView = ({
           General
         </span>
         <div className="flex flex-wrap items-end gap-4">
-          <FilterGroup options={positionOptions(position)} onToggle={handlePositionChange} />
-          <FilterGroup options={roleOptions(role)} onToggle={handleRoleChange} />
-          <FilterGroup options={potTypeOptions(potTypeFilters)} onToggle={togglePot} />
+          <FilterGroup
+            options={positionOptions(position)}
+            onToggle={handlePositionChange}
+          />
+          <FilterGroup
+            options={roleOptions(role)}
+            onToggle={handleRoleChange}
+          />
+          <FilterGroup
+            options={potTypeOptions(potTypeFilters)}
+            onToggle={togglePot}
+          />
         </div>
       </div>
 
@@ -250,7 +270,10 @@ export const LineAnalyserView = ({
           Flop
         </span>
         <div className="flex flex-wrap items-end gap-4">
-          <FilterGroup options={boardTypeOptions(boardTypeFilters)} onToggle={toggleBoard} />
+          <FilterGroup
+            options={boardTypeOptions(boardTypeFilters)}
+            onToggle={toggleBoard}
+          />
         </div>
       </div>
 

@@ -1,7 +1,13 @@
 import "./App.css";
 
 import { useEffect, useState } from "react";
-import { BarChart2, Grid2x2, TrendingUp, CircleDollarSign, Search } from "lucide-react";
+import {
+  BarChart2,
+  Grid2x2,
+  TrendingUp,
+  CircleDollarSign,
+  Search,
+} from "lucide-react";
 import { ThemeProvider } from "@/components/theme-provider";
 import { cn } from "@/lib/utils";
 import { RangeView } from "./tabs/ranges/RangeView";

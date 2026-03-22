@@ -24,7 +24,10 @@ function getActionLabel(action: string): string {
   return BET_ACTION_LABELS[action] || ACTION_LABELS[action] || action;
 }
 
-function parseActionKey(action: string): { base: string; sizeRange?: [number, number] } {
+function parseActionKey(action: string): {
+  base: string;
+  sizeRange?: [number, number];
+} {
   const match = action.match(/^([BRCXF])(\d+-\d+|\d+\+)?$/);
   if (!match) return { base: action };
   const base = match[1];
@@ -67,9 +70,7 @@ export const EvPanel = ({
         <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
           Expected Value
         </h3>
-        <span className="text-xs text-muted-foreground">
-          {handCount} hands
-        </span>
+        <span className="text-xs text-muted-foreground">{handCount} hands</span>
       </div>
 
       {/* Overall EV */}

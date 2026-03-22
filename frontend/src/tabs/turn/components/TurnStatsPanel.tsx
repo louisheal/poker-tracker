@@ -27,10 +27,7 @@ export const TurnStatsPanel = ({ title, stats }: Props) => {
           value={stats?.villain_raise_to_hero_bet_pct ?? 0}
           label="Villain Raise"
         />
-        <SpeedDial
-          value={stats?.villain_bet_pct ?? 0}
-          label="Villain Bet"
-        />
+        <SpeedDial value={stats?.villain_bet_pct ?? 0} label="Villain Bet" />
         <SpeedDial
           value={stats?.hero_fold_to_villain_bet_pct ?? 0}
           label="Hero Fold"

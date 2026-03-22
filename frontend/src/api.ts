@@ -96,7 +96,9 @@ export const getVillainBetSizes = async (
   if (endDate) {
     params.append("end_date", endDate);
   }
-  const response = await fetch(`http://localhost:8000/flop/bet-sizes?${params}`);
+  const response = await fetch(
+    `http://localhost:8000/flop/bet-sizes?${params}`,
+  );
   return response.json();
 };
 

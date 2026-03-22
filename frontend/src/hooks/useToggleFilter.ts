@@ -26,7 +26,9 @@ export function useToggleFilter<
     const active = Object.entries(state)
       .filter(([, v]) => v)
       .map(([k]) => valueMap[k as keyof TState & string]);
-    return (active.length > 0 ? active : Object.values(valueMap)) as TMap[keyof TMap][];
+    return (
+      active.length > 0 ? active : Object.values(valueMap)
+    ) as TMap[keyof TMap][];
   }, [state, valueMap]);
 
   return [state, toggle, activeValues];

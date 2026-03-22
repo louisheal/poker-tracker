@@ -1,7 +1,7 @@
-import * as React from "react"
-import { Slider as RadixSlider } from "radix-ui"
+import * as React from "react";
+import { Slider as RadixSlider } from "radix-ui";
 
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/utils";
 
 function Slider({
   className,
@@ -13,7 +13,7 @@ function Slider({
   onValueChange,
   ...props
 }: React.ComponentProps<typeof RadixSlider.Root>) {
-  const _value = value ?? defaultValue ?? [min, max]
+  const _value = value ?? defaultValue ?? [min, max];
 
   return (
     <RadixSlider.Root
@@ -26,7 +26,7 @@ function Slider({
       onValueChange={onValueChange}
       className={cn(
         "relative flex w-full touch-none items-center select-none data-[orientation=vertical]:h-full data-[orientation=vertical]:min-h-44 data-[orientation=vertical]:w-auto data-[orientation=vertical]:flex-col",
-        className
+        className,
       )}
       {...props}
     >
@@ -40,7 +40,7 @@ function Slider({
         />
       ))}
     </RadixSlider.Root>
-  )
+  );
 }
 
-export { Slider }
+export { Slider };

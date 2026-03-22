@@ -8,7 +8,12 @@ interface Props {
   onRemoveLast: () => void;
 }
 
-export const ActionLine = ({ actionLine, onClickFlop, onClickTag, onRemoveLast }: Props) => {
+export const ActionLine = ({
+  actionLine,
+  onClickFlop,
+  onClickTag,
+  onRemoveLast,
+}: Props) => {
   return (
     <div className="flex items-center gap-1 flex-wrap">
       {/* Flop - cursor 0 */}
@@ -32,7 +37,9 @@ export const ActionLine = ({ actionLine, onClickFlop, onClickTag, onRemoveLast }
             isActive={isActive}
             isFuture={isFuture}
             onClick={() => onClickTag(actionCursor)}
-            onRemove={i === actionLine.actions.length - 1 ? onRemoveLast : undefined}
+            onRemove={
+              i === actionLine.actions.length - 1 ? onRemoveLast : undefined
+            }
             showArrow={true}
           />
         );

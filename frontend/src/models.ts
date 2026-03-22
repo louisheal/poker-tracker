@@ -27,9 +27,17 @@ export interface CbetStats {
 
 export type FlopActionLine = "XX" | "XBC" | "XBRC" | "BC";
 
-export type TurnRunoutFilter = "OVERCARD" | "FLUSH_COMPLETING" | "PAIRED" | "OTHER";
+export type TurnRunoutFilter =
+  | "OVERCARD"
+  | "FLUSH_COMPLETING"
+  | "PAIRED"
+  | "OTHER";
 
-export type RiverRunoutFilter = "OVERCARD" | "FLUSH_COMPLETING" | "PAIRED" | "OTHER";
+export type RiverRunoutFilter =
+  | "OVERCARD"
+  | "FLUSH_COMPLETING"
+  | "PAIRED"
+  | "OTHER";
 
 export type FlopRankTextureFilter = "TRIPS" | "PAIRED" | "UNPAIRED";
 
