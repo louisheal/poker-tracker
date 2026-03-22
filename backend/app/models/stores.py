@@ -187,11 +187,11 @@ class LineEvents:
 	def _build_hand_result(self, e: LineEvent) -> dict:
 		return {
 			"pnl_bb": round(e.hero_pnl_bb, 2),
-			"hero_hand": e.hero_hand,
-			"villain_hand": e.villain_hand,
-			"flop": e.flop_cards,
-			"turn_card": e.turn_card,
-			"river_card": e.river_card,
+			"hero_hand": [e.hero_hand.fst_card.to_json(), e.hero_hand.snd_card.to_json()] if e.hero_hand else None,
+			"villain_hand": [e.villain_hand.fst_card.to_json(), e.villain_hand.snd_card.to_json()] if e.villain_hand else None,
+			"flop": [c.to_json() for c in e.flop_cards],
+			"turn_card": e.turn_card.to_json() if e.turn_card else None,
+			"river_card": e.river_card.to_json() if e.river_card else None,
 		}
 
 	def _filter_by_street_prefix(self, events: list[LineEvent], street: str, prefix: list[str]) -> list[LineEvent]:

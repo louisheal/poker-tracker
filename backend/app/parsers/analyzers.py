@@ -623,15 +623,15 @@ def analyze_line(ctx: HandContext) -> LineEvent | None:
 	if ast.river and pot_at_river_bb > 0:
 		river_actions_detailed, _ = _build_street_actions(ast.river.actions, pot_at_river_bb)
 
-	hero_hand = [ast.hero_hole_cards.fst_card.to_json(), ast.hero_hole_cards.snd_card.to_json()] if ast.hero_hole_cards else None
+	hero_hand = ast.hero_hole_cards if ast.hero_hole_cards else None
 	villain_hand = None
 	for player, cards in ast.shown_cards.items():
 		if player != "Hero":
-			villain_hand = [cards.fst_card.to_json(), cards.snd_card.to_json()]
+			villain_hand = cards
 			break
-	flop_cards = [c.to_json() for c in ast.flop.cards] if ast.flop else []
-	turn_card = ast.turn.cards[0].to_json() if ast.turn else None
-	river_card = ast.river.cards[0].to_json() if ast.river else None
+	flop_cards = list(ast.flop.cards) if ast.flop else []
+	turn_card = ast.turn.cards[0] if ast.turn else None
+	river_card = ast.river.cards[0] if ast.river else None
 
 	event = LineEvent(
 		played_on=ast.played_on,
