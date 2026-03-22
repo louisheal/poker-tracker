@@ -1,4 +1,5 @@
 import { getTurnStats } from "@/api";
+import { positionOptions, boardTypeOptions, potTypeOptions, turnRunoutOptions } from "@/common/filterOptions";
 import { FilterGroup } from "@/components/FilterGroup";
 import type {
   TurnStats,
@@ -75,69 +76,13 @@ export const TurnView = ({ dateRange }: Props) => {
   return (
     <div className="p-8 h-full content-start flex flex-col gap-6">
       <div className="flex flex-wrap gap-4">
-        <FilterGroup
-          options={[
-            { key: "ip", label: "IP", active: positionFilters.ip },
-            { key: "oop", label: "OOP", active: positionFilters.oop },
-          ]}
-          onToggle={togglePosition}
-        />
+        <FilterGroup options={positionOptions(positionFilters)} onToggle={togglePosition} />
 
-        <FilterGroup
-          options={[
-            {
-              key: "monotone",
-              label: "MONOTONE",
-              active: boardTypeFilters.monotone,
-            },
-            {
-              key: "twoTone",
-              label: "2TONE",
-              active: boardTypeFilters.twoTone,
-            },
-            {
-              key: "rainbow",
-              label: "RAINBOW",
-              active: boardTypeFilters.rainbow,
-            },
-          ]}
-          onToggle={toggleBoard}
-        />
+        <FilterGroup options={boardTypeOptions(boardTypeFilters)} onToggle={toggleBoard} />
 
-        <FilterGroup
-          options={[
-            { key: "srp", label: "SRP", active: potTypeFilters.srp },
-            { key: "threeBet", label: "3BET", active: potTypeFilters.threeBet },
-            { key: "fourBet", label: "4BET", active: potTypeFilters.fourBet },
-          ]}
-          onToggle={togglePot}
-        />
+        <FilterGroup options={potTypeOptions(potTypeFilters)} onToggle={togglePot} />
 
-        <FilterGroup
-          options={[
-            {
-              key: "overcard",
-              label: "OVERCARD",
-              active: turnRunoutFilters.overcard,
-            },
-            {
-              key: "flushCompleting",
-              label: "FLUSH",
-              active: turnRunoutFilters.flushCompleting,
-            },
-            {
-              key: "paired",
-              label: "PAIRED",
-              active: turnRunoutFilters.paired,
-            },
-            {
-              key: "other",
-              label: "OTHER",
-              active: turnRunoutFilters.other,
-            },
-          ]}
-          onToggle={toggleTurnRunout}
-        />
+        <FilterGroup options={turnRunoutOptions(turnRunoutFilters)} onToggle={toggleTurnRunout} />
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 max-w-5xl">

@@ -11,6 +11,7 @@ import type {
   LineActionItem,
 } from "@/models";
 import { useToggleFilter } from "@/hooks/useToggleFilter";
+import { potTypeOptions, boardTypeOptions } from "@/common/filterOptions";
 import { ActionLine } from "./components/ActionLine";
 import { StreetStatsPanel } from "./components/StreetStatsPanel";
 import { EvPanel } from "./components/EvPanel";
@@ -251,22 +252,7 @@ export const LineAnalyserView = ({
             ]}
             onToggle={handleRoleChange}
           />
-          <FilterGroup
-            options={[
-              { key: "srp", label: "SRP", active: potTypeFilters.srp },
-              {
-                key: "threeBet",
-                label: "3BET",
-                active: potTypeFilters.threeBet,
-              },
-              {
-                key: "fourBet",
-                label: "4BET",
-                active: potTypeFilters.fourBet,
-              },
-            ]}
-            onToggle={togglePot}
-          />
+          <FilterGroup options={potTypeOptions(potTypeFilters)} onToggle={togglePot} />
         </div>
       </div>
 
@@ -276,26 +262,7 @@ export const LineAnalyserView = ({
           Flop
         </span>
         <div className="flex flex-wrap items-end gap-4">
-          <FilterGroup
-            options={[
-              {
-                key: "monotone",
-                label: "MONOTONE",
-                active: boardTypeFilters.monotone,
-              },
-              {
-                key: "twoTone",
-                label: "2TONE",
-                active: boardTypeFilters.twoTone,
-              },
-              {
-                key: "rainbow",
-                label: "RAINBOW",
-                active: boardTypeFilters.rainbow,
-              },
-            ]}
-            onToggle={toggleBoard}
-          />
+          <FilterGroup options={boardTypeOptions(boardTypeFilters)} onToggle={toggleBoard} />
         </div>
       </div>
 

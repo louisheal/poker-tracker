@@ -1,4 +1,5 @@
 import { getRiverStats } from "@/api";
+import { positionOptions, boardTypeOptions, actionLineOptions, flopRankTextureOptions, turnRunoutOptions } from "@/common/filterOptions";
 import { FilterGroup } from "@/components/FilterGroup";
 import { useToggleFilter } from "@/hooks/useToggleFilter";
 import type { DateRangeFilter, RiverStats } from "@/models";
@@ -75,13 +76,7 @@ export const RiverView = ({ dateRange }: Props) => {
             General
           </span>
           <div className="flex flex-wrap gap-4">
-            <FilterGroup
-              options={[
-                { key: "ip", label: "IP", active: positionFilters.ip },
-                { key: "oop", label: "OOP", active: positionFilters.oop },
-              ]}
-              onToggle={togglePosition}
-            />
+            <FilterGroup options={positionOptions(positionFilters)} onToggle={togglePosition} />
           </div>
         </div>
 
@@ -90,57 +85,11 @@ export const RiverView = ({ dateRange }: Props) => {
             Flop
           </span>
           <div className="flex flex-wrap gap-4">
-            <FilterGroup
-              options={[
-                { key: "xx", label: "XX", active: flopActionFilters.xx },
-                { key: "xbc", label: "XBC", active: flopActionFilters.xbc },
-                { key: "xbrc", label: "XBRC", active: flopActionFilters.xbrc },
-                { key: "bc", label: "BC", active: flopActionFilters.bc },
-              ]}
-              onToggle={toggleFlopAction}
-            />
+            <FilterGroup options={actionLineOptions(flopActionFilters)} onToggle={toggleFlopAction} />
 
-            <FilterGroup
-              options={[
-                {
-                  key: "monotone",
-                  label: "MONOTONE",
-                  active: boardTypeFilters.monotone,
-                },
-                {
-                  key: "twoTone",
-                  label: "2TONE",
-                  active: boardTypeFilters.twoTone,
-                },
-                {
-                  key: "rainbow",
-                  label: "RAINBOW",
-                  active: boardTypeFilters.rainbow,
-                },
-              ]}
-              onToggle={toggleBoard}
-            />
+            <FilterGroup options={boardTypeOptions(boardTypeFilters)} onToggle={toggleBoard} />
 
-            <FilterGroup
-              options={[
-                {
-                  key: "trips",
-                  label: "TRIPS",
-                  active: flopRankTextureFilters.trips,
-                },
-                {
-                  key: "paired",
-                  label: "PAIRED",
-                  active: flopRankTextureFilters.paired,
-                },
-                {
-                  key: "unpaired",
-                  label: "UNPAIRED",
-                  active: flopRankTextureFilters.unpaired,
-                },
-              ]}
-              onToggle={toggleFlopRankTexture}
-            />
+            <FilterGroup options={flopRankTextureOptions(flopRankTextureFilters)} onToggle={toggleFlopRankTexture} />
           </div>
         </div>
 
@@ -149,45 +98,9 @@ export const RiverView = ({ dateRange }: Props) => {
             Turn
           </span>
           <div className="flex flex-wrap gap-4">
-            <FilterGroup
-              options={[
-                { key: "xx", label: "XX", active: turnActionFilters.xx },
-                { key: "xbc", label: "XBC", active: turnActionFilters.xbc },
-                {
-                  key: "xbrc",
-                  label: "XBRC",
-                  active: turnActionFilters.xbrc,
-                },
-                { key: "bc", label: "BC", active: turnActionFilters.bc },
-              ]}
-              onToggle={toggleTurnAction}
-            />
+            <FilterGroup options={actionLineOptions(turnActionFilters)} onToggle={toggleTurnAction} />
 
-            <FilterGroup
-              options={[
-                {
-                  key: "overcard",
-                  label: "OVERCARD",
-                  active: turnRunoutFilters.overcard,
-                },
-                {
-                  key: "flushCompleting",
-                  label: "FLUSH",
-                  active: turnRunoutFilters.flushCompleting,
-                },
-                {
-                  key: "paired",
-                  label: "PAIRED",
-                  active: turnRunoutFilters.paired,
-                },
-                {
-                  key: "other",
-                  label: "OTHER",
-                  active: turnRunoutFilters.other,
-                },
-              ]}
-              onToggle={toggleTurnRunout}
-            />
+            <FilterGroup options={turnRunoutOptions(turnRunoutFilters)} onToggle={toggleTurnRunout} />
           </div>
         </div>
 
@@ -196,31 +109,7 @@ export const RiverView = ({ dateRange }: Props) => {
             River
           </span>
           <div className="flex flex-wrap gap-4">
-            <FilterGroup
-              options={[
-                {
-                  key: "overcard",
-                  label: "OVERCARD",
-                  active: riverRunoutFilters.overcard,
-                },
-                {
-                  key: "flushCompleting",
-                  label: "FLUSH",
-                  active: riverRunoutFilters.flushCompleting,
-                },
-                {
-                  key: "paired",
-                  label: "PAIRED",
-                  active: riverRunoutFilters.paired,
-                },
-                {
-                  key: "other",
-                  label: "OTHER",
-                  active: riverRunoutFilters.other,
-                },
-              ]}
-              onToggle={toggleRiverRunout}
-            />
+            <FilterGroup options={turnRunoutOptions(riverRunoutFilters)} onToggle={toggleRiverRunout} />
           </div>
         </div>
       </div>

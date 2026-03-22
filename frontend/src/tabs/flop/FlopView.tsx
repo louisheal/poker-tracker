@@ -2,6 +2,7 @@ import { getCbets, getVillainBetSizes } from "@/api";
 import { FilterGroup } from "@/components/FilterGroup";
 import { BetSizeDistribution } from "@/components/BetSizeDistribution";
 import { Slider } from "@/components/ui/slider";
+import { positionOptions, boardTypeOptions, potTypeOptions } from "@/common/filterOptions";
 import type { CbetStats, DateRangeFilter } from "@/models";
 import { useEffect, useState } from "react";
 import { useToggleFilter } from "@/hooks/useToggleFilter";
@@ -134,43 +135,11 @@ export const FlopView = ({ dateRange }: Props) => {
   return (
     <div className="p-8 h-full content-start flex flex-col gap-6">
       <div className="flex flex-wrap items-end gap-4">
-        <FilterGroup
-          options={[
-            { key: "ip", label: "IP", active: positionFilters.ip },
-            { key: "oop", label: "OOP", active: positionFilters.oop },
-          ]}
-          onToggle={togglePosition}
-        />
+        <FilterGroup options={positionOptions(positionFilters)} onToggle={togglePosition} />
 
-        <FilterGroup
-          options={[
-            {
-              key: "monotone",
-              label: "MONOTONE",
-              active: boardTypeFilters.monotone,
-            },
-            {
-              key: "twoTone",
-              label: "2TONE",
-              active: boardTypeFilters.twoTone,
-            },
-            {
-              key: "rainbow",
-              label: "RAINBOW",
-              active: boardTypeFilters.rainbow,
-            },
-          ]}
-          onToggle={toggleBoard}
-        />
+        <FilterGroup options={boardTypeOptions(boardTypeFilters)} onToggle={toggleBoard} />
 
-        <FilterGroup
-          options={[
-            { key: "srp", label: "SRP", active: potTypeFilters.srp },
-            { key: "threeBet", label: "3BET", active: potTypeFilters.threeBet },
-            { key: "fourBet", label: "4BET", active: potTypeFilters.fourBet },
-          ]}
-          onToggle={togglePot}
-        />
+        <FilterGroup options={potTypeOptions(potTypeFilters)} onToggle={togglePot} />
 
         <div className="flex flex-col gap-1.5 min-w-48 max-w-64">
           <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
