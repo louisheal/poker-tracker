@@ -14,6 +14,12 @@ export const positionOptions = (filters: FilterState | string) =>
     { key: "oop", label: "OOP" },
   ], filters);
 
+export const roleOptions = (filters: FilterState | string) =>
+  withActive([
+    { key: "pfr", label: "PFR" },
+    { key: "def", label: "DEF" },
+  ], filters);
+
 export const boardTypeOptions = (filters: FilterState | string) =>
   withActive([
     { key: "monotone", label: "MONOTONE" },
@@ -23,9 +29,9 @@ export const boardTypeOptions = (filters: FilterState | string) =>
 
 export const potTypeOptions = (filters: FilterState | string) =>
   withActive([
-    { key: "srp", label: "SRP" },
-    { key: "threeBet", label: "3BET" },
-    { key: "fourBet", label: "4BET" },
+    { key: "SRP", label: "SRP" },
+    { key: "THREE_BET", label: "3BET" },
+    { key: "FOUR_BET", label: "4BET" },
   ], filters);
 
 export const turnRunoutOptions = (filters: FilterState | string) =>

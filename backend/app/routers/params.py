@@ -64,9 +64,9 @@ BOARD_TYPE_MAP: dict[str, BoardType] = {
 }
 
 POT_TYPE_MAP: dict[str, PotType] = {
-    "srp": PotType.SRP,
-    "threeBet": PotType.THREE_BET,
-    "fourBet": PotType.FOUR_BET,
+    "SRP": PotType.SRP,
+    "THREE_BET": PotType.THREE_BET,
+    "FOUR_BET": PotType.FOUR_BET,
 }
 
 RUNOUT_MAP: dict[str, Runout] = {

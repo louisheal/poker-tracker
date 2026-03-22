@@ -8,27 +8,27 @@ import type { DateRangeFilter, Ranges } from "@/models";
 import { useEffect, useState } from "react";
 
 type Positions = "LJ" | "HJ" | "CO" | "BTN" | "SB" | "BB";
-type PotType = "srp" | "threeBet" | "fourBet";
+type PotType = "SRP" | "THREE_BET" | "FOUR_BET";
 
 const INIT_POS = "LJ";
-const INIT_TYPE: PotType = "srp";
+const INIT_TYPE: PotType = "SRP";
 
 const POSITIONS: Record<PotType, { value: Positions; label: string }[]> = {
-  srp: [
+  SRP: [
     { value: "LJ", label: "LJ" },
     { value: "HJ", label: "HJ" },
     { value: "CO", label: "CO" },
     { value: "BTN", label: "BTN" },
     { value: "SB", label: "SB" },
   ],
-  threeBet: [
+  THREE_BET: [
     { value: "LJ", label: "v LJ" },
     { value: "HJ", label: "v HJ" },
     { value: "CO", label: "v CO" },
     { value: "BTN", label: "v BTN" },
     { value: "SB", label: "v SB" },
   ],
-  fourBet: [
+  FOUR_BET: [
     { value: "LJ", label: "LJ" },
     { value: "HJ", label: "HJ" },
     { value: "CO", label: "CO" },

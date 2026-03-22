@@ -2,7 +2,11 @@ import { getCbets, getVillainBetSizes } from "@/api";
 import { FilterGroup } from "@/components/FilterGroup";
 import { BetSizeDistribution } from "@/components/BetSizeDistribution";
 import { Slider } from "@/components/ui/slider";
-import { positionOptions, boardTypeOptions, potTypeOptions } from "@/common/filterOptions";
+import {
+  positionOptions,
+  boardTypeOptions,
+  potTypeOptions,
+} from "@/common/filterOptions";
 import type { CbetStats, DateRangeFilter } from "@/models";
 import { useEffect, useState } from "react";
 import { useToggleFilter } from "@/hooks/useToggleFilter";
@@ -15,9 +19,9 @@ const BOARD_TYPE_MAP = {
   rainbow: "RAINBOW" as const,
 };
 const POT_TYPE_MAP = {
-  srp: "srp" as const,
-  threeBet: "threeBet" as const,
-  fourBet: "fourBet" as const,
+  SRP: "SRP" as const,
+  THREE_BET: "THREE_BET" as const,
+  FOUR_BET: "FOUR_BET" as const,
 };
 
 const BET_SIZE_MIN = 0;
@@ -30,9 +34,9 @@ const INITIAL_BOARD_TYPE_FILTERS = {
   rainbow: false,
 };
 const INITIAL_POT_TYPE_FILTERS = {
-  srp: false,
-  threeBet: false,
-  fourBet: false,
+  SRP: false,
+  THREE_BET: false,
+  FOUR_BET: false,
 };
 
 interface Props {
@@ -135,12 +139,18 @@ export const FlopView = ({ dateRange }: Props) => {
   return (
     <div className="p-8 h-full content-start flex flex-col gap-6">
       <div className="flex flex-wrap items-end gap-4">
-        <FilterGroup options={positionOptions(positionFilters)} onToggle={togglePosition} />
-
-        <FilterGroup options={boardTypeOptions(boardTypeFilters)} onToggle={toggleBoard} />
-
-        <FilterGroup options={potTypeOptions(potTypeFilters)} onToggle={togglePot} />
-
+        <FilterGroup
+          options={positionOptions(positionFilters)}
+          onToggle={togglePosition}
+        />
+        <FilterGroup
+          options={boardTypeOptions(boardTypeFilters)}
+          onToggle={toggleBoard}
+        />
+        <FilterGroup
+          options={potTypeOptions(potTypeFilters)}
+          onToggle={togglePot}
+        />
         <div className="flex flex-col gap-1.5 min-w-48 max-w-64">
           <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
             Bet Size {betSizeRange[0]}% - {betSizeRange[1]}%

@@ -11,7 +11,7 @@ import type {
   LineActionItem,
 } from "@/models";
 import { useToggleFilter } from "@/hooks/useToggleFilter";
-import { potTypeOptions, boardTypeOptions } from "@/common/filterOptions";
+import { potTypeOptions, boardTypeOptions, positionOptions, roleOptions } from "@/common/filterOptions";
 import { ActionLine } from "./components/ActionLine";
 import { StreetStatsPanel } from "./components/StreetStatsPanel";
 import { EvPanel } from "./components/EvPanel";
@@ -55,9 +55,9 @@ const BOARD_TYPE_MAP = {
 };
 
 const POT_TYPE_MAP = {
-  srp: "srp" as const,
-  threeBet: "threeBet" as const,
-  fourBet: "fourBet" as const,
+  SRP: "SRP" as const,
+  THREE_BET: "THREE_BET" as const,
+  FOUR_BET: "FOUR_BET" as const,
 };
 
 const INITIAL_BOARD_TYPE_FILTERS = {
@@ -67,9 +67,9 @@ const INITIAL_BOARD_TYPE_FILTERS = {
 };
 
 const INITIAL_POT_TYPE_FILTERS = {
-  srp: false,
-  threeBet: false,
-  fourBet: false,
+  SRP: false,
+  THREE_BET: false,
+  FOUR_BET: false,
 };
 
 const EMPTY_RESPONSE: LineAnalysisFlopResponse = {
@@ -238,20 +238,8 @@ export const LineAnalyserView = ({
           General
         </span>
         <div className="flex flex-wrap items-end gap-4">
-          <FilterGroup
-            options={[
-              { key: "ip", label: "IP", active: position === "ip" },
-              { key: "oop", label: "OOP", active: position === "oop" },
-            ]}
-            onToggle={handlePositionChange}
-          />
-          <FilterGroup
-            options={[
-              { key: "pfr", label: "PFR", active: role === "pfr" },
-              { key: "def", label: "DEF", active: role === "def" },
-            ]}
-            onToggle={handleRoleChange}
-          />
+          <FilterGroup options={positionOptions(position)} onToggle={handlePositionChange} />
+          <FilterGroup options={roleOptions(role)} onToggle={handleRoleChange} />
           <FilterGroup options={potTypeOptions(potTypeFilters)} onToggle={togglePot} />
         </div>
       </div>

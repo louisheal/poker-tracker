@@ -13,7 +13,7 @@ export type RangeGroup = { [position: string]: RangeHands };
 export type Ranges = { [potType: string]: RangeGroup };
 
 export type BoardTypeFilter = "MONOTONE" | "TWO_TONE" | "RAINBOW";
-export type PotTypeFilter = "srp" | "threeBet" | "fourBet";
+export type PotTypeFilter = "SRP" | "THREE_BET" | "FOUR_BET";
 
 export interface CbetStats {
   cbet_pct: number;
