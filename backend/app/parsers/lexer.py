@@ -121,7 +121,6 @@ def lex_hand(lines: list[str]) -> HandAST | None:
 	flop: Street | None = None
 	turn: Street | None = None
 	river: Street | None = None
-	hero_collected = 0.0
 	collections: dict[str, float] = {}
 	total_pot = 0.0
 	uncalled_amount = 0.0
@@ -247,8 +246,6 @@ def lex_hand(lines: list[str]) -> HandAST | None:
 				collections[player] = amount
 			continue
 
-	hero_collected = collections.get("Hero", 0.0)
-
 	return HandAST(
 		hand_id=hand_id,
 		played_on=played_on,
@@ -260,7 +257,6 @@ def lex_hand(lines: list[str]) -> HandAST | None:
 		flop=flop,
 		turn=turn,
 		river=river,
-		hero_collected=hero_collected,
 		collections=collections,
 		total_pot=total_pot,
 		uncalled_amount=uncalled_amount,

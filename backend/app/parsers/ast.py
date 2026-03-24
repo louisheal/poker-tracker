@@ -63,7 +63,6 @@ class HandAST:
 	flop: Street | None = None
 	turn: Street | None = None
 	river: Street | None = None
-	hero_collected: float = 0.0
 	collections: dict[str, float] = field(default_factory=dict)
 	total_pot: float = 0.0
 	uncalled_amount: float = 0.0

@@ -12,8 +12,6 @@ class Flops:
 
 	def json(self, filters: FlopFilter):
 		events = [e for e in self.events if e.filter(filters)]
-		if not filters.include_pool:
-			events = [e for e in events if not e.is_pool]
 		
 		if not events:
 			return { "cbet_pct": 0, "fcbet_pct": 0, "raise_to_cbet_pct": 0, "donk_bet_pct": 0, "fold_to_donk_pct": 0, "raise_to_donk_pct": 0, "hand_count": 0 }
@@ -65,20 +63,7 @@ class LineEvents:
 		self.events.append(event)
 
 	def _filter(self, f: LineFilter) -> list[LineEvent]:
-		events = self.events
-		if not f.include_pool:
-			events = [e for e in events if not e.is_pool]
-		if f.hero_in_position is not None:
-			events = [e for e in events if e.hero_in_position == f.hero_in_position]
-		if f.hero_preflop_raiser is not None:
-			events = [e for e in events if e.hero_preflop_raiser == f.hero_preflop_raiser]
-		events = [e for e in events if e.pot_type in f.pot_types]
-		events = [e for e in events if e.board_type in f.board_types]
-		if f.turn_runouts is not None:
-			events = [e for e in events if e.turn_runout in f.turn_runouts]
-		if f.river_runouts is not None:
-			events = [e for e in events if e.river_runout in f.river_runouts]
-		return events
+		return [e for e in self.events if e.filter(f)]
 
 	def spot_stats(self, f: LineFilter, flop_actions: list[str] | None = None, turn_actions: list[str] | None = None, river_actions: list[str] | None = None):
 		events = self._filter(f)
@@ -387,8 +372,6 @@ class Turns:
 		
 		for sequence in ActionSequence:
 			sequence_events = [e for e in self.events if e.flop_action_sequence == sequence and e.filter(filters)]
-			if not filters.include_pool:
-				sequence_events = [e for e in sequence_events if not e.is_pool]
 			
 			if not sequence_events:
 				result[sequence.value] = {
@@ -434,8 +417,6 @@ class Rivers:
 
 	def json(self, filters: RiverFilter):
 		events = [e for e in self.events if e.filter(filters)]
-		if not filters.include_pool:
-			events = [e for e in events if not e.is_pool]
 
 		if not events:
 			empty_showdown = {
