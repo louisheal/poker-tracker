@@ -39,6 +39,7 @@ export const getCbets = async (
   endDate?: string,
   betSizeMin?: number,
   betSizeMax?: number,
+  includePool?: boolean,
 ): Promise<CbetStats> => {
   const params = new URLSearchParams();
   for (const value of heroInPosition) {
@@ -65,6 +66,9 @@ export const getCbets = async (
   if (betSizeMax !== undefined) {
     params.append("bet_size_max", String(betSizeMax));
   }
+  if (includePool) {
+    params.append("include_pool", "true");
+  }
   const response = await fetch(`http://localhost:8000/flop?${params}`);
   return response.json();
 };
@@ -79,6 +83,7 @@ export const getVillainBetSizes = async (
   potTypes: PotTypeFilter[],
   startDate?: string,
   endDate?: string,
+  includePool?: boolean,
 ): Promise<VillainBetSizesResponse> => {
   const params = new URLSearchParams();
   for (const value of heroInPosition) {
@@ -95,6 +100,9 @@ export const getVillainBetSizes = async (
   }
   if (endDate) {
     params.append("end_date", endDate);
+  }
+  if (includePool) {
+    params.append("include_pool", "true");
   }
   const response = await fetch(
     `http://localhost:8000/flop/bet-sizes?${params}`,
@@ -129,6 +137,7 @@ export const getTurnStats = async (
   turnRunouts: TurnRunoutFilter[],
   startDate?: string,
   endDate?: string,
+  includePool?: boolean,
 ): Promise<TurnStatsMap> => {
   const params = new URLSearchParams();
   for (const value of heroInPosition) {
@@ -152,6 +161,9 @@ export const getTurnStats = async (
   if (endDate) {
     params.append("end_date", endDate);
   }
+  if (includePool) {
+    params.append("include_pool", "true");
+  }
   const response = await fetch(`http://localhost:8000/turn?${params}`);
   return response.json();
 };
@@ -167,6 +179,7 @@ export const getRiverStats = async (
   riverRunouts: RiverRunoutFilter[],
   startDate?: string,
   endDate?: string,
+  includePool?: boolean,
 ): Promise<RiverStats> => {
   const params = new URLSearchParams();
   for (const value of heroInPosition) {
@@ -198,6 +211,9 @@ export const getRiverStats = async (
   }
   if (endDate) {
     params.append("end_date", endDate);
+  }
+  if (includePool) {
+    params.append("include_pool", "true");
   }
   const response = await fetch(`http://localhost:8000/river?${params}`);
   return response.json();
@@ -252,6 +268,7 @@ export const getLineAnalysis = async (
   riverRunouts?: RiverRunoutFilter[],
   startDate?: string,
   endDate?: string,
+  includePool?: boolean,
 ): Promise<LineAnalysisResponse> => {
   const params = new URLSearchParams();
   params.append("hero_in_position", String(heroInPosition));
@@ -282,6 +299,9 @@ export const getLineAnalysis = async (
   }
   if (endDate) {
     params.append("end_date", endDate);
+  }
+  if (includePool) {
+    params.append("include_pool", "true");
   }
   const response = await fetch(
     `http://localhost:8000/line-analysis?${params}`,

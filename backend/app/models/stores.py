@@ -44,6 +44,7 @@ class Flops:
 			board_types=filters.board_types,
 			hero_preflop_raiser=filters.hero_preflop_raiser,
 			hero_in_position=filters.hero_in_position,
+			include_pool=filters.include_pool,
 		)
 		events = [e for e in self.events if e.filter(no_size_filter)]
 		# Villain cbet = when hero is DEF (not PFR) and villain cbets
@@ -61,22 +62,8 @@ class LineEvents:
 	def add_event(self, event: LineEvent):
 		self.events.append(event)
 
-	def _filter(self, f: LineFilter) -> list[LineEvent]:
-		events = self.events
-		if f.hero_in_position is not None:
-			events = [e for e in events if e.hero_in_position == f.hero_in_position]
-		if f.hero_preflop_raiser is not None:
-			events = [e for e in events if e.hero_preflop_raiser == f.hero_preflop_raiser]
-		events = [e for e in events if e.pot_type in f.pot_types]
-		events = [e for e in events if e.board_type in f.board_types]
-		if f.turn_runouts is not None:
-			events = [e for e in events if e.turn_runout in f.turn_runouts]
-		if f.river_runouts is not None:
-			events = [e for e in events if e.river_runout in f.river_runouts]
-		return events
-
 	def spot_stats(self, f: LineFilter, flop_actions: list[str] | None = None, turn_actions: list[str] | None = None, river_actions: list[str] | None = None):
-		events = self._filter(f)
+		events = [e for e in self.events if e.filter(f)]
 
 		if flop_actions:
 			events = self._filter_by_street_prefix(events, "flop", flop_actions)

@@ -18,6 +18,7 @@ def get_turn(
     board_types: list[str] | None = Query(default=None),
     pot_types: list[str] | None = Query(default=None),
     turn_runouts: list[str] | None = Query(default=None),
+    include_pool: bool = Query(default=False),
     store: EventStore = Depends(get_store),
     dates: tuple = Depends(get_date_range),
 ):
@@ -28,6 +29,7 @@ def get_turn(
         board_types=parse_board_type_list(board_types),
         pot_types=parse_pot_type_list(pot_types),
         turn_runouts=parse_runout_list(turn_runouts),
+        include_pool=include_pool,
     )
     filtered = [e for e in store.turn_events if in_date_range(e.played_on, start, end)]
     turns = Turns()

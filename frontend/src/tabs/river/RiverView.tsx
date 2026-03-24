@@ -52,6 +52,7 @@ const RIVER_RUNOUT_MAP = {
 
 interface Props {
   dateRange: DateRangeFilter;
+  includePool: boolean;
 }
 
 const INITIAL_POSITION_FILTERS = { ip: false, oop: false };
@@ -90,7 +91,7 @@ const INITIAL_RIVER_RUNOUT_FILTERS = {
   OTHER: false,
 };
 
-export const RiverView = ({ dateRange }: Props) => {
+export const RiverView = ({ dateRange, includePool }: Props) => {
   const [riverStats, setRiverStats] = useState<RiverStats>();
   const [positionFilters, togglePosition, heroInPosition] = useToggleFilter(
     INITIAL_POSITION_FILTERS,
@@ -132,6 +133,7 @@ export const RiverView = ({ dateRange }: Props) => {
         riverRunouts,
         dateRange.startDate,
         dateRange.endDate,
+        includePool,
       );
       setRiverStats(stats);
     };
@@ -147,6 +149,7 @@ export const RiverView = ({ dateRange }: Props) => {
     riverRunouts,
     dateRange.startDate,
     dateRange.endDate,
+    includePool,
   ]);
 
   return (

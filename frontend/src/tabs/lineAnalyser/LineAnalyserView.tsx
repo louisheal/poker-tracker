@@ -135,9 +135,10 @@ const EMPTY_RESPONSE: LineAnalysisResponse = {
 
 interface Props {
   dateRange: DateRangeFilter;
+  includePool: boolean;
 }
 
-export const LineAnalyserView = ({ dateRange }: Props) => {
+export const LineAnalyserView = ({ dateRange, includePool }: Props) => {
   const [position, setPosition] = useState<string>("ip");
   const [role, setRole] = useState<string>("pfr");
   const [boardTypeFilters, toggleBoard, activeBoards] = useToggleFilter(
@@ -207,6 +208,7 @@ export const LineAnalyserView = ({ dateRange }: Props) => {
         riverRunouts,
         dateRange.startDate,
         dateRange.endDate,
+        includePool,
       );
       setData(result);
     };
@@ -223,6 +225,7 @@ export const LineAnalyserView = ({ dateRange }: Props) => {
     activeTurnRunouts,
     isOnRiver,
     activeRiverRunouts,
+    includePool,
   ]);
 
   const handleActionClick = (action: string, sizeRange?: [number, number]) => {

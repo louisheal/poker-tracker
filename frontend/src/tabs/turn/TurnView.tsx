@@ -33,6 +33,7 @@ const FLOP_ACTION_LINES: FlopActionLine[] = ["XX", "XBC", "XBRC", "BC"];
 
 interface Props {
   dateRange: DateRangeFilter;
+  includePool: boolean;
 }
 
 const INITIAL_POSITION_FILTERS = { ip: false, oop: false };
@@ -53,7 +54,7 @@ const INITIAL_TURN_RUNOUT_FILTERS = {
   OTHER: false,
 };
 
-export const TurnView = ({ dateRange }: Props) => {
+export const TurnView = ({ dateRange, includePool }: Props) => {
   const [positionFilters, togglePosition, heroInPosition] = useToggleFilter(
     INITIAL_POSITION_FILTERS,
     POSITION_MAP,
@@ -90,6 +91,7 @@ export const TurnView = ({ dateRange }: Props) => {
         turnRunouts,
         dateRange.startDate,
         dateRange.endDate,
+        includePool,
       );
       setTurnStats(stats);
     };
@@ -102,6 +104,7 @@ export const TurnView = ({ dateRange }: Props) => {
     turnRunouts,
     dateRange.startDate,
     dateRange.endDate,
+    includePool,
   ]);
 
   return (

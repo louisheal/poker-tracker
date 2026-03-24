@@ -33,6 +33,7 @@ function App() {
   const [view, setView] = useState<View>("ranges");
   const [handVolume, setHandVolume] = useState<DailyVolumePoint[]>([]);
   const [dateRange, setDateRange] = useState<DateRangeFilter>({});
+  const [includePool, setIncludePool] = useState(false);
 
   useEffect(() => {
     const loadHandVolume = async () => {
@@ -77,19 +78,30 @@ function App() {
               {label}
             </button>
           ))}
+          <div className="mt-auto px-4 pt-4 border-t border-border">
+            <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+              <input
+                type="checkbox"
+                checked={includePool}
+                onChange={(e) => setIncludePool(e.target.checked)}
+                className="rounded border-border"
+              />
+              Include pool hands
+            </label>
+          </div>
         </nav>
         <div className="flex min-w-0 flex-1 flex-col">
           <main className="min-h-0 flex-1 overflow-auto">
             {view === "ranges" ? (
               <RangeView dateRange={dateRange} />
             ) : view === "flop" ? (
-              <FlopView dateRange={dateRange} />
+              <FlopView dateRange={dateRange} includePool={includePool} />
             ) : view === "turn" ? (
-              <TurnView dateRange={dateRange} />
+              <TurnView dateRange={dateRange} includePool={includePool} />
             ) : view === "river" ? (
-              <RiverView dateRange={dateRange} />
+              <RiverView dateRange={dateRange} includePool={includePool} />
             ) : (
-              <LineAnalyserView dateRange={dateRange} />
+              <LineAnalyserView dateRange={dateRange} includePool={includePool} />
             )}
           </main>
           <DateRangeDock

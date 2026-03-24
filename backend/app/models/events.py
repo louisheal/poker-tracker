@@ -8,7 +8,7 @@ from playing_cards_lib.poker import HoleCards, PokerPosition
 from .enums import ActionSequence, Runout, FlopRankTexture, ShowdownType, BoardType, PotType
 
 if TYPE_CHECKING:
-	from .filters import FlopFilter, TurnFilter, RiverFilter
+	from .filters import FlopFilter, LineFilter, TurnFilter, RiverFilter
 
 
 @dataclass
@@ -36,8 +36,11 @@ class FlopEvent:
 	raise_to_donk_bet: bool
 	cbet_size_pct: float | None = None
 	donk_bet_size_pct: float | None = None
+	is_pool: bool = False
 
 	def filter(self, filters: "FlopFilter") -> bool:
+		if self.is_pool and not filters.include_pool:
+			return False
 		if self.pot_type not in filters.pot_types:
 			return False
 		if self.board_type not in filters.board_types:
@@ -95,6 +98,24 @@ class LineEvent:
 	flop_cards: list[Card] = field(default_factory=list)
 	turn_card: Card | None = None
 	river_card: Card | None = None
+	is_pool: bool = False
+
+	def filter(self, filters: "LineFilter") -> bool:
+		if self.is_pool and not filters.include_pool:
+			return False
+		if filters.hero_in_position is not None and self.hero_in_position != filters.hero_in_position:
+			return False
+		if filters.hero_preflop_raiser is not None and self.hero_preflop_raiser != filters.hero_preflop_raiser:
+			return False
+		if self.pot_type not in filters.pot_types:
+			return False
+		if self.board_type not in filters.board_types:
+			return False
+		if filters.turn_runouts is not None and self.turn_runout not in filters.turn_runouts:
+			return False
+		if filters.river_runouts is not None and self.river_runout not in filters.river_runouts:
+			return False
+		return True
 
 
 @dataclass
@@ -112,8 +133,11 @@ class TurnEvent:
 	villain_bet_turn: bool
 	hero_fold_to_villain_bet: bool
 	hero_raise_to_villain_bet: bool
+	is_pool: bool = False
 
 	def filter(self, filters: "TurnFilter") -> bool:
+		if self.is_pool and not filters.include_pool:
+			return False
 		if self.pot_type not in filters.pot_types:
 			return False
 		if self.board_type not in filters.board_types:
@@ -150,7 +174,11 @@ class RiverEvent:
 	hero_won_showdown: bool
 	pot_size_bb: float
 
+	is_pool: bool = False
+
 	def filter(self, filters: "RiverFilter") -> bool:
+		if self.is_pool and not filters.include_pool:
+			return False
 		if self.pot_type not in filters.pot_types:
 			return False
 		if self.board_type not in filters.board_types:

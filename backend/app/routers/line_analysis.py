@@ -37,6 +37,7 @@ def get_line_analysis(
     turn_runouts: list[str] | None = Query(default=None),
     river_runouts: list[str] | None = Query(default=None),
     actions: list[str] | None = Query(default=None),
+    include_pool: bool = Query(default=False),
     store: EventStore = Depends(get_store),
     dates: tuple = Depends(get_date_range),
 ):
@@ -52,6 +53,7 @@ def get_line_analysis(
         board_types=parse_board_type_list(board_types),
         turn_runouts=parse_runout_list(turn_runouts) if turn_runouts else None,
         river_runouts=parse_runout_list(river_runouts) if river_runouts else None,
+        include_pool=include_pool,
     )
     flop_actions, turn_actions, river_actions = _split_action_prefix(actions)
     return filtered_events.spot_stats(f, flop_actions=flop_actions, turn_actions=turn_actions, river_actions=river_actions)

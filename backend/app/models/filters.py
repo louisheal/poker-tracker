@@ -12,6 +12,7 @@ class FlopFilter:
 		hero_in_position: list[bool] | None = None,
 		bet_size_min: float | None = None,
 		bet_size_max: float | None = None,
+		include_pool: bool = False,
 	):
 		self.pot_types = pot_types if pot_types is not None else list(PotType)
 		self.board_types = board_types if board_types is not None else list(BoardType)
@@ -19,6 +20,7 @@ class FlopFilter:
 		self.hero_in_position = hero_in_position if hero_in_position is not None else [True, False]
 		self.bet_size_min = bet_size_min
 		self.bet_size_max = bet_size_max
+		self.include_pool = include_pool
 
 
 class LineFilter:
@@ -30,6 +32,7 @@ class LineFilter:
 		board_types: list[BoardType] | None = None,
 		turn_runouts: list[Runout] | None = None,
 		river_runouts: list[Runout] | None = None,
+		include_pool: bool = False,
 	):
 		self.hero_in_position = hero_in_position
 		self.hero_preflop_raiser = hero_preflop_raiser
@@ -37,6 +40,7 @@ class LineFilter:
 		self.board_types = board_types if board_types is not None else list(BoardType)
 		self.turn_runouts = turn_runouts
 		self.river_runouts = river_runouts
+		self.include_pool = include_pool
 
 
 class TurnFilter:
@@ -47,12 +51,14 @@ class TurnFilter:
 		hero_preflop_raiser: list[bool] | None = None,
 		hero_in_position: list[bool] | None = None,
 		turn_runouts: list[Runout] | None = None,
+		include_pool: bool = False,
 	):
 		self.pot_types = pot_types if pot_types is not None else list(PotType)
 		self.board_types = board_types if board_types is not None else list(BoardType)
 		self.hero_preflop_raiser = hero_preflop_raiser if hero_preflop_raiser is not None else [True, False]
 		self.hero_in_position = hero_in_position if hero_in_position is not None else [True, False]
 		self.turn_runouts = turn_runouts if turn_runouts is not None else list(Runout)
+		self.include_pool = include_pool
 
 
 class RiverFilter:
@@ -66,6 +72,7 @@ class RiverFilter:
 		turn_runouts: list[Runout] | None = None,
 		turn_action_sequences: list[ActionSequence] | None = None,
 		river_runouts: list[Runout] | None = None,
+		include_pool: bool = False,
 	):
 		self.pot_types = pot_types if pot_types is not None else list(PotType)
 		self.board_types = board_types if board_types is not None else list(BoardType)
@@ -75,3 +82,4 @@ class RiverFilter:
 		self.turn_runouts = turn_runouts if turn_runouts is not None else list(Runout)
 		self.turn_action_sequences = turn_action_sequences if turn_action_sequences is not None else list(ActionSequence)
 		self.river_runouts = river_runouts if river_runouts is not None else list(Runout)
+		self.include_pool = include_pool
