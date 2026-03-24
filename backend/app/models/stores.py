@@ -62,11 +62,8 @@ class LineEvents:
 	def add_event(self, event: LineEvent):
 		self.events.append(event)
 
-	def _filter(self, f: LineFilter) -> list[LineEvent]:
-		return [e for e in self.events if e.filter(f)]
-
 	def spot_stats(self, f: LineFilter, flop_actions: list[str] | None = None, turn_actions: list[str] | None = None, river_actions: list[str] | None = None):
-		events = self._filter(f)
+		events = [e for e in self.events if e.filter(f)]
 
 		if flop_actions:
 			events = self._filter_by_street_prefix(events, "flop", flop_actions)
