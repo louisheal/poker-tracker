@@ -36,6 +36,7 @@ class FlopEvent:
 	raise_to_donk_bet: bool
 	cbet_size_pct: float | None = None
 	donk_bet_size_pct: float | None = None
+	is_pool: bool = False
 
 	def filter(self, filters: "FlopFilter") -> bool:
 		if self.pot_type not in filters.pot_types:
@@ -95,6 +96,7 @@ class LineEvent:
 	flop_cards: list[Card] = field(default_factory=list)
 	turn_card: Card | None = None
 	river_card: Card | None = None
+	is_pool: bool = False
 
 
 @dataclass
@@ -112,6 +114,8 @@ class TurnEvent:
 	villain_bet_turn: bool
 	hero_fold_to_villain_bet: bool
 	hero_raise_to_villain_bet: bool
+
+	is_pool: bool = False
 
 	def filter(self, filters: "TurnFilter") -> bool:
 		if self.pot_type not in filters.pot_types:
@@ -149,6 +153,8 @@ class RiverEvent:
 	showdown_type: ShowdownType | None
 	hero_won_showdown: bool
 	pot_size_bb: float
+
+	is_pool: bool = False
 
 	def filter(self, filters: "RiverFilter") -> bool:
 		if self.pot_type not in filters.pot_types:

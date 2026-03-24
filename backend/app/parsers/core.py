@@ -6,7 +6,7 @@ from playing_cards_lib.poker import PokerPosition
 from app.models.events import RangeEvent, FlopEvent, TurnEvent, RiverEvent, LineEvent
 
 from .lexer import lex_hand
-from .analyzers import build_context, analyze_range, analyze_cbet, analyze_turn, analyze_river, analyze_line
+from .analyzers import build_context, analyze_range, analyze_cbet, analyze_turn, analyze_river, analyze_line, _get_flop_players
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +119,29 @@ def parse_histories(files: list[str]) -> tuple[list[RangeEvent], list[FlopEvent]
 			line_event = analyze_line(ctx)
 			if line_event:
 				line_events.append(line_event)
+
+			# Pool events: when hero didn't see flop, generate from each player's perspective
+			if not ctx.hero_sees_flop and ast.flop is not None:
+				pool_players = _get_flop_players(ast)
+				if len(pool_players) == 2:
+					for player in pool_players:
+						pool_ctx = build_context(ast, player=player)
+						pool_cbet = analyze_cbet(pool_ctx)
+						if pool_cbet:
+							pool_cbet.is_pool = True
+							cbet_events.append(pool_cbet)
+						pool_turn = analyze_turn(pool_ctx)
+						if pool_turn:
+							pool_turn.is_pool = True
+							turn_events.append(pool_turn)
+						pool_river = analyze_river(pool_ctx)
+						if pool_river:
+							pool_river.is_pool = True
+							river_events.append(pool_river)
+						pool_line = analyze_line(pool_ctx)
+						if pool_line:
+							pool_line.is_pool = True
+							line_events.append(pool_line)
 
 	logger.info(f"Parsing complete. Total hands: {hand_count}")
 	return range_events, cbet_events, turn_events, river_events, line_events

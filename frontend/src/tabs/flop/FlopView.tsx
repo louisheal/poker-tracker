@@ -41,9 +41,10 @@ const INITIAL_POT_TYPE_FILTERS = {
 
 interface Props {
   dateRange: DateRangeFilter;
+  includePool: boolean;
 }
 
-export const FlopView = ({ dateRange }: Props) => {
+export const FlopView = ({ dateRange, includePool }: Props) => {
   const [positionFilters, togglePosition, heroInPosition] = useToggleFilter(
     INITIAL_POSITION_FILTERS,
     POSITION_MAP,
@@ -85,6 +86,7 @@ export const FlopView = ({ dateRange }: Props) => {
         dateRange.endDate,
         betMin,
         betMax,
+        includePool,
       );
       setPfrStats(pfr);
     };
@@ -99,6 +101,7 @@ export const FlopView = ({ dateRange }: Props) => {
         dateRange.endDate,
         betMin,
         betMax,
+        includePool,
       );
       setDefStats(def);
     };
@@ -113,6 +116,7 @@ export const FlopView = ({ dateRange }: Props) => {
     dateRange.endDate,
     betSizeRange,
     isDefaultBetSize,
+    includePool,
   ]);
 
   useEffect(() => {
@@ -123,6 +127,7 @@ export const FlopView = ({ dateRange }: Props) => {
         potTypes,
         dateRange.startDate,
         dateRange.endDate,
+        includePool,
       );
       setVillainBetSizes(betSizes.villain_bet_sizes);
     };
@@ -134,6 +139,7 @@ export const FlopView = ({ dateRange }: Props) => {
     potTypes,
     dateRange.startDate,
     dateRange.endDate,
+    includePool,
   ]);
 
   return (

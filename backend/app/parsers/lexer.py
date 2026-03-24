@@ -18,9 +18,10 @@ BET_AMOUNT_RE = re.compile(r": bets \$(\d+\.?\d*)")
 CALL_AMOUNT_RE = re.compile(r": calls \$(\d+\.?\d*)")
 RAISE_INC_RE = re.compile(r": raises \$(\d+\.?\d*) to \$(\d+\.?\d*)")
 UNCALLED_RE = re.compile(r"Uncalled bet \(\$(\d+\.?\d*)\)")
-HERO_COLLECTED_RE = re.compile(r"Hero collected \$(\d+\.?\d*)")
+COLLECTED_RE = re.compile(r"(\S+) collected \$(\d+\.?\d*)")
 HERO_WON_RE = re.compile(r"Hero.*and won \(\$(\d+\.?\d*)\)")
 HERO_SHOWDOWN_RE = re.compile(r"Hero.*showed.*and (won|lost)")
+SUMMARY_COLLECTED_RE = re.compile(r"Seat \d+: (\S+).*collected \(\$(\d+\.?\d*)\)")
 TOTAL_POT_RE = re.compile(r"Total pot \$(\d+\.?\d*)")
 SHOWS_RE = re.compile(r"(\S+): shows \[([2-9TJQKA][shdc]) ([2-9TJQKA][shdc])\]", re.IGNORECASE)
 FLOP_RE = re.compile(r"\*\*\* FLOP \*\*\* \[([2-9TJQKA][shdc]) ([2-9TJQKA][shdc]) ([2-9TJQKA][shdc])\]", re.IGNORECASE)
@@ -121,6 +122,7 @@ def lex_hand(lines: list[str]) -> HandAST | None:
 	turn: Street | None = None
 	river: Street | None = None
 	hero_collected = 0.0
+	collections: dict[str, float] = {}
 	total_pot = 0.0
 	uncalled_amount = 0.0
 	uncalled_to: str | None = None
@@ -219,12 +221,14 @@ def lex_hand(lines: list[str]) -> HandAST | None:
 
 		# ---- SHOWDOWN: collected lines ----
 		if state == _State.SHOWDOWN:
-			coll_m = HERO_COLLECTED_RE.search(line)
+			coll_m = COLLECTED_RE.search(line)
 			if coll_m:
-				hero_collected += float(coll_m.group(1))
+				player = coll_m.group(1)
+				amount = float(coll_m.group(2))
+				collections[player] = collections.get(player, 0.0) + amount
 			continue
 
-		# ---- SUMMARY: total pot, hero showdown result ----
+		# ---- SUMMARY: total pot, showdown results, collected amounts ----
 		if state == _State.SUMMARY:
 			pot_m = TOTAL_POT_RE.search(line)
 			if pot_m:
@@ -235,8 +239,15 @@ def lex_hand(lines: list[str]) -> HandAST | None:
 				hero_showed_won = show_m.group(1) == "won"
 				won_m = HERO_WON_RE.search(line)
 				if won_m:
-					hero_collected = float(won_m.group(1))
+					collections["Hero"] = float(won_m.group(1))
+			sum_coll_m = SUMMARY_COLLECTED_RE.search(line)
+			if sum_coll_m:
+				player = sum_coll_m.group(1)
+				amount = float(sum_coll_m.group(2))
+				collections[player] = amount
 			continue
+
+	hero_collected = collections.get("Hero", 0.0)
 
 	return HandAST(
 		hand_id=hand_id,
@@ -250,6 +261,7 @@ def lex_hand(lines: list[str]) -> HandAST | None:
 		turn=turn,
 		river=river,
 		hero_collected=hero_collected,
+		collections=collections,
 		total_pot=total_pot,
 		uncalled_amount=uncalled_amount,
 		uncalled_to=uncalled_to,

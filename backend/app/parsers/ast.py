@@ -64,6 +64,7 @@ class HandAST:
 	turn: Street | None = None
 	river: Street | None = None
 	hero_collected: float = 0.0
+	collections: dict[str, float] = field(default_factory=dict)
 	total_pot: float = 0.0
 	uncalled_amount: float = 0.0
 	uncalled_to: str | None = None
@@ -94,3 +95,4 @@ class HandContext:
 	went_to_showdown: bool = False
 	hero_won_showdown: bool = False
 	pot_size_bb: float = 0.0
+	perspective_player: str = "Hero"

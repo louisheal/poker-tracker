@@ -12,6 +12,8 @@ class Flops:
 
 	def json(self, filters: FlopFilter):
 		events = [e for e in self.events if e.filter(filters)]
+		if not filters.include_pool:
+			events = [e for e in events if not e.is_pool]
 		
 		if not events:
 			return { "cbet_pct": 0, "fcbet_pct": 0, "raise_to_cbet_pct": 0, "donk_bet_pct": 0, "fold_to_donk_pct": 0, "raise_to_donk_pct": 0, "hand_count": 0 }
@@ -44,6 +46,7 @@ class Flops:
 			board_types=filters.board_types,
 			hero_preflop_raiser=filters.hero_preflop_raiser,
 			hero_in_position=filters.hero_in_position,
+			include_pool=filters.include_pool,
 		)
 		events = [e for e in self.events if e.filter(no_size_filter)]
 		# Villain cbet = when hero is DEF (not PFR) and villain cbets
@@ -63,6 +66,8 @@ class LineEvents:
 
 	def _filter(self, f: LineFilter) -> list[LineEvent]:
 		events = self.events
+		if not f.include_pool:
+			events = [e for e in events if not e.is_pool]
 		if f.hero_in_position is not None:
 			events = [e for e in events if e.hero_in_position == f.hero_in_position]
 		if f.hero_preflop_raiser is not None:
@@ -382,6 +387,8 @@ class Turns:
 		
 		for sequence in ActionSequence:
 			sequence_events = [e for e in self.events if e.flop_action_sequence == sequence and e.filter(filters)]
+			if not filters.include_pool:
+				sequence_events = [e for e in sequence_events if not e.is_pool]
 			
 			if not sequence_events:
 				result[sequence.value] = {
@@ -427,6 +434,8 @@ class Rivers:
 
 	def json(self, filters: RiverFilter):
 		events = [e for e in self.events if e.filter(filters)]
+		if not filters.include_pool:
+			events = [e for e in events if not e.is_pool]
 
 		if not events:
 			empty_showdown = {
