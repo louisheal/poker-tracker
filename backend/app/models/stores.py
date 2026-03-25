@@ -1,6 +1,6 @@
 from .events import FlopEvent, LineEvent, TurnEvent, RiverEvent
 from .filters import FlopFilter, LineFilter, TurnFilter, RiverFilter
-from .enums import ActionSequence
+from .enums import ActionSequence, MadeHandType, DrawType
 
 
 class Flops:
@@ -355,6 +355,57 @@ class LineEvents:
 
 	def _empty_ev_stats(self):
 		return {"overall_ev": 0, "next_actions": []}
+
+	def hand_type_distribution(self, f: LineFilter, flop_actions: list[str] | None = None, turn_actions: list[str] | None = None, river_actions: list[str] | None = None):
+		from app.parsers.hand_types import classify_made_hand, classify_draw
+
+		events = [e for e in self.events if e.filter(f)]
+
+		if flop_actions:
+			events = self._filter_by_street_prefix(events, "flop", flop_actions)
+
+		on_turn = turn_actions is not None
+		if on_turn:
+			events = [e for e in events if e.turn_actions]
+			if turn_actions:
+				events = self._filter_by_street_prefix(events, "turn", turn_actions)
+
+		on_river = river_actions is not None
+		if on_river:
+			events = [e for e in events if e.river_actions]
+			if river_actions:
+				events = self._filter_by_street_prefix(events, "river", river_actions)
+
+		hero_made: dict[str, int] = {t.value: 0 for t in MadeHandType}
+		hero_draws: dict[str, int] = {t.value: 0 for t in DrawType}
+		villain_made: dict[str, int] = {t.value: 0 for t in MadeHandType}
+		villain_draws: dict[str, int] = {t.value: 0 for t in DrawType}
+
+		for e in events:
+			board = list(e.flop_cards)
+			if on_turn and e.turn_card:
+				board.append(e.turn_card)
+			if on_river and e.river_card:
+				board.append(e.river_card)
+
+			if e.hero_hand and board:
+				hero_made[classify_made_hand(e.hero_hand, board).value] += 1
+				hero_draws[classify_draw(e.hero_hand, board).value] += 1
+
+			if e.villain_hand and board:
+				villain_made[classify_made_hand(e.villain_hand, board).value] += 1
+				villain_draws[classify_draw(e.villain_hand, board).value] += 1
+
+		return {
+			"hero": {
+				"made_hands": hero_made,
+				"draws": hero_draws,
+			},
+			"villain": {
+				"made_hands": villain_made,
+				"draws": villain_draws,
+			},
+		}
 
 
 class Turns:

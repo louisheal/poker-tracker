@@ -11,6 +11,7 @@ import type {
   TurnActionLine,
   RiverRunoutFilter,
   RiverStats,
+  HandTypeDistributionResponse,
 } from "./models";
 
 export const getRanges = async (startDate?: string, endDate?: string) => {
@@ -305,6 +306,57 @@ export const getLineAnalysis = async (
   }
   const response = await fetch(
     `http://localhost:8000/line-analysis?${params}`,
+  );
+  return response.json();
+};
+
+export const getHandTypeDistribution = async (
+  heroInPosition: boolean,
+  heroPfr: boolean,
+  boardTypes: BoardTypeFilter[],
+  potTypes: PotTypeFilter[],
+  actions?: string[],
+  turnRunouts?: TurnRunoutFilter[],
+  riverRunouts?: RiverRunoutFilter[],
+  startDate?: string,
+  endDate?: string,
+  includePool?: boolean,
+): Promise<HandTypeDistributionResponse> => {
+  const params = new URLSearchParams();
+  params.append("hero_in_position", String(heroInPosition));
+  params.append("hero_preflop_raiser", String(heroPfr));
+  for (const value of boardTypes) {
+    params.append("board_types", value);
+  }
+  for (const value of potTypes) {
+    params.append("pot_types", value);
+  }
+  if (actions) {
+    for (const a of actions) {
+      params.append("actions", a);
+    }
+  }
+  if (turnRunouts) {
+    for (const value of turnRunouts) {
+      params.append("turn_runouts", value);
+    }
+  }
+  if (riverRunouts) {
+    for (const value of riverRunouts) {
+      params.append("river_runouts", value);
+    }
+  }
+  if (startDate) {
+    params.append("start_date", startDate);
+  }
+  if (endDate) {
+    params.append("end_date", endDate);
+  }
+  if (includePool) {
+    params.append("include_pool", "true");
+  }
+  const response = await fetch(
+    `http://localhost:8000/line-analysis/hand-types?${params}`,
   );
   return response.json();
 };

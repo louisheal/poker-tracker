@@ -130,3 +130,35 @@ export interface TurnStreetStats {
   hero_fold_to_villain_bet_pct: number;
   hero_raise_to_villain_bet_pct: number;
 }
+
+export type MadeHandType =
+  | "STRAIGHT_FLUSH"
+  | "QUADS"
+  | "FULL_HOUSE"
+  | "FLUSH"
+  | "STRAIGHT"
+  | "SET"
+  | "TWO_PAIR"
+  | "OVERPAIR"
+  | "TOP_PAIR"
+  | "PAIR"
+  | "ACE_HIGH"
+  | "NO_MADE_HAND";
+
+export type DrawType =
+  | "FLUSH_OESD"
+  | "FLUSH_GUTSHOT"
+  | "FLUSH_DRAW"
+  | "OESD"
+  | "GUTSHOT"
+  | "NO_DRAW";
+
+export interface PlayerHandTypes {
+  made_hands: Record<MadeHandType, number>;
+  draws: Record<DrawType, number>;
+}
+
+export interface HandTypeDistributionResponse {
+  hero: PlayerHandTypes;
+  villain: PlayerHandTypes;
+}
