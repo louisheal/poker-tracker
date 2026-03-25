@@ -164,11 +164,19 @@ class LineEvents:
 		pot_attr = POT_ATTR[street]
 		pot_bb: float = sum(getattr(e, pot_attr, 0) for e in events) / len(events) if events else 0
 		next_actor: str | None = None
+		hero_faces_bet: bool = False
+		villain_bet_bb: float | None = None
 
 		for e in events:
 			actions = getattr(e, actions_attr)
 			if depth < len(actions):
 				next_actor = actions[depth].actor
+				# Check if the previous action was a bet/raise (hero faces a bet)
+				if depth > 0:
+					prev_action = actions[depth - 1]
+					if prev_action.actor == "villain" and prev_action.action in ("B", "R") and prev_action.size_pct is not None:
+						hero_faces_bet = True
+						villain_bet_bb = (prev_action.size_pct / 100) * pot_bb
 				break
 
 		return {
@@ -183,6 +191,8 @@ class LineEvents:
 			"street": street,
 			"hand_count": len(events),
 			"next_actor": next_actor,
+			"hero_faces_bet": hero_faces_bet,
+			"villain_bet_bb": villain_bet_bb,
 		}
 
 	def _build_board(self, e: LineEvent, on_turn: bool, on_river: bool) -> list:

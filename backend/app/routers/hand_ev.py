@@ -48,8 +48,8 @@ def get_hand_ev(
 	total = node_data["fold_count"] + node_data["call_count"] + node_data["raise_count"]
 	sizes = bet_sizes or DEFAULT_BET_SIZES
 
-	if total > 0:
-		ev_result = calculate_ev_open(node_data, sizes)
+	if node_data["hero_faces_bet"] and node_data["villain_bet_bb"] is not None:
+		ev_result = calculate_ev_vs_bet(node_data, node_data["villain_bet_bb"])
 	else:
 		ev_result = calculate_ev_open(node_data, sizes)
 
