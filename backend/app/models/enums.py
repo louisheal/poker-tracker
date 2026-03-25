@@ -54,6 +54,18 @@ class MadeHandType(str, Enum):
 	NO_MADE_HAND = "NO_MADE_HAND"
 
 
+class FlushDrawType(str, Enum):
+	FRONT_DOOR = "FRONT_DOOR"
+	BACK_DOOR = "BACK_DOOR"
+	NONE = "NONE"
+
+
+class StraightDrawType(str, Enum):
+	OESD = "OESD"
+	GUTSHOT = "GUTSHOT"
+	NONE = "NONE"
+
+
 class DrawType(str, Enum):
 	FLUSH_OESD = "FLUSH_OESD"
 	FLUSH_GUTSHOT = "FLUSH_GUTSHOT"
