@@ -2,7 +2,7 @@ from collections import Counter
 
 from playing_cards_lib.core import Card, Rank
 from playing_cards_lib.poker import HoleCards
-from app.models.enums import MadeHandType, DrawType
+from app.models.enums import MadeHandType, DrawType, StraightDrawType, FlushDrawType
 
 RANK_ORDER = list(Rank)
 RANK_INDEX = {r: i for i, r in enumerate(RANK_ORDER)}
@@ -196,6 +196,40 @@ def classify_made_hand(hole_cards: HoleCards, board_cards: list[Card]) -> MadeHa
 		return MadeHandType.ACE_HIGH
 
 	return MadeHandType.NO_MADE_HAND
+
+
+def classify_flush_draw(hole_cards: HoleCards, board_cards: list[Card]) -> FlushDrawType:
+    """Classify flush draw potential."""
+    if len(board_cards) >= 5:
+        return FlushDrawType.NONE
+    all_cards = [hole_cards.fst_card, hole_cards.snd_card] + board_cards
+    hole_suits = {hole_cards.fst_card.suit, hole_cards.snd_card.suit}
+    suit_counts = Counter(c.suit for c in all_cards)
+    for suit, count in suit_counts.items():
+        if suit not in hole_suits:
+            continue
+        if count >= 5:
+            return FlushDrawType.NONE
+        if count == 4:
+            return FlushDrawType.FRONT_DOOR
+        if count == 3 and len(board_cards) == 3:
+            return FlushDrawType.BACK_DOOR
+    return FlushDrawType.NONE
+
+
+def classify_straight_draw(hole_cards: HoleCards, board_cards: list[Card]) -> StraightDrawType:
+    """Classify straight draw potential."""
+    if len(board_cards) >= 5:
+        return StraightDrawType.NONE
+    all_ranks = {hole_cards.fst_card.rank, hole_cards.snd_card.rank}
+    for c in board_cards:
+        all_ranks.add(c.rank)
+    is_oesd, is_gutshot = _straight_draw_outs(all_ranks)
+    if is_oesd:
+        return StraightDrawType.OESD
+    if is_gutshot:
+        return StraightDrawType.GUTSHOT
+    return StraightDrawType.NONE
 
 
 def classify_draw(hole_cards: HoleCards, board_cards: list[Card]) -> DrawType:
