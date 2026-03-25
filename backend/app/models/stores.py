@@ -1,10 +1,8 @@
+from __future__ import annotations
+
 from .events import FlopEvent, LineEvent, TurnEvent, RiverEvent
 from .filters import FlopFilter, LineFilter, TurnFilter, RiverFilter
 from .enums import ActionSequence, MadeHandType, DrawType
-from app.parsers.hand_types import classify_made_hand, classify_flush_draw, classify_straight_draw
-from app.parsers.equity import get_equity, VALID_TRIPLES
-from typing import Dict, List, Optional
-from playing_cards_lib.core import Card
 
 
 class Flops:
@@ -67,25 +65,30 @@ class LineEvents:
 	def ev_node_data(
 		self,
 		f: LineFilter,
-		flop_actions: Optional[List[str]],
-		turn_actions: Optional[List[str]],
-		river_actions: Optional[List[str]],
-	) -> Dict[str, float | int | str | dict | None]:
+		flop_actions: list[str] | None,
+		turn_actions: list[str] | None,
+		river_actions: list[str] | None,
+	) -> dict:
+		from app.parsers.hand_types import classify_made_hand, classify_flush_draw, classify_straight_draw
+		from app.parsers.equity import get_equity, VALID_TRIPLES
 
 		# 1. Filter events + apply action prefixes (same as spot_stats)
 		events = [e for e in self.events if e.filter(f)]
 		if flop_actions:
 			events = self._filter_by_street_prefix(events, "flop", flop_actions)
-		on_turn = turn_actions is not None
+		on_turn: bool = turn_actions is not None
 		if on_turn:
 			events = [e for e in events if e.turn_actions]
 			if turn_actions:
 				events = self._filter_by_street_prefix(events, "turn", turn_actions)
-		on_river = river_actions is not None
+		on_river: bool = river_actions is not None
 		if on_river:
 			events = [e for e in events if e.river_actions]
 			if river_actions:
 				events = self._filter_by_street_prefix(events, "river", river_actions)
+
+		POT_ATTR = {"river": "pot_at_river_bb", "turn": "pot_at_turn_bb", "flop": "pot_at_flop_bb"}
+
 		if on_river:
 			street = "river"
 			depth = len(river_actions) if river_actions else 0
@@ -100,12 +103,12 @@ class LineEvents:
 			actions_attr = "flop_actions"
 
 		# 3. Init running sums — one per hero triple, per range
-		full_eq_sum = {t: 0.0 for t in VALID_TRIPLES}
-		call_eq_sum = {t: 0.0 for t in VALID_TRIPLES}
-		raise_eq_sum = {t: 0.0 for t in VALID_TRIPLES}
-		full_count = 0
-		call_shown_count = 0
-		raise_shown_count = 0
+		full_eq_sum: dict[tuple, float] = {t: 0.0 for t in VALID_TRIPLES}
+		call_eq_sum: dict[tuple, float] = {t: 0.0 for t in VALID_TRIPLES}
+		raise_eq_sum: dict[tuple, float] = {t: 0.0 for t in VALID_TRIPLES}
+		full_count: int = 0
+		call_shown_count: int = 0
+		raise_shown_count: int = 0
 
 		# 4. Reaction counts (all events, not just showdown)
 		fold_count: int = 0
@@ -133,7 +136,7 @@ class LineEvents:
 				if reaction.size_pct is not None:
 					raise_sizes.append(reaction.size_pct)
 			# Classify villain hand (if shown) and update running equity sums
-			if getattr(e, 'villain_hand', None):
+			if e.villain_hand:
 				board = self._build_board(e, on_turn, on_river)
 				v_triple = (
 					classify_made_hand(e.villain_hand, board),
@@ -157,9 +160,10 @@ class LineEvents:
 		equity_vs_full = {t: (full_eq_sum[t] / full_count if full_count else DEFAULT_EQUITY) for t in VALID_TRIPLES}
 		equity_vs_call = {t: (call_eq_sum[t] / call_shown_count if call_shown_count else DEFAULT_EQUITY) for t in VALID_TRIPLES}
 		equity_vs_raise = {t: (raise_eq_sum[t] / raise_shown_count if raise_shown_count else DEFAULT_EQUITY) for t in VALID_TRIPLES}
-		median_raise = sorted(raise_sizes)[len(raise_sizes) // 2] if raise_sizes else None
-		pot_bb = sum(getattr(e, 'pot_bb', 0) for e in events) / len(events) if events else 0
-		next_actor = None
+		median_raise: float | None = sorted(raise_sizes)[len(raise_sizes) // 2] if raise_sizes else None
+		pot_attr = POT_ATTR[street]
+		pot_bb: float = sum(getattr(e, pot_attr, 0) for e in events) / len(events) if events else 0
+		next_actor: str | None = None
 
 		for e in events:
 			actions = getattr(e, actions_attr)
@@ -181,11 +185,12 @@ class LineEvents:
 			"next_actor": next_actor,
 		}
 
-	def _build_board(self, e: LineEvent, on_turn: bool, on_river: bool) -> list[Card]:
-		board = list(e.flop_cards)
-		if on_turn and getattr(e, 'turn_card', None):
+	def _build_board(self, e: LineEvent, on_turn: bool, on_river: bool) -> list:
+		from playing_cards_lib.core import Card
+		board: list[Card] = list(e.flop_cards)
+		if on_turn and e.turn_card:
 			board.append(e.turn_card)
-		if on_river and getattr(e, 'river_card', None):
+		if on_river and e.river_card:
 			board.append(e.river_card)
 		return board
 
