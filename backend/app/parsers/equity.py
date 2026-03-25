@@ -118,13 +118,15 @@ def _build_valid_triples() -> list[HandTriple]:
     ]
 
 
+VALID_TRIPLES = _build_valid_triples()
+
+
 def _build_equity_grid() -> Dict[str, Dict[Tuple[HandTriple, HandTriple], float]]:
     grid = {}
-    valid_triples = _build_valid_triples()
     for street in ("flop", "turn", "river"):
         street_grid = {}
-        for hero in valid_triples:
-            for villain in valid_triples:
+        for hero in VALID_TRIPLES:
+            for villain in VALID_TRIPLES:
                 street_grid[(hero, villain)] = _calculate_triple_equity(
                     hero[0], hero[1], hero[2],
                     villain[0], villain[1], villain[2],
@@ -134,6 +136,9 @@ def _build_equity_grid() -> Dict[str, Dict[Tuple[HandTriple, HandTriple], float]
     return grid
 
 
+EQUITY_GRID = _build_equity_grid()
+
+
 def get_equity(hero: HandTriple, villain: HandTriple, street: str) -> float:
     """O(1) equity lookup from precomputed grid."""
-    return _build_equity_grid()[street][(hero, villain)]
+    return EQUITY_GRID[street][(hero, villain)]
