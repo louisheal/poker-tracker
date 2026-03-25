@@ -102,7 +102,35 @@ class LineEvents:
 			depth = len(flop_actions) if flop_actions else 0
 			actions_attr = "flop_actions"
 
-		# 3. Init running sums — one per hero triple, per range
+		# 3. Determine who acts at this node
+		next_actor: str | None = None
+		for e in events:
+			actions = getattr(e, actions_attr)
+			if depth < len(actions):
+				next_actor = actions[depth].actor
+				break
+
+		if next_actor is None:
+			# No events reach this depth
+			from app.parsers.equity import VALID_TRIPLES
+			DEFAULT_EQUITY = 0.5
+			pot_attr = POT_ATTR[street]
+			pot_bb: float = sum(getattr(e, pot_attr, 0) for e in events) / len(events) if events else 0
+			return {
+				"equity_vs_full": {t: DEFAULT_EQUITY for t in VALID_TRIPLES},
+				"equity_vs_call": {t: DEFAULT_EQUITY for t in VALID_TRIPLES},
+				"equity_vs_raise": {t: DEFAULT_EQUITY for t in VALID_TRIPLES},
+				"fold_count": 0, "call_count": 0, "raise_count": 0,
+				"median_raise_size_pct": None,
+				"pot_bb": pot_bb, "street": street,
+				"hand_count": len(events), "next_actor": None,
+				"hero_faces_bet": False, "villain_bet_bb": None,
+			}
+
+		# The reaction we care about is always villain's response to hero's action
+		# When next_actor is not hero, this isn't a hero decision node
+
+		# 4. Init running sums -- one per hero triple, per range
 		full_eq_sum: dict[tuple, float] = {t: 0.0 for t in VALID_TRIPLES}
 		call_eq_sum: dict[tuple, float] = {t: 0.0 for t in VALID_TRIPLES}
 		raise_eq_sum: dict[tuple, float] = {t: 0.0 for t in VALID_TRIPLES}
@@ -110,32 +138,20 @@ class LineEvents:
 		call_shown_count: int = 0
 		raise_shown_count: int = 0
 
-		# 4. Reaction counts (all events, not just showdown)
+		# 5. Reaction counts (all events, not just showdown)
 		fold_count: int = 0
 		call_count: int = 0
 		raise_count: int = 0
 		raise_sizes: list[float] = []
 
-		# 5. Single pass
+		# 6. Single pass
 		for e in events:
 			actions = getattr(e, actions_attr)
-			reaction = None
-			if depth + 1 < len(actions):
-				reaction = actions[depth + 1]
-			elif depth < len(actions):
-				fold_count += 1
+			if depth >= len(actions):
 				continue
-			else:
-				continue
-			if reaction.action == "F":
-				fold_count += 1
-			elif reaction.action in ("C", "X"):
-				call_count += 1
-			elif reaction.action == "R":
-				raise_count += 1
-				if reaction.size_pct is not None:
-					raise_sizes.append(reaction.size_pct)
-			# Classify villain hand (if shown) and update running equity sums
+
+			# Equity vs full villain range (all hands, used for EV of passive action)
+			v_triple = None
 			if e.villain_hand:
 				board = self._build_board(e, on_turn, on_river)
 				v_triple = (
@@ -146,16 +162,45 @@ class LineEvents:
 				full_count += 1
 				for hero in VALID_TRIPLES:
 					full_eq_sum[hero] += get_equity(hero, v_triple, street)
+
+			# Reaction counts only when hero takes aggressive action (bet/raise)
+			hero_action = actions[depth]
+			if hero_action.action not in ("B", "R"):
+				continue
+
+			# Find villain's first action after hero's aggressive action
+			reaction = None
+			for idx in range(depth + 1, len(actions)):
+				if actions[idx].actor == "villain":
+					reaction = actions[idx]
+					break
+
+			if reaction is None:
+				if len(actions) > depth + 1:
+					fold_count += 1
+				continue
+
+			if reaction.action == "F":
+				fold_count += 1
+			elif reaction.action in ("C", "X"):
+				call_count += 1
+			elif reaction.action in ("R", "B"):
+				raise_count += 1
+				if reaction.size_pct is not None:
+					raise_sizes.append(reaction.size_pct)
+
+			# Equity vs calling/raising ranges
+			if v_triple is not None:
 				if reaction.action in ("C", "X"):
 					call_shown_count += 1
 					for hero in VALID_TRIPLES:
 						call_eq_sum[hero] += get_equity(hero, v_triple, street)
-				elif reaction.action == "R":
+				elif reaction.action in ("R", "B"):
 					raise_shown_count += 1
 					for hero in VALID_TRIPLES:
 						raise_eq_sum[hero] += get_equity(hero, v_triple, street)
 
-		# 6. Compute averages (default 0.5 if no data)
+		# 7. Compute averages (default 0.5 if no data)
 		DEFAULT_EQUITY = 0.5
 		equity_vs_full = {t: (full_eq_sum[t] / full_count if full_count else DEFAULT_EQUITY) for t in VALID_TRIPLES}
 		equity_vs_call = {t: (call_eq_sum[t] / call_shown_count if call_shown_count else DEFAULT_EQUITY) for t in VALID_TRIPLES}
@@ -163,21 +208,19 @@ class LineEvents:
 		median_raise: float | None = sorted(raise_sizes)[len(raise_sizes) // 2] if raise_sizes else None
 		pot_attr = POT_ATTR[street]
 		pot_bb: float = sum(getattr(e, pot_attr, 0) for e in events) / len(events) if events else 0
-		next_actor: str | None = None
+
+		# 8. Detect if hero faces a bet (previous action was villain B/R)
 		hero_faces_bet: bool = False
 		villain_bet_bb: float | None = None
-
-		for e in events:
-			actions = getattr(e, actions_attr)
-			if depth < len(actions):
-				next_actor = actions[depth].actor
-				# Check if the previous action was a bet/raise (hero faces a bet)
-				if depth > 0:
+		if next_actor == "hero" and depth > 0:
+			for e in events:
+				actions = getattr(e, actions_attr)
+				if depth < len(actions):
 					prev_action = actions[depth - 1]
 					if prev_action.actor == "villain" and prev_action.action in ("B", "R") and prev_action.size_pct is not None:
 						hero_faces_bet = True
 						villain_bet_bb = (prev_action.size_pct / 100) * pot_bb
-				break
+					break
 
 		return {
 			"equity_vs_full": equity_vs_full,

@@ -4,6 +4,7 @@ import { BetSizeDistribution } from "@/components/BetSizeDistribution";
 import {
   getLineAnalysis,
   getHandTypeDistribution,
+  getHandEv,
   type LineAnalysisResponse,
 } from "@/api";
 import type {
@@ -13,6 +14,7 @@ import type {
   TurnRunoutFilter,
   RiverRunoutFilter,
   HandTypeDistributionResponse,
+  HandEvResponse,
 } from "@/models";
 import { useToggleFilter } from "@/hooks/useToggleFilter";
 import {
@@ -26,8 +28,8 @@ import {
 import { ActionLine } from "./components/ActionLine";
 import { StreetStatsPanel } from "./components/StreetStatsPanel";
 import { EvPanel } from "./components/EvPanel";
-import { TopHandsPanel } from "./components/TopHandsPanel";
 import { HandTypePanel } from "./components/HandTypePanel";
+import { HandEvPanel } from "./components/HandEvPanel";
 
 const ACTION_LABELS: Record<string, string> = {
   X: "Check",
@@ -162,6 +164,7 @@ export const LineAnalyserView = ({ dateRange, includePool }: Props) => {
   const [data, setData] = useState<LineAnalysisResponse>(EMPTY_RESPONSE);
   const [handTypes, setHandTypes] =
     useState<HandTypeDistributionResponse | null>(null);
+  const [handEv, setHandEv] = useState<HandEvResponse | null>(null);
 
   const [actionLine, setActionLine] = useState<ActionLineType>({
     actions: [],
@@ -260,6 +263,44 @@ export const LineAnalyserView = ({ dateRange, includePool }: Props) => {
     };
 
     fetchHandTypes();
+  }, [
+    position,
+    role,
+    activeBoards,
+    activePots,
+    actionPrefix,
+    dateRange,
+    isOnTurn,
+    activeTurnRunouts,
+    isOnRiver,
+    activeRiverRunouts,
+    includePool,
+  ]);
+
+  useEffect(() => {
+    const fetchHandEv = async () => {
+      const turnRunouts: TurnRunoutFilter[] | undefined = isOnTurn
+        ? activeTurnRunouts
+        : undefined;
+      const riverRunouts: RiverRunoutFilter[] | undefined = isOnRiver
+        ? activeRiverRunouts
+        : undefined;
+      const result = await getHandEv(
+        position === "ip",
+        role === "pfr",
+        activeBoards,
+        activePots,
+        actionPrefix,
+        turnRunouts,
+        riverRunouts,
+        dateRange.startDate,
+        dateRange.endDate,
+        includePool,
+      );
+      setHandEv(result);
+    };
+
+    fetchHandEv();
   }, [
     position,
     role,
@@ -480,7 +521,7 @@ export const LineAnalyserView = ({ dateRange, includePool }: Props) => {
       {/* Divider */}
       <div className="border-t border-border" />
 
-      {/* 2×3 grid: Stats | EV | Wins / BetDist (span 2) | Losses */}
+      {/* 2x3 grid: Stats | EV | HandEv (row-span-2) / BetDist (col-span-2) */}
       <div className="grid gap-4 grid-cols-3">
         <StreetStatsPanel
           street={data.street}
@@ -498,11 +539,10 @@ export const LineAnalyserView = ({ dateRange, includePool }: Props) => {
           showRiverTransition={showRiverTransition}
           onContinueToRiver={handleContinueToRiver}
         />
-        <TopHandsPanel title="Biggest Wins" hands={data.top_wins} />
+        <HandEvPanel data={handEv} />
         <div className="col-span-2">
           <BetSizeDistribution sizes={data.bet_sizes} title={betSizeTitle} />
         </div>
-        <TopHandsPanel title="Biggest Losses" hands={data.top_losses} />
       </div>
       <div className="grid gap-4 grid-cols-2">
         <HandTypePanel
