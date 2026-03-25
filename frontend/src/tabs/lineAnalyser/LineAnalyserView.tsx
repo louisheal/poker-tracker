@@ -1,13 +1,18 @@
 import { useState, useMemo, useEffect } from "react";
 import { FilterGroup } from "@/components/FilterGroup";
 import { BetSizeDistribution } from "@/components/BetSizeDistribution";
-import { getLineAnalysis, type LineAnalysisResponse } from "@/api";
+import {
+  getLineAnalysis,
+  getHandTypeDistribution,
+  type LineAnalysisResponse,
+} from "@/api";
 import type {
   DateRangeFilter,
   ActionLine as ActionLineType,
   LineActionItem,
   TurnRunoutFilter,
   RiverRunoutFilter,
+  HandTypeDistributionResponse,
 } from "@/models";
 import { useToggleFilter } from "@/hooks/useToggleFilter";
 import {
@@ -22,6 +27,7 @@ import { ActionLine } from "./components/ActionLine";
 import { StreetStatsPanel } from "./components/StreetStatsPanel";
 import { EvPanel } from "./components/EvPanel";
 import { TopHandsPanel } from "./components/TopHandsPanel";
+import { HandTypePanel } from "./components/HandTypePanel";
 
 const ACTION_LABELS: Record<string, string> = {
   X: "Check",
@@ -154,6 +160,8 @@ export const LineAnalyserView = ({ dateRange, includePool }: Props) => {
   const [riverRunoutFilters, toggleRiverRunout, activeRiverRunouts] =
     useToggleFilter(INITIAL_RIVER_RUNOUT_FILTERS, RIVER_RUNOUT_MAP);
   const [data, setData] = useState<LineAnalysisResponse>(EMPTY_RESPONSE);
+  const [handTypes, setHandTypes] =
+    useState<HandTypeDistributionResponse | null>(null);
 
   const [actionLine, setActionLine] = useState<ActionLineType>({
     actions: [],
@@ -228,7 +236,45 @@ export const LineAnalyserView = ({ dateRange, includePool }: Props) => {
     includePool,
   ]);
 
-  const handleActionClick = (action: string, sizeRange?: [number, number]) => {
+  useEffect(() => {
+    const fetchHandTypes = async () => {
+      const turnRunouts: TurnRunoutFilter[] | undefined = isOnTurn
+        ? activeTurnRunouts
+        : undefined;
+      const riverRunouts: RiverRunoutFilter[] | undefined = isOnRiver
+        ? activeRiverRunouts
+        : undefined;
+      const result = await getHandTypeDistribution(
+        position === "ip",
+        role === "pfr",
+        activeBoards,
+        activePots,
+        actionPrefix,
+        turnRunouts,
+        riverRunouts,
+        dateRange.startDate,
+        dateRange.endDate,
+        includePool,
+      );
+      setHandTypes(result);
+    };
+
+    fetchHandTypes();
+  }, [
+    position,
+    role,
+    activeBoards,
+    activePots,
+    actionPrefix,
+    dateRange,
+    isOnTurn,
+    activeTurnRunouts,
+    isOnRiver,
+    activeRiverRunouts,
+    includePool,
+  ]);
+
+  const handleActionClick= (action: string, sizeRange?: [number, number]) => {
     const actor = data.next_actor;
     if (!actor) return;
     const newAction: LineActionItem = {
@@ -457,6 +503,16 @@ export const LineAnalyserView = ({ dateRange, includePool }: Props) => {
           <BetSizeDistribution sizes={data.bet_sizes} title={betSizeTitle} />
         </div>
         <TopHandsPanel title="Biggest Losses" hands={data.top_losses} />
+      </div>
+      <div className="grid gap-4 grid-cols-2">
+        <HandTypePanel
+          title="Hero Hand Types"
+          distribution={handTypes?.hero ?? null}
+        />
+        <HandTypePanel
+          title="Villain Hand Types"
+          distribution={handTypes?.villain ?? null}
+        />
       </div>
     </div>
   );
