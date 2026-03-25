@@ -162,3 +162,31 @@ export interface HandTypeDistributionResponse {
   hero: PlayerHandTypes;
   villain: PlayerHandTypes;
 }
+
+export type FlushDrawType = "FRONT_DOOR" | "BACK_DOOR" | "NONE";
+export type StraightDrawType = "OESD" | "GUTSHOT" | "NONE";
+
+export interface HandEvRow {
+  made: MadeHandType;
+  flush_draw: FlushDrawType;
+  straight_draw: StraightDrawType;
+  evs: Record<string, number>;
+  best_action: string;
+}
+
+export interface VillainData {
+  range_count: number;
+  fold_pct: number;
+  call_pct: number;
+  raise_pct: number;
+}
+
+export interface HandEvResponse {
+  rows: HandEvRow[];
+  available_actions: string[];
+  villain_data: VillainData;
+  pot_bb: number;
+  street: "flop" | "turn" | "river";
+  hand_count: number;
+  next_actor: "hero" | "villain" | null;
+}
