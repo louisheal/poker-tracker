@@ -5,13 +5,12 @@ from datetime import date
 from playing_cards_lib.poker import PokerPosition
 from app.models.events import RangeEvent, FlopEvent, TurnEvent, RiverEvent, LineEvent
 
-from .lexer import lex_hand
+from .lexer import lex_hand, SEAT_STACK_RE
 from .analyzers import build_context, analyze_range, analyze_cbet, analyze_turn, analyze_river, analyze_line, _get_flop_players
 
 logger = logging.getLogger(__name__)
 
 FLOP_RE = re.compile(r"\*\*\* FLOP \*\*\* \[([2-9TJQKA][shdc]) ([2-9TJQKA][shdc]) ([2-9TJQKA][shdc])\]", re.IGNORECASE)
-SEAT_RE = re.compile(r"^Seat\s+\d+:\s+([^\s]+)")
 ACTION_RE = re.compile(r"(.*): (folds|calls|raises|checks|bets)\b", re.IGNORECASE)
 START_RE = re.compile(r"^Poker Hand #[^:]+: .* - (\d{4}/\d{2}/\d{2}) \d{2}:\d{2}:\d{2}$")
 
@@ -29,9 +28,9 @@ def parse_hand_date(lines: list[str]) -> date | None:
 def flop_player_count(lines: list[str]) -> int | None:
 	players: set[str] = set()
 	for line in lines:
-		seat = SEAT_RE.search(line)
+		seat = SEAT_STACK_RE.search(line)
 		if seat:
-			players.add(seat.group(1))
+			players.add(seat.group(2))
 
 	active_players = set(players)
 	for line in lines:

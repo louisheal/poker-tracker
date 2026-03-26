@@ -18,16 +18,16 @@ BET_AMOUNT_RE = re.compile(r": bets \$(\d+\.?\d*)")
 CALL_AMOUNT_RE = re.compile(r": calls \$(\d+\.?\d*)")
 RAISE_INC_RE = re.compile(r": raises \$(\d+\.?\d*) to \$(\d+\.?\d*)")
 UNCALLED_RE = re.compile(r"Uncalled bet \(\$(\d+\.?\d*)\)")
-COLLECTED_RE = re.compile(r"(\S+) collected \$(\d+\.?\d*)")
+COLLECTED_RE = re.compile(r"(.+?) collected \$(\d+\.?\d*)")
 HERO_WON_RE = re.compile(r"Hero.*and won \(\$(\d+\.?\d*)\)")
 HERO_SHOWDOWN_RE = re.compile(r"Hero.*showed.*and (won|lost)")
-SUMMARY_COLLECTED_RE = re.compile(r"Seat \d+: (\S+).*collected \(\$(\d+\.?\d*)\)")
+SUMMARY_COLLECTED_RE = re.compile(r"Seat \d+: (.+?) collected \(\$(\d+\.?\d*)\)")
 TOTAL_POT_RE = re.compile(r"Total pot \$(\d+\.?\d*)")
-SHOWS_RE = re.compile(r"(\S+): shows \[([2-9TJQKA][shdc]) ([2-9TJQKA][shdc])\]", re.IGNORECASE)
+SHOWS_RE = re.compile(r"(.+?): shows \[([2-9TJQKA][shdc]) ([2-9TJQKA][shdc])\]", re.IGNORECASE)
 FLOP_RE = re.compile(r"\*\*\* FLOP \*\*\* \[([2-9TJQKA][shdc]) ([2-9TJQKA][shdc]) ([2-9TJQKA][shdc])\]", re.IGNORECASE)
 TURN_RE = re.compile(r"\*\*\* TURN \*\*\* \[([2-9TJQKA][shdc]) ([2-9TJQKA][shdc]) ([2-9TJQKA][shdc])\] \[([2-9TJQKA][shdc])\]", re.IGNORECASE)
 RIVER_RE = re.compile(r"\*\*\* RIVER \*\*\* \[([2-9TJQKA][shdc]) ([2-9TJQKA][shdc]) ([2-9TJQKA][shdc]) ([2-9TJQKA][shdc])\] \[([2-9TJQKA][shdc])\]", re.IGNORECASE)
-SEAT_RE = re.compile(r"^Seat\s+\d+:\s+([^\s]+)")
+SEAT_RE = re.compile(r"^Seat\s+\d+:\s+(.+?)\s+\(\$")
 
 
 def to_card(token: str) -> Card:
@@ -45,7 +45,7 @@ def to_hole_cards(fst: str, snd: str) -> HoleCards:
 	return HoleCards(fst_card, snd_card)
 
 BUTTON_RE = re.compile(r"Seat #(\d+) is the button")
-SEAT_STACK_RE = re.compile(r"^Seat\s+(\d+):\s+(\S+)\s+\(\$(\d+\.?\d*)\s+in chips\)")
+SEAT_STACK_RE = re.compile(r"^Seat\s+(\d+):\s+(.+?)\s+\(\$(\d+\.?\d*)\s+in chips\)")
 BLIND_POST_RE = re.compile(r"^(.+?):\s+posts\s+(small|big)\s+blind\s+\$(\d+\.?\d*)")
 UNCALLED_FULL_RE = re.compile(r"Uncalled bet \(\$(\d+\.?\d*)\) returned to (.+)")
 
@@ -218,8 +218,12 @@ def lex_hand(lines: list[str]) -> HandAST | None:
 				current_actions.append(_parse_action(line, action_m))
 			continue
 
-		# ---- SHOWDOWN: collected lines ----
+		# ---- SHOWDOWN: collected lines + shown cards ----
 		if state == _State.SHOWDOWN:
+			shows_m = SHOWS_RE.search(line)
+			if shows_m:
+				shown_cards[shows_m.group(1)] = to_hole_cards(shows_m.group(2), shows_m.group(3))
+				continue
 			coll_m = COLLECTED_RE.search(line)
 			if coll_m:
 				player = coll_m.group(1)
