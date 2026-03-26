@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends, Query
 
 from app.dependencies import get_store, get_date_range
 from app.loader import EventStore
-from app.models import FlopFilter, Flops
-from app.routers.params import parse_bool_list, parse_board_type_list, parse_pot_type_list, in_date_range
+from app.models import FlopFilter
+from app.routers.params import parse_bool_list, parse_board_type_list, parse_pot_type_list
 
 router = APIRouter()
 
@@ -30,11 +30,7 @@ def get_flop(
         bet_size_max=bet_size_max,
         include_pool=include_pool,
     )
-    filtered = [e for e in store.cbet_events if in_date_range(e.played_on, start, end)]
-    cbets = Flops()
-    for event in filtered:
-        cbets.add_event(event)
-    return cbets.json(f)
+    return store.flops.json(f, start=start, end=end)
 
 
 @router.get("/bet-sizes")
@@ -55,8 +51,4 @@ def get_flop_bet_sizes(
         pot_types=parse_pot_type_list(pot_types),
         include_pool=include_pool,
     )
-    filtered = [e for e in store.cbet_events if in_date_range(e.played_on, start, end)]
-    cbets = Flops()
-    for event in filtered:
-        cbets.add_event(event)
-    return {"villain_bet_sizes": cbets.bet_sizes(f)}
+    return {"villain_bet_sizes": store.flops.bet_sizes(f, start=start, end=end)}

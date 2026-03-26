@@ -2,11 +2,11 @@ from fastapi import APIRouter, Depends, Query
 
 from app.dependencies import get_store, get_date_range
 from app.loader import EventStore
-from app.models import RiverFilter, Rivers
+from app.models import RiverFilter
 from app.routers.params import (
     parse_bool_list, parse_board_type_list, parse_pot_type_list,
     parse_action_sequence_list, parse_flop_rank_texture_list,
-    parse_runout_list, in_date_range,
+    parse_runout_list,
 )
 
 router = APIRouter()
@@ -38,8 +38,4 @@ def get_river(
         river_runouts=parse_runout_list(river_runouts),
         include_pool=include_pool,
     )
-    filtered = [e for e in store.river_events if in_date_range(e.played_on, start, end)]
-    rivers = Rivers()
-    for event in filtered:
-        rivers.add_event(event)
-    return rivers.json(f)
+    return store.rivers.json(f, start=start, end=end)

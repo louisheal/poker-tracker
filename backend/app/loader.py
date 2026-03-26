@@ -5,8 +5,8 @@ from dataclasses import dataclass, field
 from datetime import date
 
 from app.models import (
-    FlopEvent, LineEvent, LineEvents, RangeEvent,
-    RiverEvent, TurnEvent,
+    FlopEvent, Flops, LineEvent, LineEvents, RangeEvent,
+    RiverEvent, Rivers, TurnEvent, Turns,
 )
 from app.parsers import parse_file, FileParseResult
 
@@ -53,8 +53,11 @@ def _save_cache(histories_dir: str, filename: str, result: FileParseResult):
 class EventStore:
     range_events: list[RangeEvent] = field(default_factory=list)
     cbet_events: list[FlopEvent] = field(default_factory=list)
+    flops: Flops = field(default_factory=Flops)
     turn_events: list[TurnEvent] = field(default_factory=list)
+    turns: Turns = field(default_factory=Turns)
     river_events: list[RiverEvent] = field(default_factory=list)
+    rivers: Rivers = field(default_factory=Rivers)
     line_events: LineEvents = field(default_factory=LineEvents)
     hand_dates: list[date] = field(default_factory=list)
 
@@ -110,6 +113,12 @@ def load_hand_histories(histories_dir: str | None = None) -> EventStore:
         river_events=combined.river_events,
         hand_dates=combined.hand_dates,
     )
+    for ce in combined.cbet_events:
+        store.flops.add_event(ce)
+    for te in combined.turn_events:
+        store.turns.add_event(te)
+    for re_ in combined.river_events:
+        store.rivers.add_event(re_)
     for le in combined.line_events:
         store.line_events.add_event(le)
 

@@ -2,10 +2,10 @@ from fastapi import APIRouter, Depends, Query
 
 from app.dependencies import get_store, get_date_range
 from app.loader import EventStore
-from app.models import TurnFilter, Turns
+from app.models import TurnFilter
 from app.routers.params import (
     parse_bool_list, parse_board_type_list, parse_pot_type_list,
-    parse_runout_list, in_date_range,
+    parse_runout_list,
 )
 
 router = APIRouter()
@@ -31,8 +31,4 @@ def get_turn(
         turn_runouts=parse_runout_list(turn_runouts),
         include_pool=include_pool,
     )
-    filtered = [e for e in store.turn_events if in_date_range(e.played_on, start, end)]
-    turns = Turns()
-    for event in filtered:
-        turns.add_event(event)
-    return turns.json(f)
+    return store.turns.json(f, start=start, end=end)

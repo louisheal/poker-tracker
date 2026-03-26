@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends, Query
 
 from app.dependencies import get_store, get_date_range
 from app.loader import EventStore
-from app.models import LineEvents, LineFilter
-from app.routers.params import parse_board_type_list, parse_pot_type_list, parse_runout_list, in_date_range
+from app.models import LineFilter
+from app.routers.params import parse_board_type_list, parse_pot_type_list, parse_runout_list
 from app.routers.line_analysis import _split_action_prefix
 
 router = APIRouter()
@@ -23,10 +23,6 @@ def get_hand_type_distribution(
 	dates: tuple = Depends(get_date_range),
 ):
 	start, end = dates
-	filtered_events = LineEvents()
-	for e in store.line_events.events:
-		if in_date_range(e.played_on, start, end):
-			filtered_events.add_event(e)
 	f = LineFilter(
 		hero_in_position=hero_in_position,
 		hero_preflop_raiser=hero_preflop_raiser,
@@ -37,4 +33,4 @@ def get_hand_type_distribution(
 		include_pool=include_pool,
 	)
 	flop_actions, turn_actions, river_actions = _split_action_prefix(actions)
-	return filtered_events.hand_type_distribution(f, flop_actions=flop_actions, turn_actions=turn_actions, river_actions=river_actions)
+	return store.line_events.hand_type_distribution(f, flop_actions=flop_actions, turn_actions=turn_actions, river_actions=river_actions, start=start, end=end)

@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends, Query
 
 from app.dependencies import get_store, get_date_range
 from app.loader import EventStore
-from app.models import LineEvents, LineFilter
-from app.routers.params import parse_board_type_list, parse_pot_type_list, parse_runout_list, in_date_range
+from app.models import LineFilter
+from app.routers.params import parse_board_type_list, parse_pot_type_list, parse_runout_list
 from app.routers.line_analysis import _split_action_prefix
 from app.parsers.ev_calculator import calculate_ev_open, calculate_ev_vs_bet
 
@@ -27,11 +27,6 @@ def get_hand_ev(
 	dates: tuple = Depends(get_date_range),
 ):
 	start, end = dates
-	filtered_events = LineEvents()
-	for e in store.line_events.events:
-		if in_date_range(e.played_on, start, end):
-			filtered_events.add_event(e)
-
 	f = LineFilter(
 		hero_in_position=hero_in_position,
 		hero_preflop_raiser=hero_preflop_raiser,
@@ -43,7 +38,7 @@ def get_hand_ev(
 	)
 
 	flop_actions, turn_actions, river_actions = _split_action_prefix(actions)
-	node_data = filtered_events.ev_node_data(f, flop_actions, turn_actions, river_actions)
+	node_data = store.line_events.ev_node_data(f, flop_actions, turn_actions, river_actions, start=start, end=end)
 
 	total = node_data["fold_count"] + node_data["call_count"] + node_data["raise_count"]
 	sizes = bet_sizes or DEFAULT_BET_SIZES
