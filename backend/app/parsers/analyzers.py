@@ -365,8 +365,10 @@ def build_context(ast: HandAST, player: str = "Hero") -> HandContext:
 	ctx = HandContext(ast=ast, perspective_player=player)
 
 	# Player sees flop?
+	player_names = {name for name, _, _ in ast.players}
 	ctx.hero_sees_flop = (
 		ast.flop is not None
+		and player in player_names
 		and not any(a.player == player and a.type == ActionType.FOLD for a in ast.preflop)
 	)
 
