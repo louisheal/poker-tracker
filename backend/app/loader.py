@@ -87,6 +87,7 @@ def load_hand_histories(histories_dir: str | None = None) -> EventStore:
         result = _load_cached(histories_dir, filename, source_mtime)
         if result is not None:
             cached_count += 1
+            logger.info(f"Loaded from cache: {filename}")
         else:
             logger.info(f"Parsing {filename}...")
             result = parse_file(path)
