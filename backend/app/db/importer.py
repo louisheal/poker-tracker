@@ -304,6 +304,8 @@ def import_hand_histories(conn: sqlite3.Connection, histories_dir: str) -> list[
 
     parsed_count = 0
     skipped_count = 0
+    total_files = len(txt_files)
+    to_parse = []
 
     for filename in txt_files:
         path = os.path.join(histories_dir, filename)
@@ -312,8 +314,16 @@ def import_hand_histories(conn: sqlite3.Connection, histories_dir: str) -> list[
         if filename in existing and existing[filename] == mtime:
             skipped_count += 1
             continue
+        to_parse.append((filename, path, mtime))
 
-        logger.info(f"Parsing {filename}...")
+    if not to_parse:
+        logger.info(f"All {total_files} files already imported")
+    else:
+        logger.info(f"{len(to_parse)}/{total_files} files to parse")
+
+    for filename, path, mtime in to_parse:
+        parsed_count += 1
+        logger.info(f"{parsed_count}/{len(to_parse)} files parsed")
         result = parse_file(path)
 
         # Remove old data for this file if re-importing
@@ -322,9 +332,6 @@ def import_hand_histories(conn: sqlite3.Connection, histories_dir: str) -> list[
                           "river_events", "line_events"):
                 conn.execute(f"DELETE FROM {table} WHERE rowid IN "
                              f"(SELECT rowid FROM {table} LIMIT 0)")
-            # For simplicity on re-import, we delete old file_imports row
-            # and the old events were already in the DB mixed with others.
-            # Full re-import is safer: delete all and re-import.
             logger.warning(f"File {filename} modified -- full re-import recommended")
 
         row_count = _insert_result(conn, result)
@@ -333,10 +340,8 @@ def import_hand_histories(conn: sqlite3.Connection, histories_dir: str) -> list[
             (filename, mtime, row_count),
         )
         conn.commit()
-        parsed_count += 1
-        logger.info(f"Imported {filename}: {row_count} rows")
 
-    logger.info(f"Import complete: {parsed_count} parsed, {skipped_count} skipped")
+    logger.info(f"Import complete: {parsed_count}/{total_files} files parsed")
 
     dates = [
         row[0]

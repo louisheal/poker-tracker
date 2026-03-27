@@ -128,8 +128,6 @@ def parse_file(file: str) -> FileParseResult:
 			continue
 
 		result.hand_count += 1
-		if result.hand_count % 1000 == 0:
-			logger.info(f"Parsed {result.hand_count} hands...")
 
 		ctx = build_context(ast)
 
