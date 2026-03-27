@@ -136,7 +136,30 @@ TABLES = {
             river_hero_straight_draw TEXT,
             river_villain_made TEXT,
             river_villain_flush_draw TEXT,
-            river_villain_straight_draw TEXT
+            river_villain_straight_draw TEXT,
+            -- Denormalised street stats (turn/river)
+            turn_hero_bet INTEGER NOT NULL DEFAULT 0,
+            turn_villain_fold INTEGER NOT NULL DEFAULT 0,
+            turn_villain_raise INTEGER NOT NULL DEFAULT 0,
+            turn_villain_bet INTEGER NOT NULL DEFAULT 0,
+            turn_hero_fold INTEGER NOT NULL DEFAULT 0,
+            turn_hero_raise INTEGER NOT NULL DEFAULT 0,
+            river_hero_bet INTEGER NOT NULL DEFAULT 0,
+            river_villain_fold INTEGER NOT NULL DEFAULT 0,
+            river_villain_raise INTEGER NOT NULL DEFAULT 0,
+            river_villain_bet INTEGER NOT NULL DEFAULT 0,
+            river_hero_fold INTEGER NOT NULL DEFAULT 0,
+            river_hero_raise INTEGER NOT NULL DEFAULT 0,
+            -- First action per street
+            flop_first_actor TEXT,
+            flop_first_action TEXT,
+            flop_first_size REAL,
+            turn_first_actor TEXT,
+            turn_first_action TEXT,
+            turn_first_size REAL,
+            river_first_actor TEXT,
+            river_first_action TEXT,
+            river_first_size REAL
         )
     """,
 }
@@ -173,7 +196,7 @@ def init_db(db_path: str) -> sqlite3.Connection:
     """Create tables and indexes, return a connection."""
     conn = sqlite3.connect(db_path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=DELETE")
+    conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
     for ddl in TABLES.values():
         conn.execute(ddl)

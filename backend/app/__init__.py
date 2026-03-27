@@ -21,8 +21,8 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    conn = load_hand_histories()
-    app.state.db = conn
+    db_path = load_hand_histories()
+    app.state.db_path = db_path
 
     app.include_router(ranges.router)
     app.include_router(flop.router, prefix="/flop")

@@ -10,8 +10,8 @@ logger = logging.getLogger(__name__)
 DB_FILENAME = "poker.db"
 
 
-def load_hand_histories(histories_dir: str | None = None) -> sqlite3.Connection:
-    """Initialise the SQLite DB, import new hand history files, return connection."""
+def load_hand_histories(histories_dir: str | None = None) -> str:
+    """Initialise the SQLite DB, import new hand history files, return DB path."""
     if histories_dir is None:
         backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         project_dir = os.path.dirname(backend_dir)
@@ -35,4 +35,5 @@ def load_hand_histories(histories_dir: str | None = None) -> sqlite3.Connection:
         f"{row_counts['river_events']} river, {row_counts['line_events']} line events"
     )
 
-    return conn
+    conn.close()
+    return db_path

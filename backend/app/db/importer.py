@@ -113,6 +113,13 @@ _LINE_COLS = (
     "turn_villain_made", "turn_villain_flush_draw", "turn_villain_straight_draw",
     "river_hero_made", "river_hero_flush_draw", "river_hero_straight_draw",
     "river_villain_made", "river_villain_flush_draw", "river_villain_straight_draw",
+    "turn_hero_bet", "turn_villain_fold", "turn_villain_raise",
+    "turn_villain_bet", "turn_hero_fold", "turn_hero_raise",
+    "river_hero_bet", "river_villain_fold", "river_villain_raise",
+    "river_villain_bet", "river_hero_fold", "river_hero_raise",
+    "flop_first_actor", "flop_first_action", "flop_first_size",
+    "turn_first_actor", "turn_first_action", "turn_first_size",
+    "river_first_actor", "river_first_action", "river_first_size",
 )
 
 
@@ -201,17 +208,56 @@ def _river_row(e) -> tuple:
     )
 
 
+def _street_bools(actions: list) -> tuple[int, int, int, int, int, int]:
+    """Extract hero/villain bet/fold/raise booleans from a list of StreetAction."""
+    hero_bet = hero_fold = hero_raise = 0
+    villain_bet = villain_fold = villain_raise = 0
+    for a in actions:
+        if a.actor == "hero":
+            if a.action == "B":
+                hero_bet = 1
+            elif a.action == "F":
+                hero_fold = 1
+            elif a.action == "R":
+                hero_raise = 1
+        elif a.actor == "villain":
+            if a.action == "B":
+                villain_bet = 1
+            elif a.action == "F":
+                villain_fold = 1
+            elif a.action == "R":
+                villain_raise = 1
+    return hero_bet, villain_fold, villain_raise, villain_bet, hero_fold, hero_raise
+
+
+def _first_action(actions: list) -> tuple[str | None, str | None, float | None]:
+    """Extract first action (actor, action, size_pct) from a list of StreetAction."""
+    if not actions:
+        return None, None, None
+    a = actions[0]
+    return a.actor, a.action, a.size_pct
+
+
 def _line_row(e) -> tuple:
     flop_cards = list(e.flop_cards)
     turn_board = flop_cards + ([e.turn_card] if e.turn_card else [])
     river_board = turn_board + ([e.river_card] if e.river_card else [])
 
-    fhm, fhf, fhs = _classify(e.hero_hand, flop_cards) if flop_cards else (None, None, None)
-    fvm, fvf, fvs = _classify(e.villain_hand, flop_cards) if flop_cards else (None, None, None)
+    if flop_cards:
+        fhm, fhf, fhs = _classify(e.hero_hand, flop_cards)
+        fvm, fvf, fvs = _classify(e.villain_hand, flop_cards)
+    else:
+        fhm = fhf = fhs = fvm = fvf = fvs = None
     thm, thf, ths = _classify(e.hero_hand, turn_board) if e.turn_card else (None, None, None)
     tvm, tvf, tvs = _classify(e.villain_hand, turn_board) if e.turn_card else (None, None, None)
     rhm, rhf, rhs = _classify(e.hero_hand, river_board) if e.river_card else (None, None, None)
     rvm, rvf, rvs = _classify(e.villain_hand, river_board) if e.river_card else (None, None, None)
+
+    turn_bools = _street_bools(e.turn_actions)
+    river_bools = _street_bools(e.river_actions)
+    flop_fa = _first_action(e.flop_actions)
+    turn_fa = _first_action(e.turn_actions)
+    river_fa = _first_action(e.river_actions)
 
     return (
         str(e.played_on),
@@ -248,6 +294,8 @@ def _line_row(e) -> tuple:
         fhm, fhf, fhs, fvm, fvf, fvs,
         thm, thf, ths, tvm, tvf, tvs,
         rhm, rhf, rhs, rvm, rvf, rvs,
+        *turn_bools, *river_bools,
+        *flop_fa, *turn_fa, *river_fa,
     )
 
 
