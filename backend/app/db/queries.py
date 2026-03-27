@@ -733,22 +733,6 @@ def query_spot_stats(
         if river_actions:
             rows = _filter_by_street_prefix(rows, "river", river_actions)
 
-    n = len(rows)
-    if n == 0:
-        return {
-            "hand_count": 0,
-            "overall_ev": 0,
-            "flop_stats": EMPTY_FLOP_STATS.copy(),
-            "turn_stats": EMPTY_STREET_STATS.copy(),
-            "river_stats": EMPTY_STREET_STATS.copy(),
-            "next_actions": [],
-            "biggest_wins": [],
-            "biggest_losses": [],
-            "flop_complete": False,
-            "turn_available": False,
-            "river_available": False,
-        }
-
     # Determine current street and depth
     if on_river:
         street = "river"
@@ -763,42 +747,69 @@ def query_spot_stats(
         depth = len(flop_actions) if flop_actions else 0
         actions_col = "flop_action_str"
 
-    # Single pass for overall_ev, top wins/losses, availability checks
+    n = len(rows)
+    if n == 0:
+        return {
+            "hand_count": 0,
+            "street": street,
+            "street_stats": EMPTY_FLOP_STATS.copy() if street == "flop" else EMPTY_STREET_STATS.copy(),
+            "ev_stats": {"overall_ev": 0, "next_actions": []},
+            "bet_sizes": [],
+            "next_actor": None,
+            "action_depth": depth,
+            "flop_complete": on_turn or on_river,
+            "turn_available": False,
+            "turn_complete": on_river,
+            "river_available": False,
+            "top_wins": [],
+            "top_losses": [],
+        }
+
+    # Single pass for overall_ev, top wins/losses, bet_sizes, next_actor, availability
     import heapq
     TOP_N = 5
     pnl_sum = 0.0
     # Use (pnl, index) tuples so equal pnl values never compare dicts
-    biggest_wins: list[tuple[float, int]] = []
-    biggest_losses: list[tuple[float, int]] = []
+    top_wins: list[tuple[float, int]] = []
+    top_losses: list[tuple[float, int]] = []
     turn_available = False
     river_available = False
-    flop_complete = False
+    next_actor: str | None = None
+    bet_sizes: list[float] = []
 
     for i, row in enumerate(rows):
         pnl = row["hero_pnl_bb"]
         pnl_sum += pnl
 
-        if len(biggest_wins) < TOP_N:
-            heapq.heappush(biggest_wins, (pnl, i))
-        elif pnl > biggest_wins[0][0]:
-            heapq.heapreplace(biggest_wins, (pnl, i))
+        if len(top_wins) < TOP_N:
+            heapq.heappush(top_wins, (pnl, i))
+        elif pnl > top_wins[0][0]:
+            heapq.heapreplace(top_wins, (pnl, i))
 
-        if len(biggest_losses) < TOP_N:
-            heapq.heappush(biggest_losses, (-pnl, i))
-        elif -pnl > biggest_losses[0][0]:
-            heapq.heapreplace(biggest_losses, (-pnl, i))
+        if len(top_losses) < TOP_N:
+            heapq.heappush(top_losses, (-pnl, i))
+        elif -pnl > top_losses[0][0]:
+            heapq.heapreplace(top_losses, (-pnl, i))
 
         if not turn_available and row["turn_action_str"]:
             turn_available = True
         if not river_available and row["river_action_str"]:
             river_available = True
 
-        if not flop_complete:
-            flop_acts = _parse_actions_json(row["flop_action_str"])
-            if len(flop_acts) >= 2:
-                flop_complete = True
+        actions = _parse_actions_json(row[actions_col])
+        if depth < len(actions):
+            if next_actor is None:
+                next_actor = actions[depth][0]
+            a_action = actions[depth][1]
+            a_size = actions[depth][2]
+            if a_action in ("B", "R") and a_size is not None:
+                bet_sizes.append(a_size)
 
     overall_ev = pnl_sum / n
+
+    next_actions = _compute_next_actions(rows, depth, actions_col)
+    flop_complete = (not on_turn and not on_river and not next_actions and turn_available) or on_turn or on_river
+    turn_complete = (on_turn and not on_river and not next_actions and river_available) or on_river
 
     # Build hand_result dicts only for the top N wins/losses (not every row)
     def _row_to_hand_result(row: sqlite3.Row) -> dict:
@@ -811,24 +822,29 @@ def query_spot_stats(
             "river_card": _card_to_json(row["river_card"]),
         }
 
-    # Compute stats
-    flop_stats = _compute_flop_stats_from_rows(rows)
-    turn_stats = _compute_street_stats_from_rows(rows, "turn_action_str") if on_turn or turn_available else EMPTY_STREET_STATS.copy()
-    river_stats = _compute_street_stats_from_rows(rows, "river_action_str") if on_river or river_available else EMPTY_STREET_STATS.copy()
-    next_actions = _compute_next_actions(rows, depth, actions_col)
+    # Compute street stats for the current street only
+    if street == "flop":
+        street_stats = _compute_flop_stats_from_rows(rows)
+    else:
+        street_stats = _compute_street_stats_from_rows(rows, actions_col)
 
     return {
         "hand_count": n,
-        "overall_ev": overall_ev,
-        "flop_stats": flop_stats,
-        "turn_stats": turn_stats,
-        "river_stats": river_stats,
-        "next_actions": next_actions,
-        "biggest_wins": sorted([_row_to_hand_result(rows[idx]) for _, idx in biggest_wins], key=lambda x: -x["pnl_bb"]),
-        "biggest_losses": sorted([_row_to_hand_result(rows[idx]) for _, idx in biggest_losses], key=lambda x: x["pnl_bb"]),
+        "street": street,
+        "street_stats": street_stats,
+        "ev_stats": {
+            "overall_ev": overall_ev,
+            "next_actions": next_actions,
+        },
+        "bet_sizes": [round(s, 1) for s in bet_sizes],
+        "next_actor": next_actor,
+        "action_depth": depth,
         "flop_complete": flop_complete,
         "turn_available": turn_available,
+        "turn_complete": turn_complete,
         "river_available": river_available,
+        "top_wins": sorted([_row_to_hand_result(rows[idx]) for _, idx in top_wins], key=lambda x: -x["pnl_bb"]),
+        "top_losses": sorted([_row_to_hand_result(rows[idx]) for _, idx in top_losses], key=lambda x: x["pnl_bb"]),
     }
 
 

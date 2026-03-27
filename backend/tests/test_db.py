@@ -254,7 +254,13 @@ class TestLineEventRoundTrip:
         _insert_samples(db)
         result = query_spot_stats(db)
         assert result["hand_count"] == 1
-        assert result["overall_ev"] == 3.5
+        assert result["ev_stats"]["overall_ev"] == 3.5
+        assert result["street"] == "flop"
+        assert "next_actions" in result["ev_stats"]
+        assert "street_stats" in result
+        assert "bet_sizes" in result
+        assert "top_wins" in result
+        assert "top_losses" in result
 
     def test_spot_stats_equal_pnl_no_crash(self, db):
         """Regression: heapq crashed comparing dicts when two hands had equal pnl."""
@@ -267,8 +273,8 @@ class TestLineEventRoundTrip:
         db.commit()
         stats = query_spot_stats(db)
         assert stats["hand_count"] == 6
-        assert len(stats["biggest_wins"]) == 5
-        assert len(stats["biggest_losses"]) == 5
+        assert len(stats["top_wins"]) == 5
+        assert len(stats["top_losses"]) == 5
 
 
 class TestVolumeRoundTrip:
