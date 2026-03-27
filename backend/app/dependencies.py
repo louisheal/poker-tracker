@@ -9,7 +9,7 @@ from app.routers.params import parse_optional_date
 
 def get_db(request: Request) -> Generator[sqlite3.Connection, None, None]:
     """Open a fresh read-only connection per request, closed when done."""
-    conn = sqlite3.connect(request.app.state.db_path)
+    conn = sqlite3.connect(request.app.state.db_path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA query_only = ON")
     try:

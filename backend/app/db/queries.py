@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from datetime import date
 
 from playing_cards_lib.core import Card, Rank, Suit
 from playing_cards_lib.poker import HoleCards
+
+log = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -971,7 +974,11 @@ def query_ev_node_data(
         flop_actions=flop_actions, turn_actions=turn_actions, river_actions=river_actions,
     )
     sql = f"SELECT {columns} FROM line_events{where}"
-    rows = conn.execute(sql, params).fetchall()
+    try:
+        rows = conn.execute(sql, params).fetchall()
+    except Exception:
+        log.exception("query_ev_node_data failed: sql=%s params=%s", sql, params)
+        raise
 
     POT_COL = {"river": "pot_at_river_bb", "turn": "pot_at_turn_bb", "flop": "pot_at_flop_bb"}
 
@@ -1442,7 +1449,11 @@ def query_ev_summary(
         MAX(CASE WHEN turn_action_str != '' THEN 1 ELSE 0 END) as turn_available,
         MAX(CASE WHEN river_action_str != '' THEN 1 ELSE 0 END) as river_available
     FROM line_events{where}"""
-    agg = conn.execute(sql, params).fetchone()
+    try:
+        agg = conn.execute(sql, params).fetchone()
+    except Exception:
+        log.exception("query_ev_summary failed: sql=%s params=%s", sql, params)
+        raise
     n = agg["n"] or 0
 
     if n == 0:
