@@ -127,6 +127,89 @@ def _base_where(
 
 
 # ---------------------------------------------------------------------------
+# Action prefix SQL helper
+# ---------------------------------------------------------------------------
+
+def _build_action_where(
+    params: list,
+    street: str,
+    prefix: list[str],
+) -> str:
+    """Convert an action prefix list to SQL WHERE clauses using json_extract.
+
+    For depth 0, uses the denormalised first-action columns for speed.
+    For deeper depths, falls back to json_extract on the JSON action string.
+    """
+    action_col = f"{street}_action_str"
+    clauses = []
+
+    for depth, p in enumerate(prefix):
+        if depth == 0:
+            # Use denormalised columns for depth 0
+            actor_col = f"{street}_first_actor"
+            act_col = f"{street}_first_action"
+            size_col = f"{street}_first_size"
+        else:
+            actor_col = f"json_extract({action_col}, '$[{depth}][0]')"
+            act_col = f"json_extract({action_col}, '$[{depth}][1]')"
+            size_col = f"CAST(json_extract({action_col}, '$[{depth}][2]') AS REAL)"
+
+        if p in ("X", "F", "C"):
+            clauses.append(f"{act_col} = ?")
+            params.append(p)
+        elif p.startswith("B") or p.startswith("R"):
+            clauses.append(f"{act_col} = ?")
+            params.append(p[0])
+            size_part = p[1:]
+            if size_part:
+                if size_part.endswith("+"):
+                    lo = float(size_part[:-1])
+                    clauses.append(f"{size_col} >= ?")
+                    params.append(lo)
+                else:
+                    parts = size_part.split("-")
+                    if len(parts) == 2:
+                        lo, hi = float(parts[0]), float(parts[1])
+                        clauses.append(f"{size_col} >= ?")
+                        params.append(lo)
+                        clauses.append(f"{size_col} < ?")
+                        params.append(hi)
+
+    return " AND ".join(clauses)
+
+
+def _action_prefix_where(
+    params: list,
+    *,
+    flop_actions: list[str] | None = None,
+    turn_actions: list[str] | None = None,
+    river_actions: list[str] | None = None,
+) -> str:
+    """Build combined action prefix WHERE clauses for all streets.
+
+    Also adds turn/river non-empty checks when navigating to those streets.
+    """
+    clauses = []
+    if flop_actions:
+        w = _build_action_where(params, "flop", flop_actions)
+        if w:
+            clauses.append(w)
+    if turn_actions is not None:
+        clauses.append("turn_action_str != ''")
+        if turn_actions:
+            w = _build_action_where(params, "turn", turn_actions)
+            if w:
+                clauses.append(w)
+    if river_actions is not None:
+        clauses.append("river_action_str != ''")
+        if river_actions:
+            w = _build_action_where(params, "river", river_actions)
+            if w:
+                clauses.append(w)
+    return " AND ".join(clauses)
+
+
+# ---------------------------------------------------------------------------
 # Flop queries
 # ---------------------------------------------------------------------------
 
@@ -870,32 +953,25 @@ def query_ev_node_data(
 ) -> dict:
     from app.parsers.equity import get_equity, VALID_TRIPLES
 
+    on_turn = turn_actions is not None
+    on_river = river_actions is not None
+
     columns = (
         "flop_action_str, turn_action_str, river_action_str, "
         "pot_at_flop_bb, pot_at_turn_bb, pot_at_river_bb, "
         "villain_hand, flop_cards, turn_card, river_card"
     )
-    rows = _fetch_line_events(
-        conn, columns, start=start, end=end,
+    params: list = []
+    where = _combined_line_where(
+        params, start=start, end=end,
         hero_in_position=hero_in_position, hero_preflop_raiser=hero_preflop_raiser,
         pot_types=pot_types, board_types=board_types,
         turn_runouts=turn_runouts, river_runouts=river_runouts,
         include_pool=include_pool,
+        flop_actions=flop_actions, turn_actions=turn_actions, river_actions=river_actions,
     )
-
-    # Apply action prefix filters
-    if flop_actions:
-        rows = _filter_by_street_prefix(rows, "flop", flop_actions)
-    on_turn = turn_actions is not None
-    if on_turn:
-        rows = [r for r in rows if r["turn_action_str"]]
-        if turn_actions:
-            rows = _filter_by_street_prefix(rows, "turn", turn_actions)
-    on_river = river_actions is not None
-    if on_river:
-        rows = [r for r in rows if r["river_action_str"]]
-        if river_actions:
-            rows = _filter_by_street_prefix(rows, "river", river_actions)
+    sql = f"SELECT {columns} FROM line_events{where}"
+    rows = conn.execute(sql, params).fetchall()
 
     POT_COL = {"river": "pot_at_river_bb", "turn": "pot_at_turn_bb", "flop": "pot_at_flop_bb"}
 
@@ -1055,43 +1131,33 @@ def query_hand_type_distribution(
     turn_actions: list[str] | None = None,
     river_actions: list[str] | None = None,
 ) -> dict:
-    # Determine which street's classifications to use
+    """Pure SQL hand type distribution using precomputed classification columns."""
     on_turn = turn_actions is not None
     on_river = river_actions is not None
 
     if on_river:
-        hero_made_col = "river_hero_made"
-        villain_made_col = "river_villain_made"
+        prefix = "river"
     elif on_turn:
-        hero_made_col = "turn_hero_made"
-        villain_made_col = "turn_villain_made"
+        prefix = "turn"
     else:
-        hero_made_col = "flop_hero_made"
-        villain_made_col = "flop_villain_made"
+        prefix = "flop"
 
-    # We need action strings for prefix filtering and the precomputed columns
-    columns = (
-        f"flop_action_str, turn_action_str, river_action_str, "
-        f"{hero_made_col}, {villain_made_col}"
-    )
-    rows = _fetch_line_events(
-        conn, columns, start=start, end=end,
+    hero_made_col = f"{prefix}_hero_made"
+    villain_made_col = f"{prefix}_villain_made"
+    hero_fd_col = f"{prefix}_hero_flush_draw"
+    hero_sd_col = f"{prefix}_hero_straight_draw"
+    villain_fd_col = f"{prefix}_villain_flush_draw"
+    villain_sd_col = f"{prefix}_villain_straight_draw"
+
+    params: list = []
+    where = _combined_line_where(
+        params, start=start, end=end,
         hero_in_position=hero_in_position, hero_preflop_raiser=hero_preflop_raiser,
         pot_types=pot_types, board_types=board_types,
         turn_runouts=turn_runouts, river_runouts=river_runouts,
         include_pool=include_pool,
+        flop_actions=flop_actions, turn_actions=turn_actions, river_actions=river_actions,
     )
-
-    if flop_actions:
-        rows = _filter_by_street_prefix(rows, "flop", flop_actions)
-    if on_turn:
-        rows = [r for r in rows if r["turn_action_str"]]
-        if turn_actions:
-            rows = _filter_by_street_prefix(rows, "turn", turn_actions)
-    if on_river:
-        rows = [r for r in rows if r["river_action_str"]]
-        if river_actions:
-            rows = _filter_by_street_prefix(rows, "river", river_actions)
 
     from app.models.enums import MadeHandType, DrawType
 
@@ -1100,60 +1166,54 @@ def query_hand_type_distribution(
     villain_made = {t.value: 0 for t in MadeHandType}
     villain_draws = {t.value: 0 for t in DrawType}
 
-    # For draws we still need the full classification columns
-    if on_river:
-        hero_fd_col = "river_hero_flush_draw"
-        hero_sd_col = "river_hero_straight_draw"
-        villain_fd_col = "river_villain_flush_draw"
-        villain_sd_col = "river_villain_straight_draw"
-    elif on_turn:
-        hero_fd_col = "turn_hero_flush_draw"
-        hero_sd_col = "turn_hero_straight_draw"
-        villain_fd_col = "turn_villain_flush_draw"
-        villain_sd_col = "turn_villain_straight_draw"
-    else:
-        hero_fd_col = "flop_hero_flush_draw"
-        hero_sd_col = "flop_hero_straight_draw"
-        villain_fd_col = "flop_villain_flush_draw"
-        villain_sd_col = "flop_villain_straight_draw"
+    # Hero made hands
+    sql = f"SELECT {hero_made_col} as val, COUNT(*) as cnt FROM line_events{_where_and(where, f'{hero_made_col} IS NOT NULL')} GROUP BY {hero_made_col}"
+    for row in conn.execute(sql, params).fetchall():
+        hero_made[row["val"]] = row["cnt"]
 
-    # Re-fetch with draw columns too
-    columns2 = (
-        f"flop_action_str, turn_action_str, river_action_str, "
-        f"{hero_made_col}, {villain_made_col}, "
-        f"{hero_fd_col}, {hero_sd_col}, {villain_fd_col}, {villain_sd_col}"
-    )
-    rows = _fetch_line_events(
-        conn, columns2, start=start, end=end,
+    # Hero draws
+    params2: list = []
+    where2 = _combined_line_where(
+        params2, start=start, end=end,
         hero_in_position=hero_in_position, hero_preflop_raiser=hero_preflop_raiser,
         pot_types=pot_types, board_types=board_types,
         turn_runouts=turn_runouts, river_runouts=river_runouts,
         include_pool=include_pool,
+        flop_actions=flop_actions, turn_actions=turn_actions, river_actions=river_actions,
     )
-    if flop_actions:
-        rows = _filter_by_street_prefix(rows, "flop", flop_actions)
-    if on_turn:
-        rows = [r for r in rows if r["turn_action_str"]]
-        if turn_actions:
-            rows = _filter_by_street_prefix(rows, "turn", turn_actions)
-    if on_river:
-        rows = [r for r in rows if r["river_action_str"]]
-        if river_actions:
-            rows = _filter_by_street_prefix(rows, "river", river_actions)
+    sql2 = f"SELECT {hero_fd_col} as fd, {hero_sd_col} as sd, COUNT(*) as cnt FROM line_events{_where_and(where2, f'{hero_made_col} IS NOT NULL')} GROUP BY {hero_fd_col}, {hero_sd_col}"
+    for row in conn.execute(sql2, params2).fetchall():
+        dt = _draw_type(row["fd"], row["sd"])
+        hero_draws[dt] = hero_draws.get(dt, 0) + row["cnt"]
 
-    for row in rows:
-        hm = row[hero_made_col]
-        vm = row[villain_made_col]
-        if hm:
-            hero_made[hm] = hero_made.get(hm, 0) + 1
-            hfd = row[hero_fd_col]
-            hsd = row[hero_sd_col]
-            hero_draws[_draw_type(hfd, hsd)] = hero_draws.get(_draw_type(hfd, hsd), 0) + 1
-        if vm:
-            villain_made[vm] = villain_made.get(vm, 0) + 1
-            vfd = row[villain_fd_col]
-            vsd = row[villain_sd_col]
-            villain_draws[_draw_type(vfd, vsd)] = villain_draws.get(_draw_type(vfd, vsd), 0) + 1
+    # Villain made hands
+    params3: list = []
+    where3 = _combined_line_where(
+        params3, start=start, end=end,
+        hero_in_position=hero_in_position, hero_preflop_raiser=hero_preflop_raiser,
+        pot_types=pot_types, board_types=board_types,
+        turn_runouts=turn_runouts, river_runouts=river_runouts,
+        include_pool=include_pool,
+        flop_actions=flop_actions, turn_actions=turn_actions, river_actions=river_actions,
+    )
+    sql3 = f"SELECT {villain_made_col} as val, COUNT(*) as cnt FROM line_events{_where_and(where3, f'{villain_made_col} IS NOT NULL')} GROUP BY {villain_made_col}"
+    for row in conn.execute(sql3, params3).fetchall():
+        villain_made[row["val"]] = row["cnt"]
+
+    # Villain draws
+    params4: list = []
+    where4 = _combined_line_where(
+        params4, start=start, end=end,
+        hero_in_position=hero_in_position, hero_preflop_raiser=hero_preflop_raiser,
+        pot_types=pot_types, board_types=board_types,
+        turn_runouts=turn_runouts, river_runouts=river_runouts,
+        include_pool=include_pool,
+        flop_actions=flop_actions, turn_actions=turn_actions, river_actions=river_actions,
+    )
+    sql4 = f"SELECT {villain_fd_col} as fd, {villain_sd_col} as sd, COUNT(*) as cnt FROM line_events{_where_and(where4, f'{villain_made_col} IS NOT NULL')} GROUP BY {villain_fd_col}, {villain_sd_col}"
+    for row in conn.execute(sql4, params4).fetchall():
+        dt = _draw_type(row["fd"], row["sd"])
+        villain_draws[dt] = villain_draws.get(dt, 0) + row["cnt"]
 
     return {
         "hero": {"made_hands": hero_made, "draws": hero_draws},
@@ -1178,3 +1238,392 @@ def _draw_type(flush_draw: str | None, straight_draw: str | None) -> str:
     if has_gutshot:
         return "GUTSHOT"
     return "NO_DRAW"
+
+
+# ---------------------------------------------------------------------------
+# Split endpoints: shared WHERE builder
+# ---------------------------------------------------------------------------
+
+def _combined_line_where(
+    params: list,
+    *,
+    start: date | None = None,
+    end: date | None = None,
+    hero_in_position: bool | None = None,
+    hero_preflop_raiser: bool | None = None,
+    pot_types: list | None = None,
+    board_types: list | None = None,
+    turn_runouts: list | None = None,
+    river_runouts: list | None = None,
+    include_pool: bool = False,
+    flop_actions: list[str] | None = None,
+    turn_actions: list[str] | None = None,
+    river_actions: list[str] | None = None,
+) -> str:
+    """Build full WHERE clause combining filter columns and action prefix."""
+    filter_where = _line_where(
+        params, start=start, end=end,
+        hero_in_position=hero_in_position, hero_preflop_raiser=hero_preflop_raiser,
+        pot_types=pot_types, board_types=board_types,
+        turn_runouts=turn_runouts, river_runouts=river_runouts,
+        include_pool=include_pool,
+    )
+    action_where = _action_prefix_where(
+        params,
+        flop_actions=flop_actions,
+        turn_actions=turn_actions,
+        river_actions=river_actions,
+    )
+    parts = []
+    # _line_where returns " WHERE ..." or ""
+    if filter_where:
+        parts.append(filter_where.strip().removeprefix("WHERE "))
+    if action_where:
+        parts.append(action_where)
+    return (" WHERE " + " AND ".join(parts)) if parts else ""
+
+
+def _where_and(where: str, extra: str) -> str:
+    """Append an extra condition to a WHERE clause string."""
+    if where:
+        return f"{where} AND {extra}"
+    return f" WHERE {extra}"
+
+
+# ---------------------------------------------------------------------------
+# Split endpoint: street-stats
+# ---------------------------------------------------------------------------
+
+def query_street_stats(
+    conn: sqlite3.Connection,
+    *,
+    start: date | None = None,
+    end: date | None = None,
+    hero_in_position: bool | None = None,
+    hero_preflop_raiser: bool | None = None,
+    pot_types: list | None = None,
+    board_types: list | None = None,
+    turn_runouts: list | None = None,
+    river_runouts: list | None = None,
+    include_pool: bool = False,
+    flop_actions: list[str] | None = None,
+    turn_actions: list[str] | None = None,
+    river_actions: list[str] | None = None,
+) -> dict:
+    """Pure SQL street stats: cbet/donk for flop, bet/fold/raise for turn/river."""
+    on_turn = turn_actions is not None
+    on_river = river_actions is not None
+
+    if on_river:
+        street = "river"
+    elif on_turn:
+        street = "turn"
+    else:
+        street = "flop"
+
+    params: list = []
+    where = _combined_line_where(
+        params, start=start, end=end,
+        hero_in_position=hero_in_position, hero_preflop_raiser=hero_preflop_raiser,
+        pot_types=pot_types, board_types=board_types,
+        turn_runouts=turn_runouts, river_runouts=river_runouts,
+        include_pool=include_pool,
+        flop_actions=flop_actions, turn_actions=turn_actions, river_actions=river_actions,
+    )
+
+    if street == "flop":
+        sql = f"""SELECT COUNT(*) as n,
+            SUM(cbet) as cbet_n,
+            SUM(CASE WHEN cbet AND fold_to_cbet THEN 1 ELSE 0 END) as fold_cbet,
+            SUM(CASE WHEN cbet AND raise_to_cbet THEN 1 ELSE 0 END) as raise_cbet,
+            SUM(CASE WHEN cbet AND fold_to_cbet_raise THEN 1 ELSE 0 END) as fold_cbet_raise,
+            SUM(donk_bet) as donk_n,
+            SUM(CASE WHEN donk_bet AND fold_to_donk_bet THEN 1 ELSE 0 END) as fold_donk,
+            SUM(CASE WHEN donk_bet AND raise_to_donk_bet THEN 1 ELSE 0 END) as raise_donk,
+            SUM(CASE WHEN donk_bet AND fold_to_donk_raise THEN 1 ELSE 0 END) as fold_donk_raise
+        FROM line_events{where}"""
+        row = conn.execute(sql, params).fetchone()
+        n = row["n"] or 0
+        cbet_n = row["cbet_n"] or 0
+        donk_n = row["donk_n"] or 0
+        raise_cbet = row["raise_cbet"] or 0
+        raise_donk = row["raise_donk"] or 0
+        return {
+            "street": street,
+            "hand_count": n,
+            "street_stats": {
+                "cbet_pct": (cbet_n / n * 100) if n else 0,
+                "fold_to_cbet_pct": ((row["fold_cbet"] or 0) / cbet_n * 100) if cbet_n else 0,
+                "raise_to_cbet_pct": (raise_cbet / cbet_n * 100) if cbet_n else 0,
+                "fold_to_cbet_raise_pct": ((row["fold_cbet_raise"] or 0) / max(1, raise_cbet) * 100) if cbet_n else 0,
+                "donk_bet_pct": (donk_n / n * 100) if n else 0,
+                "fold_to_donk_pct": ((row["fold_donk"] or 0) / donk_n * 100) if donk_n else 0,
+                "raise_to_donk_pct": (raise_donk / donk_n * 100) if donk_n else 0,
+                "fold_to_donk_raise_pct": ((row["fold_donk_raise"] or 0) / max(1, raise_donk) * 100) if donk_n else 0,
+            },
+        }
+    else:
+        # Turn or river: use denormalised boolean columns
+        prefix = street  # "turn" or "river"
+        sql = f"""SELECT COUNT(*) as n,
+            SUM({prefix}_hero_bet) as hero_bet_n,
+            SUM(CASE WHEN {prefix}_hero_bet AND {prefix}_villain_fold THEN 1 ELSE 0 END) as v_fold_hero,
+            SUM(CASE WHEN {prefix}_hero_bet AND {prefix}_villain_raise THEN 1 ELSE 0 END) as v_raise_hero,
+            SUM({prefix}_villain_bet) as villain_bet_n,
+            SUM(CASE WHEN {prefix}_villain_bet AND {prefix}_hero_fold THEN 1 ELSE 0 END) as h_fold_villain,
+            SUM(CASE WHEN {prefix}_villain_bet AND {prefix}_hero_raise THEN 1 ELSE 0 END) as h_raise_villain
+        FROM line_events{where}"""
+        row = conn.execute(sql, params).fetchone()
+        n = row["n"] or 0
+        hero_bet_n = row["hero_bet_n"] or 0
+        villain_bet_n = row["villain_bet_n"] or 0
+        return {
+            "street": street,
+            "hand_count": n,
+            "street_stats": {
+                "hero_bet_pct": (hero_bet_n / n * 100) if n else 0,
+                "villain_fold_to_hero_bet_pct": ((row["v_fold_hero"] or 0) / hero_bet_n * 100) if hero_bet_n else 0,
+                "villain_raise_to_hero_bet_pct": ((row["v_raise_hero"] or 0) / hero_bet_n * 100) if hero_bet_n else 0,
+                "villain_bet_pct": (villain_bet_n / n * 100) if n else 0,
+                "hero_fold_to_villain_bet_pct": ((row["h_fold_villain"] or 0) / villain_bet_n * 100) if villain_bet_n else 0,
+                "hero_raise_to_villain_bet_pct": ((row["h_raise_villain"] or 0) / villain_bet_n * 100) if villain_bet_n else 0,
+            },
+        }
+
+
+# ---------------------------------------------------------------------------
+# Split endpoint: ev-summary
+# ---------------------------------------------------------------------------
+
+def query_ev_summary(
+    conn: sqlite3.Connection,
+    *,
+    start: date | None = None,
+    end: date | None = None,
+    hero_in_position: bool | None = None,
+    hero_preflop_raiser: bool | None = None,
+    pot_types: list | None = None,
+    board_types: list | None = None,
+    turn_runouts: list | None = None,
+    river_runouts: list | None = None,
+    include_pool: bool = False,
+    flop_actions: list[str] | None = None,
+    turn_actions: list[str] | None = None,
+    river_actions: list[str] | None = None,
+) -> dict:
+    """SQL-based EV summary: overall_ev, next_actions, bet_sizes, availability flags."""
+    on_turn = turn_actions is not None
+    on_river = river_actions is not None
+
+    if on_river:
+        street = "river"
+        depth = len(river_actions) if river_actions else 0
+    elif on_turn:
+        street = "turn"
+        depth = len(turn_actions) if turn_actions else 0
+    else:
+        street = "flop"
+        depth = len(flop_actions) if flop_actions else 0
+
+    params: list = []
+    where = _combined_line_where(
+        params, start=start, end=end,
+        hero_in_position=hero_in_position, hero_preflop_raiser=hero_preflop_raiser,
+        pot_types=pot_types, board_types=board_types,
+        turn_runouts=turn_runouts, river_runouts=river_runouts,
+        include_pool=include_pool,
+        flop_actions=flop_actions, turn_actions=turn_actions, river_actions=river_actions,
+    )
+
+    # Overall count, sum, availability
+    sql = f"""SELECT
+        COUNT(*) as n,
+        COALESCE(SUM(hero_pnl_bb), 0) as pnl_sum,
+        MAX(CASE WHEN turn_action_str != '' THEN 1 ELSE 0 END) as turn_available,
+        MAX(CASE WHEN river_action_str != '' THEN 1 ELSE 0 END) as river_available
+    FROM line_events{where}"""
+    agg = conn.execute(sql, params).fetchone()
+    n = agg["n"] or 0
+
+    if n == 0:
+        return {
+            "ev_stats": {"overall_ev": 0, "next_actions": []},
+            "next_actor": None,
+            "bet_sizes": [],
+            "action_depth": depth,
+            "flop_complete": on_turn or on_river,
+            "turn_available": False,
+            "turn_complete": on_river,
+            "river_available": False,
+        }
+
+    overall_ev = agg["pnl_sum"] / n
+    turn_available = bool(agg["turn_available"])
+    river_available = bool(agg["river_available"])
+
+    # Next actions: group by action at current depth
+    action_col = f"{street}_action_str"
+    if depth == 0:
+        act_expr = f"{street}_first_action"
+        size_expr = f"{street}_first_size"
+        actor_expr = f"{street}_first_actor"
+    else:
+        act_expr = f"json_extract({action_col}, '$[{depth}][1]')"
+        size_expr = f"CAST(json_extract({action_col}, '$[{depth}][2]') AS REAL)"
+        actor_expr = f"json_extract({action_col}, '$[{depth}][0]')"
+
+    # Get next_actor from first row
+    params2: list = []
+    where2 = _combined_line_where(
+        params2, start=start, end=end,
+        hero_in_position=hero_in_position, hero_preflop_raiser=hero_preflop_raiser,
+        pot_types=pot_types, board_types=board_types,
+        turn_runouts=turn_runouts, river_runouts=river_runouts,
+        include_pool=include_pool,
+        flop_actions=flop_actions, turn_actions=turn_actions, river_actions=river_actions,
+    )
+    actor_sql = f"SELECT {actor_expr} as actor FROM line_events{_where_and(where2, f'{act_expr} IS NOT NULL')} LIMIT 1"
+    actor_row = conn.execute(actor_sql, params2).fetchone()
+    next_actor = actor_row["actor"] if actor_row else None
+
+    # Group by action type for next_actions + bet_sizes
+    params3: list = []
+    where3 = _combined_line_where(
+        params3, start=start, end=end,
+        hero_in_position=hero_in_position, hero_preflop_raiser=hero_preflop_raiser,
+        pot_types=pot_types, board_types=board_types,
+        turn_runouts=turn_runouts, river_runouts=river_runouts,
+        include_pool=include_pool,
+        flop_actions=flop_actions, turn_actions=turn_actions, river_actions=river_actions,
+    )
+    # Remove the dead first attempt and use the clean version
+    not_null_where = _where_and(where3, f"{act_expr} IS NOT NULL")
+    next_sql = f"""SELECT
+        {act_expr} as act,
+        CASE
+            WHEN {act_expr} IN ('X','F','C') THEN {act_expr}
+            WHEN {size_expr} IS NULL THEN {act_expr}
+            WHEN {size_expr} < 50 THEN {act_expr} || '0-50'
+            WHEN {size_expr} < 100 THEN {act_expr} || '50-100'
+            WHEN {size_expr} < 200 THEN {act_expr} || '100-200'
+            ELSE {act_expr} || '200+'
+        END as action_key,
+        COUNT(*) as cnt,
+        SUM(hero_pnl_bb) as pnl_sum
+    FROM line_events{not_null_where}
+    GROUP BY action_key"""
+
+    action_groups = {}
+    for row in conn.execute(next_sql, params3).fetchall():
+        key = row["action_key"]
+        action_groups[key] = {
+            "action": key,
+            "ev": row["pnl_sum"] / row["cnt"] if row["cnt"] else 0,
+            "count": row["cnt"],
+        }
+
+    next_actions = sorted(action_groups.values(), key=lambda x: _action_sort_key(x["action"]))
+
+    # Bet sizes: collect all sizes at current depth for bet/raise actions
+    params4: list = []
+    where4 = _combined_line_where(
+        params4, start=start, end=end,
+        hero_in_position=hero_in_position, hero_preflop_raiser=hero_preflop_raiser,
+        pot_types=pot_types, board_types=board_types,
+        turn_runouts=turn_runouts, river_runouts=river_runouts,
+        include_pool=include_pool,
+        flop_actions=flop_actions, turn_actions=turn_actions, river_actions=river_actions,
+    )
+    bet_where = _where_and(where4, f"{act_expr} IN ('B', 'R') AND {size_expr} IS NOT NULL")
+    bet_sql = f"SELECT {size_expr} as sz FROM line_events{bet_where}"
+    bet_sizes = [round(row["sz"], 1) for row in conn.execute(bet_sql, params4).fetchall()]
+
+    flop_complete = (not on_turn and not on_river and not next_actions and turn_available) or on_turn or on_river
+    turn_complete = (on_turn and not on_river and not next_actions and river_available) or on_river
+
+    return {
+        "ev_stats": {
+            "overall_ev": overall_ev,
+            "next_actions": next_actions,
+        },
+        "next_actor": next_actor,
+        "bet_sizes": bet_sizes,
+        "action_depth": depth,
+        "flop_complete": flop_complete,
+        "turn_available": turn_available,
+        "turn_complete": turn_complete,
+        "river_available": river_available,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Split endpoint: top-hands
+# ---------------------------------------------------------------------------
+
+def query_top_hands(
+    conn: sqlite3.Connection,
+    *,
+    start: date | None = None,
+    end: date | None = None,
+    hero_in_position: bool | None = None,
+    hero_preflop_raiser: bool | None = None,
+    pot_types: list | None = None,
+    board_types: list | None = None,
+    turn_runouts: list | None = None,
+    river_runouts: list | None = None,
+    include_pool: bool = False,
+    flop_actions: list[str] | None = None,
+    turn_actions: list[str] | None = None,
+    river_actions: list[str] | None = None,
+    limit: int = 5,
+) -> dict:
+    """SQL ORDER BY LIMIT for top wins and losses."""
+    params_w: list = []
+    where = _combined_line_where(
+        params_w, start=start, end=end,
+        hero_in_position=hero_in_position, hero_preflop_raiser=hero_preflop_raiser,
+        pot_types=pot_types, board_types=board_types,
+        turn_runouts=turn_runouts, river_runouts=river_runouts,
+        include_pool=include_pool,
+        flop_actions=flop_actions, turn_actions=turn_actions, river_actions=river_actions,
+    )
+    cols = "hero_pnl_bb, hero_hand, villain_hand, flop_cards, turn_card, river_card"
+
+    wins_sql = f"SELECT {cols} FROM line_events{where} ORDER BY hero_pnl_bb DESC LIMIT ?"
+    params_wins = params_w + [limit]
+    top_wins = [
+        {
+            "pnl_bb": round(r["hero_pnl_bb"], 2),
+            "hero_hand": _hole_cards_to_json(r["hero_hand"]),
+            "villain_hand": _hole_cards_to_json(r["villain_hand"]),
+            "flop": [_parse_card(c).to_json() for c in r["flop_cards"].split()] if r["flop_cards"] else [],
+            "turn_card": _card_to_json(r["turn_card"]),
+            "river_card": _card_to_json(r["river_card"]),
+        }
+        for r in conn.execute(wins_sql, params_wins).fetchall()
+    ]
+
+    params_l: list = []
+    where_l = _combined_line_where(
+        params_l, start=start, end=end,
+        hero_in_position=hero_in_position, hero_preflop_raiser=hero_preflop_raiser,
+        pot_types=pot_types, board_types=board_types,
+        turn_runouts=turn_runouts, river_runouts=river_runouts,
+        include_pool=include_pool,
+        flop_actions=flop_actions, turn_actions=turn_actions, river_actions=river_actions,
+    )
+    losses_sql = f"SELECT {cols} FROM line_events{where_l} ORDER BY hero_pnl_bb ASC LIMIT ?"
+    params_losses = params_l + [limit]
+    top_losses = [
+        {
+            "pnl_bb": round(r["hero_pnl_bb"], 2),
+            "hero_hand": _hole_cards_to_json(r["hero_hand"]),
+            "villain_hand": _hole_cards_to_json(r["villain_hand"]),
+            "flop": [_parse_card(c).to_json() for c in r["flop_cards"].split()] if r["flop_cards"] else [],
+            "turn_card": _card_to_json(r["turn_card"]),
+            "river_card": _card_to_json(r["river_card"]),
+        }
+        for r in conn.execute(losses_sql, params_losses).fetchall()
+    ]
+
+    return {"top_wins": top_wins, "top_losses": top_losses}
