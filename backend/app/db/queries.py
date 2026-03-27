@@ -93,7 +93,7 @@ def _base_where(
     if board_types:
         placeholders = ",".join("?" for _ in board_types)
         clauses.append(f"board_type IN ({placeholders})")
-        params.extend(int(b) for b in board_types)
+        params.extend(b.value if hasattr(b, "value") else int(b) for b in board_types)
     if hero_in_position is not None and hero_in_position:
         placeholders = ",".join("?" for _ in hero_in_position)
         clauses.append(f"hero_in_position IN ({placeholders})")
@@ -476,7 +476,7 @@ def _line_where(
     if board_types:
         placeholders = ",".join("?" for _ in board_types)
         clauses.append(f"board_type IN ({placeholders})")
-        params.extend(int(b) for b in board_types)
+        params.extend(b.value if hasattr(b, "value") else int(b) for b in board_types)
     if turn_runouts:
         placeholders = ",".join("?" for _ in turn_runouts)
         clauses.append(f"turn_runout IN ({placeholders})")

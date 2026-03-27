@@ -141,7 +141,7 @@ def _flop_row(e) -> tuple:
     return (
         str(e.played_on),
         _enum_val(e.pot_type),
-        int(e.board_type),
+        e.board_type.value,
         int(e.hero_preflop_raiser),
         int(e.hero_in_position),
         int(e.cbet),
@@ -160,7 +160,7 @@ def _turn_row(e) -> tuple:
     return (
         str(e.played_on),
         _enum_val(e.pot_type),
-        int(e.board_type),
+        e.board_type.value,
         int(e.hero_preflop_raiser),
         int(e.hero_in_position),
         _enum_val(e.flop_action_sequence),
@@ -179,7 +179,7 @@ def _river_row(e) -> tuple:
     return (
         str(e.played_on),
         _enum_val(e.pot_type),
-        int(e.board_type),
+        e.board_type.value,
         int(e.hero_in_position),
         _enum_val(e.flop_action_sequence),
         _enum_val(e.flop_rank_texture),
@@ -216,7 +216,7 @@ def _line_row(e) -> tuple:
     return (
         str(e.played_on),
         _enum_val(e.pot_type),
-        int(e.board_type),
+        e.board_type.value,
         int(e.hero_in_position),
         int(e.hero_preflop_raiser),
         e.hero_pnl_bb,
