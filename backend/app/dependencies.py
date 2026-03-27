@@ -1,17 +1,21 @@
 import sqlite3
 from datetime import date
+from typing import Generator
 
 from fastapi import Query, Request
 
 from app.routers.params import parse_optional_date
 
 
-def get_db(request: Request) -> sqlite3.Connection:
-    """Open a fresh connection per request for thread-safe concurrent reads."""
+def get_db(request: Request) -> Generator[sqlite3.Connection, None, None]:
+    """Open a fresh read-only connection per request, closed when done."""
     conn = sqlite3.connect(request.app.state.db_path)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    return conn
+    conn.execute("PRAGMA query_only = ON")
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 def get_date_range(

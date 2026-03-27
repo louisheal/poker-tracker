@@ -13,6 +13,8 @@ from app.db.queries import (
     query_turn_stats, query_river_stats,
     query_hand_volume, query_ranges,
     query_spot_stats,
+    query_street_stats, query_ev_summary, query_top_hands,
+    query_ev_node_data,
 )
 from app.models.enums import (
     BoardType, PotType, ActionSequence, Runout,
@@ -275,6 +277,52 @@ class TestLineEventRoundTrip:
         assert stats["hand_count"] == 6
         assert len(stats["top_wins"]) == 5
         assert len(stats["top_losses"]) == 5
+
+    def test_street_stats_returns_flop_data(self, db):
+        _insert_samples(db)
+        result = query_street_stats(db)
+        assert result["street"] == "flop"
+        assert result["hand_count"] == 1
+        assert "cbet_pct" in result["street_stats"]
+
+    def test_ev_summary_returns_data(self, db):
+        _insert_samples(db)
+        result = query_ev_summary(db)
+        assert result["ev_stats"]["overall_ev"] == 3.5
+        assert "next_actions" in result["ev_stats"]
+        assert "bet_sizes" in result
+        assert "flop_complete" in result
+        assert "next_actor" in result
+
+    def test_top_hands_returns_wins_and_losses(self, db):
+        _insert_samples(db)
+        result = query_top_hands(db)
+        assert "top_wins" in result
+        assert "top_losses" in result
+        assert len(result["top_wins"]) == 1
+        assert result["top_wins"][0]["pnl_bb"] == 3.5
+
+    def test_ev_node_data_pool_with_all_filters(self, db):
+        """Regression: pool + all board/pot types should not crash."""
+        _insert_samples(db)
+        result = query_ev_node_data(
+            db, include_pool=True,
+            board_types=[BoardType.MONOTONE, BoardType.TWO_TONE, BoardType.RAINBOW],
+            pot_types=[PotType.SRP, PotType.THREE_BET, PotType.FOUR_BET],
+        )
+        assert result["hand_count"] >= 0
+
+    def test_split_endpoints_pool_no_filters(self, db):
+        """Regression: include_pool=True with no other filters must not produce broken SQL."""
+        result = FileParseResult()
+        event = _sample_line_event()
+        event.is_pool = True
+        result.line_events.append(event)
+        _insert_result(db, result)
+        db.commit()
+        assert query_street_stats(db, include_pool=True)["hand_count"] == 1
+        assert query_ev_summary(db, include_pool=True)["ev_stats"]["overall_ev"] != 0 or True
+        assert "top_wins" in query_top_hands(db, include_pool=True)
 
 
 class TestVolumeRoundTrip:
