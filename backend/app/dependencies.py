@@ -1,13 +1,13 @@
+import sqlite3
 from datetime import date
 
 from fastapi import Query, Request
 
-from app.loader import EventStore
 from app.routers.params import parse_optional_date
 
 
-def get_store(request: Request) -> EventStore:
-    return request.app.state.store
+def get_db(request: Request) -> sqlite3.Connection:
+    return request.app.state.db
 
 
 def get_date_range(

@@ -1,8 +1,9 @@
+import sqlite3
+
 from fastapi import APIRouter, Depends, Query
 
-from app.dependencies import get_store, get_date_range
-from app.loader import EventStore
-from app.models import LineFilter
+from app.dependencies import get_db, get_date_range
+from app.db.queries import query_ev_node_data
 from app.routers.params import parse_board_type_list, parse_pot_type_list, parse_runout_list
 from app.routers.line_analysis import _split_action_prefix
 from app.parsers.ev_calculator import calculate_ev_open, calculate_ev_vs_bet
@@ -23,11 +24,13 @@ def get_hand_ev(
 	actions: list[str] | None = Query(default=None),
 	include_pool: bool = Query(default=False),
 	bet_sizes: list[int] | None = Query(default=None),
-	store: EventStore = Depends(get_store),
+	db: sqlite3.Connection = Depends(get_db),
 	dates: tuple = Depends(get_date_range),
 ):
 	start, end = dates
-	f = LineFilter(
+	flop_actions, turn_actions, river_actions = _split_action_prefix(actions)
+	node_data = query_ev_node_data(
+		db, start=start, end=end,
 		hero_in_position=hero_in_position,
 		hero_preflop_raiser=hero_preflop_raiser,
 		pot_types=parse_pot_type_list(pot_types),
@@ -35,10 +38,8 @@ def get_hand_ev(
 		turn_runouts=parse_runout_list(turn_runouts) if turn_runouts else None,
 		river_runouts=parse_runout_list(river_runouts) if river_runouts else None,
 		include_pool=include_pool,
+		flop_actions=flop_actions, turn_actions=turn_actions, river_actions=river_actions,
 	)
-
-	flop_actions, turn_actions, river_actions = _split_action_prefix(actions)
-	node_data = store.line_events.ev_node_data(f, flop_actions, turn_actions, river_actions, start=start, end=end)
 
 	total = node_data["fold_count"] + node_data["call_count"] + node_data["raise_count"]
 	sizes = bet_sizes or DEFAULT_BET_SIZES

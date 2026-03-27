@@ -1,8 +1,9 @@
+import sqlite3
+
 from fastapi import APIRouter, Depends, Query
 
-from app.dependencies import get_store, get_date_range
-from app.loader import EventStore
-from app.models import LineFilter
+from app.dependencies import get_db, get_date_range
+from app.db.queries import query_hand_type_distribution
 from app.routers.params import parse_board_type_list, parse_pot_type_list, parse_runout_list
 from app.routers.line_analysis import _split_action_prefix
 
@@ -19,11 +20,13 @@ def get_hand_type_distribution(
 	river_runouts: list[str] | None = Query(default=None),
 	actions: list[str] | None = Query(default=None),
 	include_pool: bool = Query(default=False),
-	store: EventStore = Depends(get_store),
+	db: sqlite3.Connection = Depends(get_db),
 	dates: tuple = Depends(get_date_range),
 ):
 	start, end = dates
-	f = LineFilter(
+	flop_actions, turn_actions, river_actions = _split_action_prefix(actions)
+	return query_hand_type_distribution(
+		db, start=start, end=end,
 		hero_in_position=hero_in_position,
 		hero_preflop_raiser=hero_preflop_raiser,
 		pot_types=parse_pot_type_list(pot_types),
@@ -31,6 +34,5 @@ def get_hand_type_distribution(
 		turn_runouts=parse_runout_list(turn_runouts) if turn_runouts else None,
 		river_runouts=parse_runout_list(river_runouts) if river_runouts else None,
 		include_pool=include_pool,
+		flop_actions=flop_actions, turn_actions=turn_actions, river_actions=river_actions,
 	)
-	flop_actions, turn_actions, river_actions = _split_action_prefix(actions)
-	return store.line_events.hand_type_distribution(f, flop_actions=flop_actions, turn_actions=turn_actions, river_actions=river_actions, start=start, end=end)

@@ -1,8 +1,9 @@
+import sqlite3
+
 from fastapi import APIRouter, Depends, Query
 
-from app.dependencies import get_store, get_date_range
-from app.loader import EventStore
-from app.models import FlopFilter
+from app.dependencies import get_db, get_date_range
+from app.db.queries import query_flop_stats, query_flop_bet_sizes
 from app.routers.params import parse_bool_list, parse_board_type_list, parse_pot_type_list
 
 router = APIRouter()
@@ -17,20 +18,19 @@ def get_flop(
     bet_size_min: float | None = Query(default=None),
     bet_size_max: float | None = Query(default=None),
     include_pool: bool = Query(default=False),
-    store: EventStore = Depends(get_store),
+    db: sqlite3.Connection = Depends(get_db),
     dates: tuple = Depends(get_date_range),
 ):
     start, end = dates
-    f = FlopFilter(
-        hero_preflop_raiser=parse_bool_list(hero_preflop_raiser),
-        hero_in_position=parse_bool_list(hero_in_position),
-        board_types=parse_board_type_list(board_types),
+    return query_flop_stats(
+        db, start=start, end=end,
         pot_types=parse_pot_type_list(pot_types),
-        bet_size_min=bet_size_min,
-        bet_size_max=bet_size_max,
+        board_types=parse_board_type_list(board_types),
+        hero_in_position=parse_bool_list(hero_in_position),
+        hero_preflop_raiser=parse_bool_list(hero_preflop_raiser),
+        bet_size_min=bet_size_min, bet_size_max=bet_size_max,
         include_pool=include_pool,
     )
-    return store.flops.json(f, start=start, end=end)
 
 
 @router.get("/bet-sizes")
@@ -40,15 +40,15 @@ def get_flop_bet_sizes(
     board_types: list[str] | None = Query(default=None),
     pot_types: list[str] | None = Query(default=None),
     include_pool: bool = Query(default=False),
-    store: EventStore = Depends(get_store),
+    db: sqlite3.Connection = Depends(get_db),
     dates: tuple = Depends(get_date_range),
 ):
     start, end = dates
-    f = FlopFilter(
-        hero_preflop_raiser=parse_bool_list(hero_preflop_raiser),
-        hero_in_position=parse_bool_list(hero_in_position),
-        board_types=parse_board_type_list(board_types),
+    return {"villain_bet_sizes": query_flop_bet_sizes(
+        db, start=start, end=end,
         pot_types=parse_pot_type_list(pot_types),
+        board_types=parse_board_type_list(board_types),
+        hero_in_position=parse_bool_list(hero_in_position),
+        hero_preflop_raiser=parse_bool_list(hero_preflop_raiser),
         include_pool=include_pool,
-    )
-    return {"villain_bet_sizes": store.flops.bet_sizes(f, start=start, end=end)}
+    )}

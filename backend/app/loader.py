@@ -1,125 +1,38 @@
 import logging
 import os
-import pickle
-from dataclasses import dataclass, field
-from datetime import date
+import sqlite3
 
-from app.models import (
-    FlopEvent, Flops, LineEvent, LineEvents, RangeEvent,
-    RiverEvent, Rivers, TurnEvent, Turns,
-)
-from app.parsers import parse_file, FileParseResult
+from app.db.schema import init_db
+from app.db.importer import import_hand_histories
 
 logger = logging.getLogger(__name__)
 
-CACHE_DIR_NAME = ".cache"
+DB_FILENAME = "poker.db"
 
 
-def _cache_dir(histories_dir: str) -> str:
-    path = os.path.join(histories_dir, CACHE_DIR_NAME)
-    os.makedirs(path, exist_ok=True)
-    return path
-
-
-def _cache_path(histories_dir: str, filename: str) -> str:
-    return os.path.join(_cache_dir(histories_dir), filename + ".pickle")
-
-
-def _load_cached(histories_dir: str, filename: str, source_mtime: float) -> FileParseResult | None:
-    cache = _cache_path(histories_dir, filename)
-    if not os.path.exists(cache):
-        return None
-    try:
-        cache_mtime = os.path.getmtime(cache)
-        if cache_mtime < source_mtime:
-            return None
-        with open(cache, "rb") as f:
-            return pickle.load(f)
-    except Exception as exc:
-        logger.warning(f"Cache load failed for {filename}: {exc}")
-        return None
-
-
-def _save_cache(histories_dir: str, filename: str, result: FileParseResult):
-    cache = _cache_path(histories_dir, filename)
-    try:
-        with open(cache, "wb") as f:
-            pickle.dump(result, f, protocol=pickle.HIGHEST_PROTOCOL)
-    except Exception as exc:
-        logger.warning(f"Cache save failed for {filename}: {exc}")
-
-
-@dataclass
-class EventStore:
-    range_events: list[RangeEvent] = field(default_factory=list)
-    cbet_events: list[FlopEvent] = field(default_factory=list)
-    flops: Flops = field(default_factory=Flops)
-    turn_events: list[TurnEvent] = field(default_factory=list)
-    turns: Turns = field(default_factory=Turns)
-    river_events: list[RiverEvent] = field(default_factory=list)
-    rivers: Rivers = field(default_factory=Rivers)
-    line_events: LineEvents = field(default_factory=LineEvents)
-    hand_dates: list[date] = field(default_factory=list)
-
-
-def load_hand_histories(histories_dir: str | None = None) -> EventStore:
+def load_hand_histories(histories_dir: str | None = None) -> sqlite3.Connection:
+    """Initialise the SQLite DB, import new hand history files, return connection."""
     if histories_dir is None:
         backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         project_dir = os.path.dirname(backend_dir)
-        histories_dir = os.path.normpath(os.path.join(project_dir, 'hand_histories'))
+        histories_dir = os.path.normpath(os.path.join(project_dir, "hand_histories"))
 
-    paths = []
+    db_path = os.path.join(histories_dir, DB_FILENAME)
+    logger.info(f"Opening database at {db_path}")
+    conn = init_db(db_path)
+
     if os.path.isdir(histories_dir):
-        for filename in sorted(os.listdir(histories_dir)):
-            if filename == CACHE_DIR_NAME:
-                continue
-            path = os.path.join(histories_dir, filename)
-            if os.path.isfile(path):
-                paths.append(path)
+        import_hand_histories(conn, histories_dir)
 
-    logger.info(f"Loading {len(paths)} hand history files...")
-
-    combined = FileParseResult()
-    cached_count = 0
-    parsed_count = 0
-
-    for path in paths:
-        filename = os.path.basename(path)
-        source_mtime = os.path.getmtime(path)
-
-        result = _load_cached(histories_dir, filename, source_mtime)
-        if result is not None:
-            cached_count += 1
-            logger.info(f"Loaded from cache: {filename}")
-        else:
-            logger.info(f"Parsing {filename}...")
-            result = parse_file(path)
-            _save_cache(histories_dir, filename, result)
-            parsed_count += 1
-
-        combined.merge(result)
+    row_counts = {}
+    for table in ("range_events", "flop_events", "turn_events", "river_events", "line_events"):
+        count = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+        row_counts[table] = count
 
     logger.info(
-        f"Loaded {len(combined.range_events)} range, {len(combined.cbet_events)} cbet, "
-        f"{len(combined.turn_events)} turn, {len(combined.river_events)} river, "
-        f"{len(combined.line_events)} line events "
-        f"({cached_count} cached, {parsed_count} parsed)"
+        f"Database ready: {row_counts['range_events']} range, "
+        f"{row_counts['flop_events']} flop, {row_counts['turn_events']} turn, "
+        f"{row_counts['river_events']} river, {row_counts['line_events']} line events"
     )
 
-    store = EventStore(
-        range_events=combined.range_events,
-        cbet_events=combined.cbet_events,
-        turn_events=combined.turn_events,
-        river_events=combined.river_events,
-        hand_dates=combined.hand_dates,
-    )
-    for ce in combined.cbet_events:
-        store.flops.add_event(ce)
-    for te in combined.turn_events:
-        store.turns.add_event(te)
-    for re_ in combined.river_events:
-        store.rivers.add_event(re_)
-    for le in combined.line_events:
-        store.line_events.add_event(le)
-
-    return store
+    return conn
