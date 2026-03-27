@@ -256,6 +256,20 @@ class TestLineEventRoundTrip:
         assert result["hand_count"] == 1
         assert result["overall_ev"] == 3.5
 
+    def test_spot_stats_equal_pnl_no_crash(self, db):
+        """Regression: heapq crashed comparing dicts when two hands had equal pnl."""
+        result = FileParseResult()
+        for _ in range(6):
+            event = _sample_line_event()
+            event.hero_pnl_bb = 5.0
+            result.line_events.append(event)
+        _insert_result(db, result)
+        db.commit()
+        stats = query_spot_stats(db)
+        assert stats["hand_count"] == 6
+        assert len(stats["biggest_wins"]) == 5
+        assert len(stats["biggest_losses"]) == 5
+
 
 class TestVolumeRoundTrip:
     def test_volume_groups_by_date(self, db):

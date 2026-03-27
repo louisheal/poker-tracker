@@ -767,34 +767,26 @@ def query_spot_stats(
     import heapq
     TOP_N = 5
     pnl_sum = 0.0
-    biggest_wins: list[tuple[float, dict]] = []
-    biggest_losses: list[tuple[float, dict]] = []
+    # Use (pnl, index) tuples so equal pnl values never compare dicts
+    biggest_wins: list[tuple[float, int]] = []
+    biggest_losses: list[tuple[float, int]] = []
     turn_available = False
     river_available = False
     flop_complete = False
 
-    for row in rows:
+    for i, row in enumerate(rows):
         pnl = row["hero_pnl_bb"]
         pnl_sum += pnl
 
-        hand_result = {
-            "pnl_bb": round(pnl, 2),
-            "hero_hand": _hole_cards_to_json(row["hero_hand"]),
-            "villain_hand": _hole_cards_to_json(row["villain_hand"]),
-            "flop": [_parse_card(c).to_json() for c in row["flop_cards"].split()] if row["flop_cards"] else [],
-            "turn_card": _card_to_json(row["turn_card"]),
-            "river_card": _card_to_json(row["river_card"]),
-        }
-
         if len(biggest_wins) < TOP_N:
-            heapq.heappush(biggest_wins, (pnl, hand_result))
+            heapq.heappush(biggest_wins, (pnl, i))
         elif pnl > biggest_wins[0][0]:
-            heapq.heapreplace(biggest_wins, (pnl, hand_result))
+            heapq.heapreplace(biggest_wins, (pnl, i))
 
         if len(biggest_losses) < TOP_N:
-            heapq.heappush(biggest_losses, (-pnl, hand_result))
+            heapq.heappush(biggest_losses, (-pnl, i))
         elif -pnl > biggest_losses[0][0]:
-            heapq.heapreplace(biggest_losses, (-pnl, hand_result))
+            heapq.heapreplace(biggest_losses, (-pnl, i))
 
         if not turn_available and row["turn_action_str"]:
             turn_available = True
@@ -807,6 +799,17 @@ def query_spot_stats(
                 flop_complete = True
 
     overall_ev = pnl_sum / n
+
+    # Build hand_result dicts only for the top N wins/losses (not every row)
+    def _row_to_hand_result(row: sqlite3.Row) -> dict:
+        return {
+            "pnl_bb": round(row["hero_pnl_bb"], 2),
+            "hero_hand": _hole_cards_to_json(row["hero_hand"]),
+            "villain_hand": _hole_cards_to_json(row["villain_hand"]),
+            "flop": [_parse_card(c).to_json() for c in row["flop_cards"].split()] if row["flop_cards"] else [],
+            "turn_card": _card_to_json(row["turn_card"]),
+            "river_card": _card_to_json(row["river_card"]),
+        }
 
     # Compute stats
     flop_stats = _compute_flop_stats_from_rows(rows)
@@ -821,8 +824,8 @@ def query_spot_stats(
         "turn_stats": turn_stats,
         "river_stats": river_stats,
         "next_actions": next_actions,
-        "biggest_wins": sorted([w[1] for w in biggest_wins], key=lambda x: -x["pnl_bb"]),
-        "biggest_losses": sorted([l[1] for l in biggest_losses], key=lambda x: x["pnl_bb"]),
+        "biggest_wins": sorted([_row_to_hand_result(rows[idx]) for _, idx in biggest_wins], key=lambda x: -x["pnl_bb"]),
+        "biggest_losses": sorted([_row_to_hand_result(rows[idx]) for _, idx in biggest_losses], key=lambda x: x["pnl_bb"]),
         "flop_complete": flop_complete,
         "turn_available": turn_available,
         "river_available": river_available,
