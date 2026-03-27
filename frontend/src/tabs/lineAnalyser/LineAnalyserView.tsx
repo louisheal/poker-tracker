@@ -4,13 +4,11 @@ import { BetSizeDistribution } from "@/components/BetSizeDistribution";
 import {
   getStreetStats,
   getEvSummary,
-  getTopHands,
   getHandTypeDistribution,
   getHandEv,
   type LineAnalysisParams,
   type StreetStatsResponse,
   type EvSummaryResponse,
-  type TopHandsResponse,
 } from "@/api";
 import type {
   DateRangeFilter,
@@ -33,7 +31,6 @@ import { StreetStatsPanel } from "./components/StreetStatsPanel";
 import { EvPanel } from "./components/EvPanel";
 import { HandTypePanel } from "./components/HandTypePanel";
 import { HandEvPanel } from "./components/HandEvPanel";
-import { TopHandsPanel } from "./components/TopHandsPanel";
 
 const ACTION_LABELS: Record<string, string> = {
   X: "Check",
@@ -143,11 +140,6 @@ const INITIAL_EV_SUMMARY: EvSummaryResponse = {
   river_available: false,
 };
 
-const INITIAL_TOP_HANDS: TopHandsResponse = {
-  top_wins: [],
-  top_losses: [],
-};
-
 interface Props {
   dateRange: DateRangeFilter;
   includePool: boolean;
@@ -172,8 +164,6 @@ export const LineAnalyserView = ({ dateRange, includePool }: Props) => {
     useState<StreetStatsResponse>(INITIAL_STREET_STATS);
   const [evSummary, setEvSummary] =
     useState<EvSummaryResponse>(INITIAL_EV_SUMMARY);
-  const [topHands, setTopHands] =
-    useState<TopHandsResponse>(INITIAL_TOP_HANDS);
   const [handTypes, setHandTypes] =
     useState<HandTypeDistributionResponse | null>(null);
   const [handEv, setHandEv] = useState<HandEvResponse | null>(null);
@@ -253,10 +243,6 @@ export const LineAnalyserView = ({ dateRange, includePool }: Props) => {
       const result = await getEvSummary(lineParams, signal);
       setEvSummary(result);
     };
-    const fetchTopHands = async () => {
-      const result = await getTopHands(lineParams, signal);
-      setTopHands(result);
-    };
     const fetchHandTypes = async () => {
       const result = await getHandTypeDistribution(lineParams, signal);
       setHandTypes(result);
@@ -266,11 +252,9 @@ export const LineAnalyserView = ({ dateRange, includePool }: Props) => {
       setHandEv(result);
     };
 
-    // Fire all 5 requests in parallel -- each updates state independently
-    // as it resolves, giving progressive rendering
+    // Fire all 4 requests in parallel -- each updates state independently
     fetchStreetStats().catch(() => {});
     fetchEvSummary().catch(() => {});
-    fetchTopHands().catch(() => {});
     fetchHandTypes().catch(() => {});
     fetchHandEv().catch(() => {});
 
@@ -483,7 +467,7 @@ export const LineAnalyserView = ({ dateRange, includePool }: Props) => {
       {/* Divider */}
       <div className="border-t border-border" />
 
-      {/* 2x3 grid: Stats | EV | HandEv (row-span-2) / BetDist | TopHands */}
+      {/* 2x3 grid: Stats | EV | HandEv (row-span-2) / BetDist */}
       <div className="grid gap-4 grid-cols-3">
         <StreetStatsPanel
           street={streetStats.street}
@@ -502,9 +486,9 @@ export const LineAnalyserView = ({ dateRange, includePool }: Props) => {
           onContinueToRiver={handleContinueToRiver}
         />
         <HandEvPanel data={handEv} />
-        <BetSizeDistribution sizes={evSummary.bet_sizes} title={betSizeTitle} />
-        <TopHandsPanel title="Biggest Wins" hands={topHands.top_wins} />
-        <TopHandsPanel title="Biggest Losses" hands={topHands.top_losses} />
+        <div className="col-span-2">
+          <BetSizeDistribution sizes={evSummary.bet_sizes} title={betSizeTitle} />
+        </div>
       </div>
       <div className="grid gap-4 grid-cols-2">
         <HandTypePanel
