@@ -11,13 +11,14 @@ import torch
 
 from playing_cards_lib.core import Card, Rank, Suit
 from playing_cards_lib.poker import HoleCards
-from app.models.enums import Action, MadeHandType
+from app.models.enums import Action
 from app.parsers.hand_types import classify_made_hand, classify_flush_draw, classify_straight_draw
 from app.parsers.equity import get_equity, HandTriple
 
 from solver.model import SolverTransformer
+from solver.models import Token, TokenType
 from solver.dataset import (
-    Token, TokenType, MAX_SEQ_LEN,
+    MAX_SEQ_LEN,
     RANK_TO_INDEX, SUIT_TO_INDEX, ACTION_TO_INDEX,
 )
 from solver.ranges import (
@@ -81,21 +82,16 @@ def _action_key_to_model_action(action_key: str) -> int:
 
 def _build_sequence_tokens(
     board: list[Card],
-    hero_cards: tuple[Card, Card],
     action_prefix: list[str],
 ) -> list[Token]:
-    """Build the token sequence up to the current decision point."""
+    """Build the token sequence up to the current decision point.
+
+    Includes preflop-style action prefix tokens followed by board cards
+    with street markers. No hole cards -- model only sees actions + board.
+    """
     tokens: list[Token] = []
 
-    # Hero hole cards
-    tokens.append(Token(TokenType.CARD, rank=RANK_TO_INDEX[hero_cards[0].rank], suit=SUIT_TO_INDEX[hero_cards[0].suit]))
-    tokens.append(Token(TokenType.CARD, rank=RANK_TO_INDEX[hero_cards[1].rank], suit=SUIT_TO_INDEX[hero_cards[1].suit]))
-
-    # Placeholder villain cards (unknown -- use zero tokens)
-    tokens.append(Token(TokenType.CARD, rank=0, suit=0))
-    tokens.append(Token(TokenType.CARD, rank=0, suit=0))
-
-    # Preflop action prefix tokens
+    # Action prefix tokens (preflop actions + any postflop actions already taken)
     for action_str in action_prefix:
         # Parse "POS:ACTION" format from frontend
         parts = action_str.split(":")
@@ -210,11 +206,8 @@ def solve_spot(
         bet_pct = ACTION_TO_BET_PCT.get(action_key, 0.0)
         bet_bb = (bet_pct / 100.0) * pot_bb
 
-        # For each hero action, get model's villain response prediction
-        # We'll use a representative hand to get villain probabilities
-        # (In practice, could be hand-dependent, but for now aggregate)
-        representative_cards = (Card(Rank.ACE, Suit.SPADES), Card(Rank.KING, Suit.HEARTS))
-        base_tokens = _build_sequence_tokens(board, representative_cards, action_prefix)
+        # Build sequence without hole cards (model only sees actions + board)
+        base_tokens = _build_sequence_tokens(board, action_prefix)
 
         # Add hero's action token
         model_action = _action_key_to_model_action(action_key)
@@ -225,12 +218,12 @@ def solve_spot(
         with torch.no_grad():
             batch = _tensorize_sequence(full_tokens)
             logits = model(batch)
-            probs = torch.softmax(logits, dim=-1).cpu().numpy()[0]
+            probs = torch.softmax(logits, dim=-1).cpu()[0]
 
         # Model outputs: F=0, X=1, C=2, B=3, R=4
-        fold_pct = float(probs[0])
-        call_pct = float(probs[2]) + float(probs[1])  # Check + Call = passive
-        raise_pct = float(probs[3]) + float(probs[4])  # Bet + Raise = aggressive
+        fold_pct = probs[0].item()
+        call_pct = probs[2].item() + probs[1].item()  # Check + Call = passive
+        raise_pct = probs[3].item() + probs[4].item()  # Bet + Raise = aggressive
 
         # Normalize to sum to 1
         total = fold_pct + call_pct + raise_pct
@@ -239,12 +232,15 @@ def solve_spot(
             call_pct /= total
             raise_pct /= total
 
-        # Filter villain range into sub-ranges
-        calling_range, raising_range, folding_range = filter_range_by_equity(
-            villain_range, board, street,
-            raise_pct=raise_pct * 100,
-            call_pct=call_pct * 100,
-        )
+        # Filter villain range into sub-ranges (skip for preflop -- no board for equity)
+        if street == "preflop" or not board:
+            calling_range = villain_range
+        else:
+            calling_range, raising_range, folding_range = filter_range_by_equity(
+                villain_range, board, street,
+                raise_pct=raise_pct * 100,
+                call_pct=call_pct * 100,
+            )
 
         ev_sum = 0.0
         hand_count = 0
@@ -259,10 +255,12 @@ def solve_spot(
             if valid_combo is None:
                 continue
 
-            hero_triple = _classify_hand(valid_combo, board)
-
             # EV vs calling range
-            eq_vs_callers = compute_hand_equity(hero_triple, calling_range, board, street) if calling_range else 0.5
+            if street == "preflop" or not board:
+                eq_vs_callers = 0.5  # No equity calc for preflop
+            else:
+                hero_triple = _classify_hand(valid_combo, board)
+                eq_vs_callers = compute_hand_equity(hero_triple, calling_range, board, street) if calling_range else 0.5
 
             # EV calculation
             if action_key in ("Fold",):

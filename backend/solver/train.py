@@ -2,11 +2,13 @@
 
 Usage:
     cd backend
-    python -m solver.train
+    python -m solver.train                  # full run (all files)
+    python -m solver.train --max-files 20   # quick test with 20 files
+    python -m solver.train --epochs 50      # override epoch count
 
-Scans hand_histories/ for .txt files, parses with lex_hand,
-extracts base training examples (cached to disk), and trains
-the SolverTransformer with on-the-fly suit augmentation.
+Scans hand_histories/ for all .txt files (GG* and hhd_*), extracts
+training examples from ALL heads-up postflop hands (not just showdowns),
+caches to disk, and trains with on-the-fly suit + flop augmentation.
 """
 
 from __future__ import annotations
@@ -29,6 +31,7 @@ from solver.dataset import (
     PokerDataset,
     collate_fn,
     extract_training_examples,
+    is_heads_up_postflop,
     hand_id_hash,
 )
 from solver.model import SolverTransformer
@@ -37,7 +40,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger(__name__)
 
 NUM_EPOCHS = 20
-BATCH_SIZE = 64
+BATCH_SIZE = 512
 LEARNING_RATE = 1e-4
 VAL_SPLIT_MOD = 10  # hand_id_hash % VAL_SPLIT_MOD == 0 -> validation
 CHECKPOINT_DIR = os.path.join(os.path.dirname(__file__), "checkpoints")
@@ -54,15 +57,23 @@ def scan_hand_files() -> list[str]:
 
 
 def _parse_and_extract(files: list[str]) -> tuple[list[TrainingExample], list[TrainingExample]]:
-    """Parse all files and split base examples (no augmentation) into train/val."""
+    """Parse all files and split examples into train/val.
+
+    Uses ALL heads-up postflop hands, not just showdowns.
+    Hero hands: predict villain actions. Non-hero hands: predict all actions.
+    """
     train_examples: list[TrainingExample] = []
     val_examples: list[TrainingExample] = []
     total_hands = 0
-    showdown_hands = 0
+    heads_up_hands = 0
+    total_examples = 0
 
     for file_idx, file_path in enumerate(files):
         if (file_idx + 1) % 50 == 0 or file_idx == 0:
-            logger.info(f"Processing file {file_idx + 1}/{len(files)} ({showdown_hands} showdown hands so far)")
+            logger.info(
+                f"Processing file {file_idx + 1}/{len(files)} "
+                f"({heads_up_hands} HU postflop hands, {total_examples} examples so far)"
+            )
 
         for hand_lines in group_hands(file_path, include_multiway=False):
             ast = lex_hand(hand_lines)
@@ -71,15 +82,12 @@ def _parse_and_extract(files: list[str]) -> tuple[list[TrainingExample], list[Tr
 
             total_hands += 1
 
-            if not ast.shown_cards or ast.hero_hole_cards is None:
+            if not is_heads_up_postflop(ast):
                 continue
 
-            has_villain_show = any(name != "Hero" for name in ast.shown_cards)
-            if not has_villain_show:
-                continue
-
-            showdown_hands += 1
+            heads_up_hands += 1
             examples = extract_training_examples(ast)
+            total_examples += len(examples)
 
             if hand_id_hash(ast.hand_id) % VAL_SPLIT_MOD == 0:
                 val_examples.extend(examples)
@@ -87,34 +95,38 @@ def _parse_and_extract(files: list[str]) -> tuple[list[TrainingExample], list[Tr
                 train_examples.extend(examples)
 
     logger.info(f"Total hands parsed: {total_hands}")
-    logger.info(f"Showdown hands with villain cards: {showdown_hands}")
+    logger.info(f"Heads-up postflop hands: {heads_up_hands}")
     logger.info(f"Training examples: {len(train_examples)}")
     logger.info(f"Validation examples: {len(val_examples)}")
 
     return train_examples, val_examples
 
 
-def load_or_extract(files: list[str]) -> tuple[list[TrainingExample], list[TrainingExample]]:
+def load_or_extract(files: list[str], use_cache: bool = True) -> tuple[list[TrainingExample], list[TrainingExample]]:
     """Load cached examples from disk, or parse and cache them."""
-    if os.path.isfile(CACHE_PATH):
-        logger.info(f"Loading cached examples from {CACHE_PATH}")
-        with open(CACHE_PATH, "rb") as f:
+    cache_path = CACHE_PATH if len(files) == len(glob.glob(os.path.join(HAND_HISTORIES_DIR, "*.txt"))) else None
+
+    if use_cache and cache_path and os.path.isfile(cache_path):
+        logger.info(f"Loading cached examples from {cache_path}")
+        with open(cache_path, "rb") as f:
             data = pickle.load(f)
         logger.info(f"Loaded {len(data['train'])} train + {len(data['val'])} val examples from cache")
         return data["train"], data["val"]
 
-    logger.info("No cache found, parsing hand histories...")
+    logger.info("Parsing hand histories...")
     train_examples, val_examples = _parse_and_extract(files)
 
-    os.makedirs(os.path.dirname(CACHE_PATH), exist_ok=True)
-    with open(CACHE_PATH, "wb") as f:
-        pickle.dump({"train": train_examples, "val": val_examples}, f)
-    logger.info(f"Cached examples to {CACHE_PATH}")
+    # Only cache if we parsed all files (not a subset)
+    if cache_path:
+        os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+        with open(cache_path, "wb") as f:
+            pickle.dump({"train": train_examples, "val": val_examples}, f)
+        logger.info(f"Cached examples to {cache_path}")
 
     return train_examples, val_examples
 
 
-def train() -> None:
+def train(max_files: int | None = None, use_cache: bool = True) -> None:
     """Main training loop."""
     os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 
@@ -123,11 +135,26 @@ def train() -> None:
         logger.error(f"No hand history files found in {HAND_HISTORIES_DIR}")
         sys.exit(1)
 
-    train_examples, val_examples = load_or_extract(files)
+    if max_files is not None:
+        logger.info(f"Limiting to {max_files} files (of {len(files)} total)")
+        files = files[:max_files]
+
+    train_examples, val_examples = load_or_extract(files, use_cache=use_cache)
 
     if not train_examples:
-        logger.error("No training examples extracted. Need showdown hands with villain cards shown.")
+        logger.error("No training examples extracted. Need heads-up postflop hands.")
         sys.exit(1)
+
+    # Device setup
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    logger.info(f"Using device: {device}")
+    if device.type == "cuda":
+        logger.info(f"GPU: {torch.cuda.get_device_name(0)}")
+        logger.info(f"GPU memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
+    else:
+        logger.warning("CUDA not available -- training on CPU (will be slow)")
+
+    use_pin_memory = device.type == "cuda"
 
     # Build datasets -- augment=True applies random suit permutation on-the-fly
     train_dataset = PokerDataset(train_examples, augment=True)
@@ -136,7 +163,8 @@ def train() -> None:
         batch_size=BATCH_SIZE,
         shuffle=True,
         collate_fn=collate_fn,
-        num_workers=0,
+        num_workers=2,
+        pin_memory=use_pin_memory,
     )
 
     val_loader = None
@@ -147,17 +175,9 @@ def train() -> None:
             batch_size=BATCH_SIZE,
             shuffle=False,
             collate_fn=collate_fn,
-            num_workers=0,
+            num_workers=2,
+            pin_memory=use_pin_memory,
         )
-
-    # Model
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    logger.info(f"Using device: {device}")
-    if device.type == "cuda":
-        logger.info(f"GPU: {torch.cuda.get_device_name(0)}")
-        logger.info(f"GPU memory: {torch.cuda.get_device_properties(0).total_mem / 1024**3:.1f} GB")
-    else:
-        logger.warning("CUDA not available -- training on CPU (will be slow)")
 
     model = SolverTransformer().to(device)
     param_count = sum(p.numel() for p in model.parameters())
@@ -178,7 +198,7 @@ def train() -> None:
         train_total = 0
 
         for batch in train_loader:
-            batch_gpu = {k: v.to(device) for k, v in batch.items()}
+            batch_gpu = {k: v.to(device, non_blocking=True) for k, v in batch.items()}
             labels = batch_gpu.pop("labels")
 
             logits = model(batch_gpu)
@@ -207,7 +227,7 @@ def train() -> None:
 
             with torch.no_grad():
                 for batch in val_loader:
-                    batch_gpu = {k: v.to(device) for k, v in batch.items()}
+                    batch_gpu = {k: v.to(device, non_blocking=True) for k, v in batch.items()}
                     labels = batch_gpu.pop("labels")
 
                     logits = model(batch_gpu)
@@ -251,4 +271,15 @@ def train() -> None:
 
 
 if __name__ == "__main__":
-    train()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Train the poker solver model")
+    parser.add_argument("--max-files", type=int, default=None, help="Limit number of hand history files to parse")
+    parser.add_argument("--epochs", type=int, default=NUM_EPOCHS, help=f"Number of training epochs (default: {NUM_EPOCHS})")
+    parser.add_argument("--no-cache", action="store_true", help="Ignore cached examples and re-parse")
+    args = parser.parse_args()
+
+    if args.epochs != NUM_EPOCHS:
+        NUM_EPOCHS = args.epochs
+
+    train(max_files=args.max_files, use_cache=not args.no_cache)

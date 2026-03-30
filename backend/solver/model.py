@@ -1,4 +1,11 @@
-"""Transformer model for predicting villain actions at poker decision points."""
+"""Transformer model for predicting villain actions at poker decision points.
+
+Input sequence format:
+  [preflop actions..., FLOP_MARKER, card, card, card, flop actions...,
+   TURN_MARKER, card, turn actions..., RIVER_MARKER, card, river actions...]
+
+No hole cards are included. Preflop actions encode pot type and position context.
+"""
 
 import torch
 import torch.nn as nn
@@ -19,6 +26,9 @@ DROPOUT = 0.1
 class SolverTransformer(nn.Module):
     """Small transformer that processes a sequence of heterogeneous tokens
     (cards, actions, street markers) and outputs a 5-way action distribution.
+
+    Input: preflop actions + board cards with street markers + postflop actions.
+    No hole cards -- the model learns pot type and position from action patterns.
 
     Token types:
       0 = card    -> uses rank_embed + suit_embed

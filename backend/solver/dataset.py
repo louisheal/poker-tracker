@@ -1,14 +1,20 @@
 """Training data extraction from parsed hand histories.
 
-Walks HandAST objects and produces training examples -- one per villain
-decision point where villain's cards are known (showdown hands).
+Walks HandAST objects and produces training examples. Multiple examples per
+hand -- one per decision point where we predict the next action.
+
+Key design:
+  - Uses ALL hands where 2 players see the flop (not just showdown hands)
+  - No hole cards in model input (board + actions only)
+  - Hero hands: predict villain's actions (hero actions are context)
+  - Non-hero hands (hhd_ files): predict every action (both players are targets)
+  - Preflop actions are included so the model learns pot type / position context
 """
 
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass, field
-from enum import IntEnum
+from dataclasses import dataclass
 
 import torch
 from torch.utils.data import Dataset
@@ -16,6 +22,7 @@ from torch.utils.data import Dataset
 from app.models.enums import Action
 from app.parsers.ast import HandAST, PlayerAction, Street
 from playing_cards_lib.core import Card, Rank, Suit
+from solver.models import Token, TokenType
 
 RANK_TO_INDEX = {r: i for i, r in enumerate(Rank)}
 SUIT_TO_INDEX = {s: i for i, s in enumerate(Suit)}
@@ -31,27 +38,13 @@ ACTION_TO_INDEX = {
 MAX_SEQ_LEN = 64
 
 
-class TokenType(IntEnum):
-    CARD = 0
-    ACTION = 1
-    STREET_MARKER = 2
-
-
-@dataclass
-class Token:
-    token_type: TokenType
-    rank: int = 0       # 0-12 for cards
-    suit: int = 0       # 0-3 for cards
-    action: int = 0     # 0-4 for actions (F/X/C/B/R)
-    bet_size_pct: float = 0.0  # pct of pot for bet/raise actions
-
-
 @dataclass
 class TrainingExample:
-    """One training example: a sequence of tokens up to a villain decision
-    point, plus the villain's chosen action as the label."""
+    """One training example: a token sequence up to a decision point,
+    plus the actual next action as the label."""
     sequence: list[Token]
-    label: int  # villain's action index (0-4)
+    label: int  # next action index (0-4)
+    hand_id: str = ""  # for train/val splitting by hand
 
 
 def _card_token(card: Card) -> Token:
@@ -78,10 +71,10 @@ def _street_marker(street_idx: int) -> Token:
 def _big_blind_amount(ast: HandAST) -> float:
     """Extract the big blind amount from the blinds."""
     for blind in ast.blinds:
-        if not blind.is_small:
+        if not blind.is_small and blind.amount > 0:
             return blind.amount
-    # Fallback: largest blind
-    return max((b.amount for b in ast.blinds), default=1.0)
+    amounts = [b.amount for b in ast.blinds if b.amount > 0]
+    return max(amounts) if amounts else 1.0
 
 
 def _compute_bet_size_pct(action: PlayerAction, pot: float) -> float:
@@ -95,12 +88,15 @@ def _compute_bet_size_pct(action: PlayerAction, pot: float) -> float:
     return 0.0
 
 
-def _get_villain_name(ast: HandAST) -> str | None:
-    """Find the non-hero player who showed cards."""
-    for name in ast.shown_cards:
-        if name != "Hero":
-            return name
-    return None
+def is_heads_up_postflop(ast: HandAST) -> bool:
+    """Check if exactly 2 players saw the flop."""
+    if ast.flop is None:
+        return False
+    active_players = {player for player, _, _ in ast.players}
+    for action in ast.preflop:
+        if action.type == Action.FOLD:
+            active_players.discard(action.player)
+    return len(active_players) == 2
 
 
 def compute_running_pot(ast: HandAST) -> tuple[list[float], float]:
@@ -138,46 +134,25 @@ def compute_running_pot(ast: HandAST) -> tuple[list[float], float]:
 
 
 def extract_training_examples(ast: HandAST) -> list[TrainingExample]:
-    """Extract training examples from a hand where villain's cards are known.
+    """Extract training examples from any heads-up postflop hand.
 
-    Each example captures the game state up to a villain decision point.
-    The label is the action the villain actually took.
+    Hero hands: one example per villain decision point.
+    Non-hero hands: one example per action (both players are targets).
+    No hole cards in the sequence -- model sees only actions + board.
+    Preflop actions are included so the model can infer pot type and position.
     """
-    if ast.hero_hole_cards is None:
+    if not is_heads_up_postflop(ast):
         return []
 
-    villain_name = _get_villain_name(ast)
-    if villain_name is None:
-        return []
-
-    villain_cards = ast.shown_cards.get(villain_name)
-    if villain_cards is None:
-        return []
-
+    is_hero_hand = ast.hero_hole_cards is not None
     pots, bb = compute_running_pot(ast)
     pot_idx = 0
     sequence: list[Token] = []
     examples: list[TrainingExample] = []
 
-    # Add hero hole cards
-    sequence.append(_card_token(ast.hero_hole_cards.fst_card))
-    sequence.append(_card_token(ast.hero_hole_cards.snd_card))
-
-    # Add villain hole cards
-    sequence.append(_card_token(villain_cards.fst_card))
-    sequence.append(_card_token(villain_cards.snd_card))
-
-    # Preflop actions
+    # Preflop actions -- encode pot type (SRP/3bet/4bet) and position context
     for action in ast.preflop:
-        if action.player == villain_name:
-            examples.append(TrainingExample(
-                sequence=list(sequence),
-                label=ACTION_TO_INDEX[action.type],
-            ))
-
         pot_before = pots[pot_idx] if pot_idx < len(pots) else 1.0
-        size_pct = _compute_bet_size_pct(action, pot_before * bb) / bb if bb > 0 else 0.0
-        # Normalize: use pot-relative sizing
         size_pct = _compute_bet_size_pct(action, pot_before * bb)
         sequence.append(_action_token(action.type, size_pct))
         pot_idx += 1
@@ -193,19 +168,25 @@ def extract_training_examples(ast: HandAST) -> list[TrainingExample]:
         if street is None:
             break
 
-        # Street marker
         sequence.append(_street_marker(street_idx))
-
-        # Community cards
         for card in street.cards:
             sequence.append(_card_token(card))
 
-        # Street actions
         for action in street.actions:
-            if action.player == villain_name:
+            if is_hero_hand:
+                # Only predict villain's actions (hero actions are context)
+                if not action.is_hero:
+                    examples.append(TrainingExample(
+                        sequence=list(sequence),
+                        label=ACTION_TO_INDEX[action.type],
+                        hand_id=ast.hand_id,
+                    ))
+            else:
+                # Both players are targets -- predict every action
                 examples.append(TrainingExample(
                     sequence=list(sequence),
                     label=ACTION_TO_INDEX[action.type],
+                    hand_id=ast.hand_id,
                 ))
 
             pot_before = pots[pot_idx] if pot_idx < len(pots) else 1.0
@@ -221,9 +202,9 @@ def hand_id_hash(hand_id: str) -> int:
     return int(hashlib.md5(hand_id.encode()).hexdigest(), 16)
 
 
-def tensorize_example(ex: TrainingExample) -> dict[str, torch.Tensor]:
-    """Convert a TrainingExample to padded tensors."""
-    seq = ex.sequence[:MAX_SEQ_LEN]
+def tensorize_example(tokens: list[Token], label: int) -> dict[str, torch.Tensor]:
+    """Convert a token list + label to padded tensors."""
+    seq = tokens[:MAX_SEQ_LEN]
     length = len(seq)
 
     token_types = torch.zeros(MAX_SEQ_LEN, dtype=torch.long)
@@ -251,16 +232,26 @@ def tensorize_example(ex: TrainingExample) -> dict[str, torch.Tensor]:
         "bet_sizes": bet_sizes,
         "street_ids": street_ids,
         "padding_mask": padding_mask,
-        "label": torch.tensor(ex.label, dtype=torch.long),
+        "label": torch.tensor(label, dtype=torch.long),
     }
+
+
+import itertools
+import random
+
+from solver.augmentation import (
+    SUIT_PERMUTATIONS,
+    FLOP_ORDERINGS,
+    apply_suit_permutation,
+    apply_flop_reorder,
+)
 
 
 class PokerDataset(Dataset):
     """PyTorch dataset wrapping a list of TrainingExamples.
 
-    When augment=True, applies a random suit permutation on-the-fly
-    per __getitem__ call. This avoids pre-generating all 576 variants
-    and keeps memory usage proportional to the base example count.
+    When augment=True, applies random suit permutation + flop reorder
+    on-the-fly per __getitem__ call (144x effective augmentation).
     """
 
     def __init__(self, examples: list[TrainingExample], augment: bool = False) -> None:
@@ -272,39 +263,19 @@ class PokerDataset(Dataset):
 
     def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
         ex = self.examples[idx]
+        tokens = list(ex.sequence)
+
         if self.augment:
-            ex = _random_suit_permute(ex)
-        return tensorize_example(ex)
+            perm = random.choice(SUIT_PERMUTATIONS)
+            tokens = apply_suit_permutation(tokens, perm)
+            ordering = random.choice(FLOP_ORDERINGS)
+            tokens = apply_flop_reorder(tokens, ordering)
 
-
-def _random_suit_permute(ex: TrainingExample) -> TrainingExample:
-    """Apply a random suit permutation to all card tokens in an example.
-
-    This is the dominant augmentation (24 of the 576 variants).
-    Flop reordering and hole card swaps have minimal impact on the
-    token sequence since the model sees the same cards regardless of order.
-    """
-    import random
-    perm = list(range(4))
-    random.shuffle(perm)
-
-    new_seq = []
-    for tok in ex.sequence:
-        if tok.token_type == TokenType.CARD:
-            new_seq.append(Token(
-                token_type=TokenType.CARD,
-                rank=tok.rank,
-                suit=perm[tok.suit],
-            ))
-        else:
-            new_seq.append(tok)
-
-    return TrainingExample(sequence=new_seq, label=ex.label)
+        return tensorize_example(tokens, ex.label)
 
 
 def collate_fn(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch.Tensor]:
     """Collate a batch of tensorized examples, trimming padding to batch max length."""
-    # Find the max non-padded length in this batch
     max_len = max((~b["padding_mask"]).sum().item() for b in batch)
     max_len = int(max_len)
 
