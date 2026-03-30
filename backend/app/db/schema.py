@@ -162,6 +162,22 @@ TABLES = {
             river_first_size REAL
         )
     """,
+    "observed_spots": """
+        CREATE TABLE IF NOT EXISTS observed_spots (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            hand_id      TEXT NOT NULL,
+            node_key     TEXT NOT NULL,
+            next_action  TEXT,
+            hero_ip      INTEGER NOT NULL,
+            hero_pfr     INTEGER NOT NULL,
+            pot_type     INTEGER NOT NULL,
+            board_type   INTEGER NOT NULL,
+            turn_runout  INTEGER,
+            river_runout INTEGER,
+            played_on    TEXT NOT NULL,
+            is_pool      INTEGER NOT NULL DEFAULT 0
+        )
+    """,
 }
 
 INDEXES = [
@@ -189,6 +205,10 @@ INDEXES = [
        ON line_events(turn_runout)""",
     """CREATE INDEX IF NOT EXISTS idx_line_river_runout
        ON line_events(river_runout)""",
+
+    # Observed spots: main lookup index
+    """CREATE INDEX IF NOT EXISTS ix_spots_lookup
+       ON observed_spots(node_key, hero_ip, hero_pfr, pot_type, board_type)""",
 ]
 
 

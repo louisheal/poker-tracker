@@ -3,11 +3,10 @@ import re
 from dataclasses import dataclass, field
 from datetime import date
 
-from playing_cards_lib.poker import PokerPosition
-from app.models.events import RangeEvent, FlopEvent, TurnEvent, RiverEvent, LineEvent
+from app.models.events import RangeEvent, FlopEvent, TurnEvent, RiverEvent, LineEvent, ObservedSpot
 
 from .lexer import lex_hand, SEAT_STACK_RE
-from .analyzers import build_context, analyze_range, analyze_cbet, analyze_turn, analyze_river, analyze_line, _get_flop_players
+from .analyzers import build_context, analyze_range, analyze_cbet, analyze_turn, analyze_river, analyze_line, emit_observed_spots, _get_flop_players
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +98,7 @@ class FileParseResult:
 	turn_events: list[TurnEvent] = field(default_factory=list)
 	river_events: list[RiverEvent] = field(default_factory=list)
 	line_events: list[LineEvent] = field(default_factory=list)
+	observed_spots: list[ObservedSpot] = field(default_factory=list)
 	hand_dates: list[date] = field(default_factory=list)
 	hand_count: int = 0
 
@@ -108,6 +108,7 @@ class FileParseResult:
 		self.turn_events.extend(other.turn_events)
 		self.river_events.extend(other.river_events)
 		self.line_events.extend(other.line_events)
+		self.observed_spots.extend(other.observed_spots)
 		self.hand_dates.extend(other.hand_dates)
 		self.hand_count += other.hand_count
 
@@ -149,6 +150,10 @@ def parse_file(file: str) -> FileParseResult:
 		if line_event:
 			result.line_events.append(line_event)
 
+		# Emit observed spots for the stats panel
+		if ctx.hero_sees_flop:
+			result.observed_spots.extend(emit_observed_spots(ctx))
+
 		# Pool events: when hero didn't see flop, generate from each player's perspective
 		if not ctx.hero_sees_flop and ast.flop is not None:
 			pool_players = _get_flop_players(ast)
@@ -171,6 +176,9 @@ def parse_file(file: str) -> FileParseResult:
 					if pool_line:
 						pool_line.is_pool = True
 						result.line_events.append(pool_line)
+					result.observed_spots.extend(
+						emit_observed_spots(pool_ctx, is_pool=True)
+					)
 
 	return result
 

@@ -7,7 +7,8 @@ from datetime import datetime
 from playing_cards_lib.core import Card, Rank, Suit
 from playing_cards_lib.poker import HoleCards
 
-from .ast import HandAST, Action, ActionType, BlindPost, Street
+from .ast import HandAST, PlayerAction, BlindPost, Street
+from app.models.enums import Action
 
 logger = logging.getLogger(__name__)
 
@@ -64,33 +65,33 @@ class _State:
 
 
 def _parse_action(line: str, action_m: re.Match) -> Action:
-	"""Build an Action from an ACTION_RE match, extracting amounts from the line."""
+	"""Build a PlayerAction from an ACTION_RE match, extracting amounts from the line."""
 	player = action_m.group(1)
 	act = action_m.group(2).lower()
 	is_hero = player == "Hero"
 
 	if act == "folds":
-		return Action(player=player, type=ActionType.FOLD, is_hero=is_hero)
+		return PlayerAction(player=player, type=Action.FOLD, is_hero=is_hero)
 	elif act == "checks":
-		return Action(player=player, type=ActionType.CHECK, is_hero=is_hero)
+		return PlayerAction(player=player, type=Action.CHECK, is_hero=is_hero)
 	elif act == "calls":
 		amt_m = CALL_AMOUNT_RE.search(line)
 		amount = float(amt_m.group(1)) if amt_m else None
-		return Action(player=player, type=ActionType.CALL, amount=amount, is_hero=is_hero)
+		return PlayerAction(player=player, type=Action.CALL, amount=amount, is_hero=is_hero)
 	elif act == "bets":
 		amt_m = BET_AMOUNT_RE.search(line)
 		amount = float(amt_m.group(1)) if amt_m else None
-		return Action(player=player, type=ActionType.BET, amount=amount, is_hero=is_hero)
+		return PlayerAction(player=player, type=Action.BET, amount=amount, is_hero=is_hero)
 	else:  # raises
 		raise_m = RAISE_INC_RE.search(line)
 		if raise_m:
-			return Action(
-				player=player, type=ActionType.RAISE,
+			return PlayerAction(
+				player=player, type=Action.RAISE,
 				amount=float(raise_m.group(1)),
 				raise_to=float(raise_m.group(2)),
 				is_hero=is_hero,
 			)
-		return Action(player=player, type=ActionType.RAISE, is_hero=is_hero)
+		return PlayerAction(player=player, type=Action.RAISE, is_hero=is_hero)
 
 
 def lex_hand(lines: list[str]) -> HandAST | None:

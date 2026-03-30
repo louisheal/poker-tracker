@@ -122,6 +122,12 @@ _LINE_COLS = (
     "river_first_actor", "river_first_action", "river_first_size",
 )
 
+_SPOT_COLS = (
+    "hand_id", "node_key", "next_action",
+    "hero_ip", "hero_pfr", "pot_type", "board_type",
+    "turn_runout", "river_runout", "played_on", "is_pool",
+)
+
 
 def _insert_sql(table: str, cols: tuple[str, ...]) -> str:
     placeholders = ", ".join("?" for _ in cols)
@@ -299,6 +305,22 @@ def _line_row(e) -> tuple:
     )
 
 
+def _spot_row(s) -> tuple:
+    return (
+        s.hand_id,
+        s.node_key,
+        s.next_action.value if s.next_action else None,
+        int(s.hero_ip),
+        int(s.hero_pfr),
+        _enum_val(s.pot_type),
+        s.board_type.value,
+        _enum_val(s.turn_runout),
+        _enum_val(s.river_runout),
+        str(s.played_on),
+        int(s.is_pool),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Main import function
 # ---------------------------------------------------------------------------
@@ -331,6 +353,11 @@ def _insert_result(conn: sqlite3.Connection, result: FileParseResult) -> int:
         conn.executemany(_insert_sql("line_events", _LINE_COLS),
                          [_line_row(e) for e in result.line_events])
         rows += len(result.line_events)
+
+    if result.observed_spots:
+        conn.executemany(_insert_sql("observed_spots", _SPOT_COLS),
+                         [_spot_row(s) for s in result.observed_spots])
+        rows += len(result.observed_spots)
 
     return rows
 
@@ -377,7 +404,7 @@ def import_hand_histories(conn: sqlite3.Connection, histories_dir: str) -> list[
         # Remove old data for this file if re-importing
         if filename in existing:
             for table in ("range_events", "flop_events", "turn_events",
-                          "river_events", "line_events"):
+                          "river_events", "line_events", "observed_spots"):
                 conn.execute(f"DELETE FROM {table} WHERE rowid IN "
                              f"(SELECT rowid FROM {table} LIMIT 0)")
             logger.warning(f"File {filename} modified -- full re-import recommended")

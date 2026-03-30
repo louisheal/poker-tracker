@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 from playing_cards_lib.core import Card
 from playing_cards_lib.poker import HoleCards, PokerPosition
 
-from .enums import ActionSequence, Runout, FlopRankTexture, ShowdownType, BoardType, PotType
+from .enums import Action, ActionSequence, Runout, FlopRankTexture, ShowdownType, BoardType, PotType
 
 if TYPE_CHECKING:
 	from .filters import FlopFilter, LineFilter, TurnFilter, RiverFilter
@@ -196,3 +196,18 @@ class RiverEvent:
 		if self.river_runout not in filters.river_runouts:
 			return False
 		return True
+
+
+@dataclass
+class ObservedSpot:
+	hand_id: str
+	node_key: str
+	next_action: Action | None
+	hero_ip: bool
+	hero_pfr: bool
+	pot_type: PotType
+	board_type: BoardType
+	turn_runout: Runout | None
+	river_runout: Runout | None
+	played_on: date
+	is_pool: bool

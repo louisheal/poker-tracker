@@ -1,0 +1,484 @@
+
+Poker Hand #RC4146943156: Hold'em No Limit ($0.01/$0.02) - 2025/12/23 15:40:21
+Table 'RushAndCash8127874' 6-max Seat #1 is the button
+Seat 1: Villain ($4.04 in chips)
+Seat 2: Other ($6.73 in chips)
+Seat 3: Other1 ($1.42 in chips)
+Seat 4: Hero ($2.38 in chips)
+Seat 5: Other2 ($2.03 in chips)
+Seat 6: Other3 ($5.8 in chips)
+Other: posts small blind $0.01
+Other1: posts big blind $0.02
+*** HOLE CARDS ***
+Dealt to Villain
+Dealt to Other
+Dealt to Other1
+Dealt to Hero [Kc Ad]
+Dealt to Other2
+Dealt to Other3
+Hero: raises $0.03 to $0.05
+Other2: folds
+Other3: folds
+Villain: calls $0.05
+Other: folds
+Other1: folds
+*** FLOP *** [Ac 8d 2d]
+Hero: bets $0.03
+Villain: folds
+Uncalled bet ($0.03) returned to Hero
+*** SHOWDOWN ***
+Hero collected $0.13 from pot
+*** SUMMARY ***
+Total pot $0.13 | Rake $0 | Jackpot $0 | Bingo $0 | Fortune $0 | Tax $0
+Board [Ac 8d 2d]
+Seat 1: Villain (button) folded on the Flop
+Seat 2: Other (small blind) folded before Flop
+Seat 3: Other1 (big blind) folded before Flop
+Seat 4: Hero won ($0.13)
+Seat 5: Other2 folded before Flop (didn't bet)
+Seat 6: Other3 folded before Flop (didn't bet)
+
+
+Poker Hand #RC4146934035: Hold'em No Limit ($0.01/$0.02) - 2025/12/23 15:27:12
+Table 'RushAndCash8118753' 6-max Seat #1 is the button
+Seat 1: Villain ($2.2 in chips)
+Seat 2: Other ($2.6 in chips)
+Seat 3: Hero ($2 in chips)
+Seat 4: Other1 ($2.35 in chips)
+Seat 5: Other2 ($2 in chips)
+Seat 6: Other3 ($2.29 in chips)
+Other: posts small blind $0.01
+Hero: posts big blind $0.02
+*** HOLE CARDS ***
+Dealt to Villain
+Dealt to Other
+Dealt to Hero [As Ts]
+Dealt to Other1
+Dealt to Other2
+Dealt to Other3
+Other1: folds
+Other2: folds
+Other3: folds
+Villain: raises $0.04 to $0.06
+Other: folds
+Hero: raises $0.13 to $0.19
+Villain: calls $0.13
+*** FLOP *** [Kc Kh Kd]
+Hero: bets $0.13
+Villain: calls $0.13
+*** TURN *** [Kc Kh Kd] [4s]
+Hero: bets $0.38
+Villain: folds
+Uncalled bet ($0.38) returned to Hero
+*** SHOWDOWN ***
+Hero collected $0.59 from pot
+*** SUMMARY ***
+Total pot $0.65 | Rake $0.03 | Jackpot $0.03 | Bingo $0 | Fortune $0 | Tax $0
+Board [Kc Kh Kd 4s]
+Seat 1: Villain (button) folded on the Turn
+Seat 2: Other (small blind) folded before Flop
+Seat 3: Hero (big blind) won ($0.59)
+Seat 4: Other1 folded before Flop (didn't bet)
+Seat 5: Other2 folded before Flop (didn't bet)
+Seat 6: Other3 folded before Flop (didn't bet)
+
+
+Poker Hand #RC4108498767: Hold'em No Limit ($0.01/$0.02) - 2025/12/08 20:50:54
+Table 'RushAndCash40331714' 6-max Seat #1 is the button
+Seat 1: Other ($1.41 in chips)
+Seat 2: Other1 ($2.01 in chips)
+Seat 3: Hero ($2 in chips)
+Seat 4: Other2 ($2 in chips)
+Seat 5: Other3 ($3.79 in chips)
+Seat 6: Villain ($2 in chips)
+Other1: posts small blind $0.01
+Hero: posts big blind $0.02
+*** HOLE CARDS ***
+Dealt to Other
+Dealt to Other1
+Dealt to Hero [Jc Js]
+Dealt to Other2
+Dealt to Other3
+Dealt to Villain
+Other2: folds
+Other3: folds
+Villain: raises $0.02 to $0.04
+Other: folds
+Other1: folds
+Hero: raises $0.09 to $0.13
+Villain: calls $0.09
+*** FLOP *** [4s 3s As]
+Hero: checks
+Villain: checks
+*** TURN *** [4s 3s As] [7s]
+Hero: bets $0.07
+Villain: calls $0.07
+*** RIVER *** [4s 3s As 7s] [6h]
+Hero: bets $0.31
+Villain: calls $0.31
+Hero: shows [Jc Js] (a flush Ace high)
+Villain: shows [5c 5s] (a flush Ace high)
+*** SHOWDOWN ***
+Hero collected $0.95 from pot
+*** SUMMARY ***
+Total pot $1.03 | Rake $0.05 | Jackpot $0.03 | Bingo $0 | Fortune $0 | Tax $0
+Board [4s 3s As 7s 6h]
+Seat 1: Other (button) folded before Flop (didn't bet)
+Seat 2: Other1 (small blind) folded before Flop
+Seat 3: Hero (big blind) showed [Jc Js] and won ($0.95) with a flush Ace high
+Seat 4: Other2 folded before Flop (didn't bet)
+Seat 5: Other3 folded before Flop (didn't bet)
+Seat 6: Villain showed [5c 5s] and lost with a flush Ace high
+
+
+Poker Hand #RC4108656207: Hold'em No Limit ($0.01/$0.02) - 2025/12/08 22:17:31
+Table 'RushAndCash40369154' 6-max Seat #1 is the button
+Seat 1: Other ($1.8 in chips)
+Seat 2: Villain ($2.2 in chips)
+Seat 3: Other1 ($2.53 in chips)
+Seat 4: Other2 ($2.64 in chips)
+Seat 5: Other3 ($2.15 in chips)
+Seat 6: Hero ($1.92 in chips)
+Villain: posts small blind $0.01
+Other1: posts big blind $0.02
+*** HOLE CARDS ***
+Dealt to Other
+Dealt to Villain
+Dealt to Other1
+Dealt to Other2
+Dealt to Other3
+Dealt to Hero [Qc Ks]
+Other2: folds
+Other3: folds
+Hero: raises $0.03 to $0.05
+Other: folds
+Villain: raises $0.15 to $0.2
+Other1: folds
+Hero: calls $0.15
+*** FLOP *** [6h Ac 9s]
+Villain: bets $0.12
+Hero: folds
+Uncalled bet ($0.12) returned to Villain
+*** SHOWDOWN ***
+Villain collected $0.4 from pot
+*** SUMMARY ***
+Total pot $0.42 | Rake $0.02 | Jackpot $0 | Bingo $0 | Fortune $0 | Tax $0
+Board [6h Ac 9s]
+Seat 1: Other (button) folded before Flop (didn't bet)
+Seat 2: Villain (small blind) won ($0.4)
+Seat 3: Other1 (big blind) folded before Flop
+Seat 4: Other2 folded before Flop (didn't bet)
+Seat 5: Other3 folded before Flop (didn't bet)
+Seat 6: Hero folded on the Flop
+
+
+Poker Hand #RC4108661848: Hold'em No Limit ($0.01/$0.02) - 2025/12/08 22:30:32
+Table 'RushAndCash40374795' 6-max Seat #1 is the button
+Seat 1: Other ($2 in chips)
+Seat 2: Villain ($2 in chips)
+Seat 3: Hero ($1.85 in chips)
+Seat 4: Other1 ($1.85 in chips)
+Seat 5: Other2 ($2.37 in chips)
+Seat 6: Other3 ($2 in chips)
+Villain: posts small blind $0.01
+Hero: posts big blind $0.02
+*** HOLE CARDS ***
+Dealt to Other
+Dealt to Villain
+Dealt to Hero [Tc Ah]
+Dealt to Other1
+Dealt to Other2
+Dealt to Other3
+Other1: folds
+Other2: folds
+Other3: folds
+Other: folds
+Villain: raises $0.03 to $0.05
+Hero: calls $0.03
+*** FLOP *** [6s Jc 9c]
+Villain: bets $0.04
+Hero: calls $0.04
+*** TURN *** [6s Jc 9c] [6c]
+Villain: bets $0.14
+Hero: calls $0.14
+*** RIVER *** [6s Jc 9c 6c] [9s]
+Villain: bets $0.23
+Hero: folds
+Uncalled bet ($0.23) returned to Villain
+*** SHOWDOWN ***
+Villain collected $0.44 from pot
+*** SUMMARY ***
+Total pot $0.46 | Rake $0.02 | Jackpot $0 | Bingo $0 | Fortune $0 | Tax $0
+Board [6s Jc 9c 6c 9s]
+Seat 1: Other (button) folded before Flop (didn't bet)
+Seat 2: Villain (small blind) won ($0.44)
+Seat 3: Hero (big blind) folded on the River
+Seat 4: Other1 folded before Flop (didn't bet)
+Seat 5: Other2 folded before Flop (didn't bet)
+Seat 6: Other3 folded before Flop (didn't bet)
+
+
+Poker Hand #RC4298974025: Hold'em No Limit ($0.01/$0.02) - 2026/02/15 14:48:50
+Table 'RushAndCash11738492' 6-max Seat #1 is the button
+Seat 1: Other ($2.3 in chips)
+Seat 2: Villain ($3.23 in chips)
+Seat 3: Hero ($2.15 in chips)
+Seat 4: Other1 ($8.35 in chips)
+Seat 5: Other2 ($4.25 in chips)
+Seat 6: Other3 ($1.09 in chips)
+Villain: posts small blind $0.01
+Hero: posts big blind $0.02
+*** HOLE CARDS ***
+Dealt to Other
+Dealt to Villain
+Dealt to Hero [As 8s]
+Dealt to Other1
+Dealt to Other2
+Dealt to Other3
+Other1: folds
+Other2: folds
+Other3: folds
+Other: folds
+Villain: raises $0.03 to $0.05
+Hero: calls $0.03
+*** FLOP *** [6d 6c 4h]
+Villain: bets $0.03
+Hero: raises $0.12 to $0.15
+Villain: raises $3.03 to $3.18 and is all-in
+Hero: folds
+Uncalled bet ($3.03) returned to Villain
+*** SHOWDOWN ***
+Villain collected $0.38 from pot
+*** SUMMARY ***
+Total pot $0.4 | Rake $0.02 | Jackpot $0 | Bingo $0 | Fortune $0 | Tax $0
+Board [6d 6c 4h]
+Seat 1: Other (button) folded before Flop (didn't bet)
+Seat 2: Villain (small blind) won ($0.38)
+Seat 3: Hero (big blind) folded on the Flop
+Seat 4: Other1 folded before Flop (didn't bet)
+Seat 5: Other2 folded before Flop (didn't bet)
+Seat 6: Other3 folded before Flop (didn't bet)
+
+
+Poker Hand #RC4290831944: Hold'em No Limit ($0.01/$0.02) - 2026/02/12 12:42:54
+Table 'RushAndCash9516574' 6-max Seat #1 is the button
+Seat 1: Villain ($3.04 in chips)
+Seat 2: Other ($2 in chips)
+Seat 3: Other1 ($2.24 in chips)
+Seat 4: Other2 ($2.65 in chips)
+Seat 5: Other3 ($2.41 in chips)
+Seat 6: Hero ($2 in chips)
+Other: posts small blind $0.01
+Other1: posts big blind $0.02
+*** HOLE CARDS ***
+Dealt to Villain
+Dealt to Other
+Dealt to Other1
+Dealt to Other2
+Dealt to Other3
+Dealt to Hero [5d Kd]
+Other2: folds
+Other3: folds
+Hero: raises $0.04 to $0.06
+Villain: calls $0.06
+Other: folds
+Other1: folds
+*** FLOP *** [3c 7h Td]
+Hero: bets $0.05
+Villain: raises $0.13 to $0.18
+Hero: folds
+Uncalled bet ($0.13) returned to Villain
+*** SHOWDOWN ***
+Villain collected $0.24 from pot
+*** SUMMARY ***
+Total pot $0.25 | Rake $0.01 | Jackpot $0 | Bingo $0 | Fortune $0 | Tax $0
+Board [3c 7h Td]
+Seat 1: Villain (button) won ($0.24)
+Seat 2: Other (small blind) folded before Flop
+Seat 3: Other1 (big blind) folded before Flop
+Seat 4: Other2 folded before Flop (didn't bet)
+Seat 5: Other3 folded before Flop (didn't bet)
+Seat 6: Hero folded on the Flop
+
+
+Poker Hand #RC4108500243: Hold'em No Limit ($0.01/$0.02) - 2025/12/08 20:53:56
+Table 'RushAndCash40333190' 6-max Seat #1 is the button
+Seat 1: Other ($3.84 in chips)
+Seat 2: Other1 ($2.3 in chips)
+Seat 3: Hero ($2.52 in chips)
+Seat 4: Villain ($2.79 in chips)
+Seat 5: Other2 ($1.7 in chips)
+Seat 6: Other3 ($2.03 in chips)
+Other1: posts small blind $0.01
+Hero: posts big blind $0.02
+*** HOLE CARDS ***
+Dealt to Other
+Dealt to Other1
+Dealt to Hero [Js 7s]
+Dealt to Villain
+Dealt to Other2
+Dealt to Other3
+Villain: raises $0.02 to $0.04
+Other2: folds
+Other3: folds
+Other: folds
+Other1: folds
+Hero: calls $0.02
+*** FLOP *** [5s Kc 6h]
+Hero: checks
+Villain: checks
+*** TURN *** [5s Kc 6h] [Ts]
+Hero: bets $0.05
+Villain: calls $0.05
+*** RIVER *** [5s Kc 6h Ts] [Jc]
+Hero: bets $0.15
+Villain: folds
+Uncalled bet ($0.15) returned to Hero
+*** SHOWDOWN ***
+Hero collected $0.18 from pot
+*** SUMMARY ***
+Total pot $0.19 | Rake $0.01 | Jackpot $0 | Bingo $0 | Fortune $0 | Tax $0
+Board [5s Kc 6h Ts Jc]
+Seat 1: Other (button) folded before Flop (didn't bet)
+Seat 2: Other1 (small blind) folded before Flop
+Seat 3: Hero (big blind) won ($0.18)
+Seat 4: Villain folded on the River
+Seat 5: Other2 folded before Flop (didn't bet)
+Seat 6: Other3 folded before Flop (didn't bet)
+
+
+Poker Hand #RC4108500746: Hold'em No Limit ($0.01/$0.02) - 2025/12/08 20:55:00
+Table 'RushAndCash40333693' 6-max Seat #1 is the button
+Seat 1: Hero ($2.63 in chips)
+Seat 2: Other ($4.14 in chips)
+Seat 3: Villain ($1.9 in chips)
+Seat 4: Other1 ($1.65 in chips)
+Seat 5: Other2 ($3.77 in chips)
+Seat 6: Other3 ($2.83 in chips)
+Other: posts small blind $0.01
+Villain: posts big blind $0.02
+*** HOLE CARDS ***
+Dealt to Hero [Td 9d]
+Dealt to Other
+Dealt to Villain
+Dealt to Other1
+Dealt to Other2
+Dealt to Other3
+Other1: folds
+Other2: folds
+Other3: folds
+Hero: raises $0.03 to $0.05
+Other: folds
+Villain: calls $0.03
+*** FLOP *** [4h Qs Qd]
+Villain: checks
+Hero: bets $0.04
+Villain: calls $0.04
+*** TURN *** [4h Qs Qd] [7s]
+Villain: checks
+Hero: bets $0.09
+Villain: calls $0.09
+*** RIVER *** [4h Qs Qd 7s] [Ts]
+Villain: checks
+Hero: checks
+Villain: shows [Qh Th] (a full house, Queens full of Tens)
+Hero: shows [Td 9d] (two pair, Queens and Tens)
+*** SHOWDOWN ***
+Villain collected $0.36 from pot
+*** SUMMARY ***
+Total pot $0.37 | Rake $0.01 | Jackpot $0 | Bingo $0 | Fortune $0 | Tax $0
+Board [4h Qs Qd 7s Ts]
+Seat 1: Hero (button) showed [Td 9d] and lost with two pair, Queens and Tens
+Seat 2: Other (small blind) folded before Flop
+Seat 3: Villain (big blind) showed [Qh Th] and won ($0.36) with a full house, Queens full of Tens
+Seat 4: Other1 folded before Flop (didn't bet)
+Seat 5: Other2 folded before Flop (didn't bet)
+Seat 6: Other3 folded before Flop (didn't bet)
+
+
+Poker Hand #RC4108535343: Hold'em No Limit ($0.01/$0.02) - 2025/12/08 21:04:56
+Table 'RushAndCash40338290' 6-max Seat #1 is the button
+Seat 1: Hero ($1.83 in chips)
+Seat 2: Villain ($0.96 in chips)
+Seat 3: Other ($1.8 in chips)
+Seat 4: Other3 ($1.23 in chips)
+Seat 5: Other1 ($3.63 in chips)
+Seat 6: Other2 ($3.85 in chips)
+Villain: posts small blind $0.01
+Other: posts big blind $0.02
+*** HOLE CARDS ***
+Dealt to Hero [8h Ks]
+Dealt to Villain
+Dealt to Other
+Dealt to Other3
+Dealt to Other1
+Dealt to Other2
+Other3: folds
+Other1: folds
+Other2: folds
+Hero: folds
+Villain: calls $0.01
+Other: checks
+*** FLOP *** [7h 2c Qd]
+Villain: bets $0.02
+Other: folds
+Uncalled bet ($0.02) returned to Villain
+*** SHOWDOWN ***
+Villain collected $0.04 from pot
+*** SUMMARY ***
+Total pot $0.04 | Rake $0 | Jackpot $0 | Bingo $0 | Fortune $0 | Tax $0
+Board [7h 2c Qd]
+Seat 1: Hero (button) folded before Flop (didn't bet)
+Seat 2: Villain (small blind) won ($0.04)
+Seat 3: Other (big blind) folded on the Flop
+Seat 4: Other3 folded before Flop (didn't bet)
+Seat 5: Other1 folded before Flop (didn't bet)
+Seat 6: Other2 folded before Flop (didn't bet)
+
+
+Poker Hand #RC4113864002: Hold'em No Limit ($0.01/$0.02) - 2025/12/10 22:53:34
+Table 'RushAndCash41696860' 6-max Seat #1 is the button
+Seat 1: Villain ($1.32 in chips)
+Seat 2: Hero ($2.9 in chips)
+Seat 3: Other ($5.42 in chips)
+Seat 4: Other1 ($2.42 in chips)
+Seat 5: Other2 ($10.71 in chips)
+Seat 6: Other3 ($2.18 in chips)
+Hero: posts small blind $0.01
+Other: posts big blind $0.02
+*** HOLE CARDS ***
+Dealt to Villain
+Dealt to Hero [Jh Ah]
+Dealt to Other
+Dealt to Other1
+Dealt to Other2
+Dealt to Other3
+Other1: folds
+Other2: folds
+Other3: folds
+Villain: raises $0.02 to $0.04
+Hero: raises $0.1 to $0.14
+Other: folds
+Villain: calls $0.1
+*** FLOP *** [Qh Td 8s]
+Hero: checks
+Villain: checks
+*** TURN *** [Qh Td 8s] [9s]
+Hero: bets $0.1
+Villain: calls $0.1
+*** RIVER *** [Qh Td 8s 9s] [5h]
+Hero: bets $0.17
+Villain: calls $0.17
+Hero: shows [Jh Ah] (a straight, Queen to Eight)
+Villain: shows [9h 9d] (three of a kind, Nines)
+*** SHOWDOWN ***
+Hero collected $0.77 from pot
+*** SUMMARY ***
+Total pot $0.84 | Rake $0.04 | Jackpot $0.03 | Bingo $0 | Fortune $0 | Tax $0
+Board [Qh Td 8s 9s 5h]
+Seat 1: Villain (button) showed [9h 9d] and lost with three of a kind, Nines
+Seat 2: Hero (small blind) showed [Jh Ah] and won ($0.77) with a straight, Queen to Eight
+Seat 3: Other (big blind) folded before Flop
+Seat 4: Other1 folded before Flop (didn't bet)
+Seat 5: Other2 folded before Flop (didn't bet)
+Seat 6: Other3 folded before Flop (didn't bet)

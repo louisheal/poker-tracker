@@ -1,6 +1,14 @@
 from enum import Enum
 
 
+class Action(str, Enum):
+	FOLD = "F"
+	CHECK = "X"
+	CALL = "C"
+	BET = "B"
+	RAISE = "R"
+
+
 class BoardType(Enum):
 	MONOTONE = 0
 	TWO_TONE = 1

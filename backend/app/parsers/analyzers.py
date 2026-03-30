@@ -6,24 +6,25 @@ from playing_cards_lib.core import Card
 from playing_cards_lib.poker import PokerPosition
 
 from app.models.enums import (
+	Action,
 	ActionSequence, Runout,
 	FlopRankTexture, ShowdownType,
 	BoardType, PotType,
 )
-from app.models.events import RangeEvent, FlopEvent, TurnEvent, RiverEvent, LineEvent, StreetAction
+from app.models.events import RangeEvent, FlopEvent, TurnEvent, RiverEvent, LineEvent, StreetAction, ObservedSpot
 
-from .ast import HandAST, HandContext, Action, ActionType
+from .ast import HandAST, HandContext, PlayerAction
 
 logger = logging.getLogger(__name__)
 
 BB = 0.02
 
 _ACTION_NAMES = {
-	ActionType.FOLD: "folds",
-	ActionType.CALL: "calls",
-	ActionType.RAISE: "raises",
-	ActionType.CHECK: "checks",
-	ActionType.BET: "bets",
+	Action.FOLD: "folds",
+	Action.CALL: "calls",
+	Action.RAISE: "raises",
+	Action.CHECK: "checks",
+	Action.BET: "bets",
 }
 
 
@@ -81,9 +82,9 @@ def _classify_showdown_type(actions: list[Action]) -> ShowdownType:
 	has_bet = False
 	has_raise = False
 	for a in actions:
-		if a.type == ActionType.BET:
+		if a.type == Action.BET:
 			has_bet = True
-		elif a.type == ActionType.RAISE:
+		elif a.type == Action.RAISE:
 			has_raise = True
 	if has_raise:
 		return ShowdownType.RAISE_OCCURRED
@@ -94,7 +95,7 @@ def _classify_showdown_type(actions: list[Action]) -> ShowdownType:
 
 def _get_flop_players(ast: HandAST) -> list[str]:
 	"""Return the players who saw the flop (didn't fold preflop)."""
-	folded = {a.player for a in ast.preflop if a.type == ActionType.FOLD}
+	folded = {a.player for a in ast.preflop if a.type == Action.FOLD}
 	all_players = {a.player for a in ast.preflop}
 	for blind in ast.blinds:
 		all_players.add(blind.player)
@@ -106,7 +107,7 @@ def _get_flop_players(ast: HandAST) -> list[str]:
 # ---------------------------------------------------------------------------
 
 def _compute_pot_type(preflop: list[Action]) -> PotType:
-	raises = sum(1 for a in preflop if a.type == ActionType.RAISE)
+	raises = sum(1 for a in preflop if a.type == Action.RAISE)
 	if raises >= 3:
 		return PotType.FOUR_BET
 	elif raises >= 2:
@@ -117,7 +118,7 @@ def _compute_pot_type(preflop: list[Action]) -> PotType:
 def _compute_player_pfr(preflop: list[Action], player: str) -> bool:
 	last_raiser = None
 	for a in preflop:
-		if a.type == ActionType.RAISE:
+		if a.type == Action.RAISE:
 			last_raiser = a.player
 	return last_raiser == player
 
@@ -133,9 +134,9 @@ def _compute_pot_at_flop(ast: HandAST) -> float | None:
 	for blind in ast.blinds:
 		contributions[blind.player] = contributions.get(blind.player, 0) + blind.amount
 	for action in ast.preflop:
-		if action.type == ActionType.RAISE and action.raise_to is not None:
+		if action.type == Action.RAISE and action.raise_to is not None:
 			contributions[action.player] = action.raise_to
-		elif action.type in (ActionType.CALL, ActionType.BET) and action.amount is not None:
+		elif action.type in (Action.CALL, Action.BET) and action.amount is not None:
 			contributions[action.player] = contributions.get(action.player, 0) + action.amount
 	if not contributions:
 		return None
@@ -157,10 +158,10 @@ def _compute_player_pnl(ast: HandAST, player: str) -> tuple[float, float] | None
 	for action in ast.preflop:
 		if action.player != player:
 			continue
-		if action.type in (ActionType.CALL, ActionType.BET) and action.amount:
+		if action.type in (Action.CALL, Action.BET) and action.amount:
 			invested += action.amount
 			round_invested += action.amount
-		elif action.type == ActionType.RAISE and action.raise_to:
+		elif action.type == Action.RAISE and action.raise_to:
 			new_money = action.raise_to - round_invested
 			invested += new_money
 			round_invested = action.raise_to
@@ -175,10 +176,10 @@ def _compute_player_pnl(ast: HandAST, player: str) -> tuple[float, float] | None
 		for action in street.actions:
 			if action.player != player:
 				continue
-			if action.type in (ActionType.CALL, ActionType.BET) and action.amount:
+			if action.type in (Action.CALL, Action.BET) and action.amount:
 				invested += action.amount
 				round_invested += action.amount
-			elif action.type == ActionType.RAISE and action.raise_to:
+			elif action.type == Action.RAISE and action.raise_to:
 				new_money = action.raise_to - round_invested
 				invested += new_money
 				round_invested = action.raise_to
@@ -200,15 +201,15 @@ def _compute_player_pnl(ast: HandAST, player: str) -> tuple[float, float] | None
 def _compute_action_sequence(actions: list[Action], enum_cls, include_folds: bool = False):
 	seq = ""
 	for a in actions:
-		if a.type == ActionType.CHECK:
+		if a.type == Action.CHECK:
 			seq += "X"
-		elif a.type == ActionType.BET:
+		elif a.type == Action.BET:
 			seq += "B"
-		elif a.type == ActionType.RAISE:
+		elif a.type == Action.RAISE:
 			seq += "R"
-		elif a.type == ActionType.CALL:
+		elif a.type == Action.CALL:
 			seq += "C"
-		elif a.type == ActionType.FOLD and include_folds:
+		elif a.type == Action.FOLD and include_folds:
 			seq += "F"
 
 	# Normalize folds to calls for sequence matching
@@ -239,28 +240,28 @@ def _analyze_cbet_result(flop_actions: list[Action], hero_is_pfr: bool, player: 
 		is_pfr = (action.player == player) if hero_is_pfr else (action.player != player)
 
 		if cbet and not is_pfr:
-			if action.type == ActionType.FOLD:
+			if action.type == Action.FOLD:
 				fold_to_cbet = True
-			elif action.type == ActionType.RAISE:
+			elif action.type == Action.RAISE:
 				raise_to_cbet = True
 			return cbet, fold_to_cbet, raise_to_cbet, donk_bet, fold_to_donk_bet, raise_to_donk_bet, cbet_amount, donk_bet_amount
 
 		if donk_bet and is_pfr:
-			if action.type == ActionType.FOLD:
+			if action.type == Action.FOLD:
 				fold_to_donk_bet = True
-			elif action.type == ActionType.RAISE:
+			elif action.type == Action.RAISE:
 				raise_to_donk_bet = True
 			return cbet, fold_to_cbet, raise_to_cbet, donk_bet, fold_to_donk_bet, raise_to_donk_bet, cbet_amount, donk_bet_amount
 
 		if cbet or donk_bet:
 			continue
 
-		if is_pfr and action.type == ActionType.BET:
+		if is_pfr and action.type == Action.BET:
 			cbet = True
 			cbet_amount = action.amount
 			continue
 
-		if not is_pfr and action.type == ActionType.BET:
+		if not is_pfr and action.type == Action.BET:
 			donk_bet = True
 			donk_bet_amount = action.amount
 			continue
@@ -274,18 +275,18 @@ def _analyze_fold_to_raise(flop_actions: list[Action], hero_is_pfr: bool, is_cbe
 	for action in flop_actions:
 		is_pfr = (action.player == player) if hero_is_pfr else (action.player != player)
 		if is_cbet:
-			if not bet_seen and is_pfr and action.type == ActionType.BET:
+			if not bet_seen and is_pfr and action.type == Action.BET:
 				bet_seen = True
-			elif bet_seen and not raise_seen and not is_pfr and action.type == ActionType.RAISE:
+			elif bet_seen and not raise_seen and not is_pfr and action.type == Action.RAISE:
 				raise_seen = True
-			elif raise_seen and is_pfr and action.type == ActionType.FOLD:
+			elif raise_seen and is_pfr and action.type == Action.FOLD:
 				return True
 		else:
-			if not bet_seen and not is_pfr and action.type == ActionType.BET:
+			if not bet_seen and not is_pfr and action.type == Action.BET:
 				bet_seen = True
-			elif bet_seen and not raise_seen and is_pfr and action.type == ActionType.RAISE:
+			elif bet_seen and not raise_seen and is_pfr and action.type == Action.RAISE:
 				raise_seen = True
-			elif raise_seen and not is_pfr and action.type == ActionType.FOLD:
+			elif raise_seen and not is_pfr and action.type == Action.FOLD:
 				return True
 	return False
 
@@ -297,22 +298,22 @@ def _build_street_actions(actions: list[Action], pot_at_street_bb: float, player
 	for action in actions:
 		actor = "hero" if action.player == player else "villain"
 
-		if action.type == ActionType.CHECK:
+		if action.type == Action.CHECK:
 			result.append(StreetAction(actor=actor, action="X"))
-		elif action.type == ActionType.FOLD:
+		elif action.type == Action.FOLD:
 			result.append(StreetAction(actor=actor, action="F"))
 			break
-		elif action.type == ActionType.BET:
+		elif action.type == Action.BET:
 			size_pct = None
 			if action.amount and pot > 0:
 				size_pct = round((action.amount / pot) * 100, 1)
 				pot += action.amount
 			result.append(StreetAction(actor=actor, action="B", size_pct=size_pct))
-		elif action.type == ActionType.CALL:
+		elif action.type == Action.CALL:
 			if action.amount:
 				pot += action.amount
 			result.append(StreetAction(actor=actor, action="C"))
-		elif action.type == ActionType.RAISE:
+		elif action.type == Action.RAISE:
 			size_pct = None
 			if action.raise_to and pot > 0:
 				size_pct = round((action.raise_to / pot) * 100, 1)
@@ -335,23 +336,23 @@ def _analyze_street_actions(actions: list[Action], player: str):
 		is_hero = action.player == player
 
 		if hero_bet and not is_hero:
-			if action.type == ActionType.FOLD:
+			if action.type == Action.FOLD:
 				v_fold = True
-			elif action.type == ActionType.RAISE:
+			elif action.type == Action.RAISE:
 				v_raise = True
 			return hero_bet, v_fold, v_raise, v_bet, h_fold, h_raise
 
 		if v_bet and is_hero:
-			if action.type == ActionType.FOLD:
+			if action.type == Action.FOLD:
 				h_fold = True
-			elif action.type == ActionType.RAISE:
+			elif action.type == Action.RAISE:
 				h_raise = True
 			return hero_bet, v_fold, v_raise, v_bet, h_fold, h_raise
 
 		if not hero_bet and not v_bet:
-			if is_hero and action.type == ActionType.BET:
+			if is_hero and action.type == Action.BET:
 				hero_bet = True
-			elif not is_hero and action.type == ActionType.BET:
+			elif not is_hero and action.type == Action.BET:
 				v_bet = True
 
 	return hero_bet, v_fold, v_raise, v_bet, h_fold, h_raise
@@ -369,7 +370,7 @@ def build_context(ast: HandAST, player: str = "Hero") -> HandContext:
 	ctx.hero_sees_flop = (
 		ast.flop is not None
 		and player in player_names
-		and not any(a.player == player and a.type == ActionType.FOLD for a in ast.preflop)
+		and not any(a.player == player and a.type == Action.FOLD for a in ast.preflop)
 	)
 
 	# Preflop-derived
@@ -436,10 +437,10 @@ def analyze_range(ast: HandAST) -> list[RangeEvent]:
 	villain = None
 
 	for action in ast.preflop:
-		if action.is_hero and action.type == ActionType.CHECK:
+		if action.is_hero and action.type == Action.CHECK:
 			return events
 
-		if not action.is_hero and action.type == ActionType.FOLD:
+		if not action.is_hero and action.type == Action.FOLD:
 			v_pos += 1
 			continue
 
@@ -471,7 +472,7 @@ def analyze_range(ast: HandAST) -> list[RangeEvent]:
 					villain=villain,
 				))
 				return events
-			if action.type == ActionType.RAISE:
+			if action.type == Action.RAISE:
 				pot_type = PotType.FOUR_BET
 				continue
 
@@ -486,7 +487,7 @@ def analyze_range(ast: HandAST) -> list[RangeEvent]:
 					villain=None,
 				))
 				return events
-			if action.type == ActionType.RAISE:
+			if action.type == Action.RAISE:
 				return events
 
 	return events
@@ -680,3 +681,52 @@ def analyze_line(ctx: HandContext) -> LineEvent | None:
 	)
 
 	return event
+
+
+def emit_observed_spots(ctx: HandContext, is_pool: bool = False) -> list[ObservedSpot]:
+	"""Walk AST streets and emit one ObservedSpot per action + terminal at showdown."""
+	spots: list[ObservedSpot] = []
+	shared = dict(
+		hand_id=ctx.ast.hand_id,
+		hero_ip=ctx.hero_in_position,
+		hero_pfr=ctx.hero_preflop_raiser,
+		pot_type=ctx.pot_type,
+		board_type=ctx.board_type,
+		turn_runout=None,
+		river_runout=None,
+		played_on=ctx.ast.played_on,
+		is_pool=is_pool,
+	)
+
+	def walk_street(actions: list[PlayerAction], prefix: str) -> str:
+		node_key = prefix
+		for action in actions:
+			spots.append(ObservedSpot(
+				node_key=node_key,
+				next_action=action.type,
+				**shared,
+			))
+			node_key = f"{node_key}_{action.type.value}"
+		return node_key
+
+	if ctx.ast.flop:
+		flop_end_key = walk_street(ctx.ast.flop.actions, "FLOP")
+
+		if ctx.ast.turn:
+			shared["turn_runout"] = ctx.turn_runout
+			turn_prefix = f"{flop_end_key}_TURN"
+			turn_end_key = walk_street(ctx.ast.turn.actions, turn_prefix)
+
+			if ctx.ast.river:
+				shared["river_runout"] = ctx.river_runout
+				river_prefix = f"{turn_end_key}_RIVER"
+				river_end_key = walk_street(ctx.ast.river.actions, river_prefix)
+
+				# Terminal spot at showdown
+				spots.append(ObservedSpot(
+					node_key=river_end_key,
+					next_action=None,
+					**shared,
+				))
+
+	return spots

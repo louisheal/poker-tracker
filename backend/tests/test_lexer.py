@@ -2,6 +2,7 @@
 
 import pytest
 
+from app.models.enums import Action
 from app.parsers.lexer import lex_hand
 from app.parsers.core import flop_player_count
 
@@ -134,7 +135,7 @@ class TestLexerSpacedPlayerNames:
     def test_preflop_actions_include_spaced_name(self):
         ast = lex_hand(HAND_WITH_SPACED_NAMES)
         assert ast is not None
-        fold_players = [a.player for a in ast.preflop if a.type.value == "fold"]
+        fold_players = [a.player for a in ast.preflop if a.type == Action.FOLD]
         assert "Jazz star" in fold_players
 
     def test_flop_turn_river_parsed(self):

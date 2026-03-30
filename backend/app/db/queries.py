@@ -45,6 +45,12 @@ def _card_to_json(s: str | None) -> dict | None:
     return c.to_json()
 
 
+def _enum_val(e) -> str | None:
+    if e is None:
+        return None
+    return e.value if hasattr(e, "value") else str(e)
+
+
 def _hole_cards_to_json(s: str | None) -> list[dict] | None:
     if not s:
         return None
@@ -1638,3 +1644,65 @@ def query_top_hands(
     ]
 
     return {"top_wins": top_wins, "top_losses": top_losses}
+
+
+# ---------------------------------------------------------------------------
+# Observed spots queries (stats panel)
+# ---------------------------------------------------------------------------
+
+def query_node_action_counts(
+    conn: sqlite3.Connection,
+    node_key: str,
+    *,
+    hero_ip: bool | None = None,
+    hero_pfr: bool | None = None,
+    pot_types: list | None = None,
+    board_types: list | None = None,
+    turn_runouts: list | None = None,
+    river_runouts: list | None = None,
+    start: date | None = None,
+    end: date | None = None,
+    include_pool: bool = False,
+) -> dict:
+    """Return action counts at a single node_key, grouped by next_action."""
+    params: list = [node_key]
+    clauses = ["node_key = ?"]
+
+    if not include_pool:
+        clauses.append("is_pool = 0")
+    if hero_ip is not None:
+        clauses.append("hero_ip = ?")
+        params.append(int(hero_ip))
+    if hero_pfr is not None:
+        clauses.append("hero_pfr = ?")
+        params.append(int(hero_pfr))
+    if pot_types:
+        placeholders = ", ".join("?" for _ in pot_types)
+        clauses.append(f"pot_type IN ({placeholders})")
+        params.extend(_enum_val(pt) for pt in pot_types)
+    if board_types:
+        placeholders = ", ".join("?" for _ in board_types)
+        clauses.append(f"board_type IN ({placeholders})")
+        params.extend(bt.value for bt in board_types)
+    if turn_runouts:
+        placeholders = ", ".join("?" for _ in turn_runouts)
+        clauses.append(f"turn_runout IN ({placeholders})")
+        params.extend(_enum_val(r) for r in turn_runouts)
+    if river_runouts:
+        placeholders = ", ".join("?" for _ in river_runouts)
+        clauses.append(f"river_runout IN ({placeholders})")
+        params.extend(_enum_val(r) for r in river_runouts)
+    if start is not None:
+        clauses.append("played_on >= ?")
+        params.append(str(start))
+    if end is not None:
+        clauses.append("played_on <= ?")
+        params.append(str(end))
+
+    where = " AND ".join(clauses)
+    sql = f"SELECT next_action, COUNT(*) as cnt FROM observed_spots WHERE {where} GROUP BY next_action"
+
+    rows = conn.execute(sql, params).fetchall()
+    counts = {row["next_action"]: row["cnt"] for row in rows}
+    total = sum(counts.values())
+    return {"counts": counts, "total": total}
