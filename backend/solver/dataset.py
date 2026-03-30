@@ -256,16 +256,50 @@ def tensorize_example(ex: TrainingExample) -> dict[str, torch.Tensor]:
 
 
 class PokerDataset(Dataset):
-    """PyTorch dataset wrapping a list of TrainingExamples."""
+    """PyTorch dataset wrapping a list of TrainingExamples.
 
-    def __init__(self, examples: list[TrainingExample]) -> None:
+    When augment=True, applies a random suit permutation on-the-fly
+    per __getitem__ call. This avoids pre-generating all 576 variants
+    and keeps memory usage proportional to the base example count.
+    """
+
+    def __init__(self, examples: list[TrainingExample], augment: bool = False) -> None:
         self.examples = examples
+        self.augment = augment
 
     def __len__(self) -> int:
         return len(self.examples)
 
     def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
-        return tensorize_example(self.examples[idx])
+        ex = self.examples[idx]
+        if self.augment:
+            ex = _random_suit_permute(ex)
+        return tensorize_example(ex)
+
+
+def _random_suit_permute(ex: TrainingExample) -> TrainingExample:
+    """Apply a random suit permutation to all card tokens in an example.
+
+    This is the dominant augmentation (24 of the 576 variants).
+    Flop reordering and hole card swaps have minimal impact on the
+    token sequence since the model sees the same cards regardless of order.
+    """
+    import random
+    perm = list(range(4))
+    random.shuffle(perm)
+
+    new_seq = []
+    for tok in ex.sequence:
+        if tok.token_type == TokenType.CARD:
+            new_seq.append(Token(
+                token_type=TokenType.CARD,
+                rank=tok.rank,
+                suit=perm[tok.suit],
+            ))
+        else:
+            new_seq.append(tok)
+
+    return TrainingExample(sequence=new_seq, label=ex.label)
 
 
 def collate_fn(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch.Tensor]:

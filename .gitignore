@@ -27,5 +27,8 @@ dist-ssr
 __pycache__/
 venv/
 
+# Solver artifacts
+backend/solver/checkpoints/
+
 hand_histories/
 plan/

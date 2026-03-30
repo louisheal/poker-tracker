@@ -5,8 +5,8 @@ Usage:
     python -m solver.train
 
 Scans hand_histories/ for .txt files, parses with lex_hand,
-filters to showdown hands, augments training data, and trains
-the SolverTransformer model.
+extracts base training examples (cached to disk), and trains
+the SolverTransformer with on-the-fly suit augmentation.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ from __future__ import annotations
 import glob
 import logging
 import os
+import pickle
 import sys
 import time
 
@@ -23,7 +24,6 @@ from torch.utils.data import DataLoader
 
 from app.parsers.core import group_hands
 from app.parsers.lexer import lex_hand
-from solver.augmentation import augment_hand
 from solver.dataset import (
     TrainingExample,
     PokerDataset,
@@ -40,9 +40,9 @@ NUM_EPOCHS = 20
 BATCH_SIZE = 64
 LEARNING_RATE = 1e-4
 VAL_SPLIT_MOD = 10  # hand_id_hash % VAL_SPLIT_MOD == 0 -> validation
-AUGMENT_TRAIN = True
 CHECKPOINT_DIR = os.path.join(os.path.dirname(__file__), "checkpoints")
 HAND_HISTORIES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "hand_histories")
+CACHE_PATH = os.path.join(os.path.dirname(__file__), "checkpoints", "examples_cache.pkl")
 
 
 def scan_hand_files() -> list[str]:
@@ -53,14 +53,17 @@ def scan_hand_files() -> list[str]:
     return files
 
 
-def extract_all_examples(files: list[str]) -> tuple[list[TrainingExample], list[TrainingExample]]:
-    """Parse all files and split examples into train/val sets."""
+def _parse_and_extract(files: list[str]) -> tuple[list[TrainingExample], list[TrainingExample]]:
+    """Parse all files and split base examples (no augmentation) into train/val."""
     train_examples: list[TrainingExample] = []
     val_examples: list[TrainingExample] = []
     total_hands = 0
     showdown_hands = 0
 
-    for file_path in files:
+    for file_idx, file_path in enumerate(files):
+        if (file_idx + 1) % 50 == 0 or file_idx == 0:
+            logger.info(f"Processing file {file_idx + 1}/{len(files)} ({showdown_hands} showdown hands so far)")
+
         for hand_lines in group_hands(file_path, include_multiway=False):
             ast = lex_hand(hand_lines)
             if ast is None:
@@ -68,37 +71,20 @@ def extract_all_examples(files: list[str]) -> tuple[list[TrainingExample], list[
 
             total_hands += 1
 
-            # Need showdown hands where villain's cards are known
-            if not ast.shown_cards:
+            if not ast.shown_cards or ast.hero_hole_cards is None:
                 continue
 
-            # Must have hero hole cards
-            if ast.hero_hole_cards is None:
-                continue
-
-            # Check that at least one non-hero player showed
             has_villain_show = any(name != "Hero" for name in ast.shown_cards)
             if not has_villain_show:
                 continue
 
             showdown_hands += 1
+            examples = extract_training_examples(ast)
 
-            is_val = hand_id_hash(ast.hand_id) % VAL_SPLIT_MOD == 0
-
-            if is_val:
-                # Validation: no augmentation
-                examples = extract_training_examples(ast)
+            if hand_id_hash(ast.hand_id) % VAL_SPLIT_MOD == 0:
                 val_examples.extend(examples)
             else:
-                if AUGMENT_TRAIN:
-                    # Training: augment each hand
-                    variants = augment_hand(ast)
-                    for variant in variants:
-                        examples = extract_training_examples(variant)
-                        train_examples.extend(examples)
-                else:
-                    examples = extract_training_examples(ast)
-                    train_examples.extend(examples)
+                train_examples.extend(examples)
 
     logger.info(f"Total hands parsed: {total_hands}")
     logger.info(f"Showdown hands with villain cards: {showdown_hands}")
@@ -108,24 +94,43 @@ def extract_all_examples(files: list[str]) -> tuple[list[TrainingExample], list[
     return train_examples, val_examples
 
 
+def load_or_extract(files: list[str]) -> tuple[list[TrainingExample], list[TrainingExample]]:
+    """Load cached examples from disk, or parse and cache them."""
+    if os.path.isfile(CACHE_PATH):
+        logger.info(f"Loading cached examples from {CACHE_PATH}")
+        with open(CACHE_PATH, "rb") as f:
+            data = pickle.load(f)
+        logger.info(f"Loaded {len(data['train'])} train + {len(data['val'])} val examples from cache")
+        return data["train"], data["val"]
+
+    logger.info("No cache found, parsing hand histories...")
+    train_examples, val_examples = _parse_and_extract(files)
+
+    os.makedirs(os.path.dirname(CACHE_PATH), exist_ok=True)
+    with open(CACHE_PATH, "wb") as f:
+        pickle.dump({"train": train_examples, "val": val_examples}, f)
+    logger.info(f"Cached examples to {CACHE_PATH}")
+
+    return train_examples, val_examples
+
+
 def train() -> None:
     """Main training loop."""
     os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 
-    # Scan and extract
     files = scan_hand_files()
     if not files:
         logger.error(f"No hand history files found in {HAND_HISTORIES_DIR}")
         sys.exit(1)
 
-    train_examples, val_examples = extract_all_examples(files)
+    train_examples, val_examples = load_or_extract(files)
 
     if not train_examples:
         logger.error("No training examples extracted. Need showdown hands with villain cards shown.")
         sys.exit(1)
 
-    # Build datasets
-    train_dataset = PokerDataset(train_examples)
+    # Build datasets -- augment=True applies random suit permutation on-the-fly
+    train_dataset = PokerDataset(train_examples, augment=True)
     train_loader = DataLoader(
         train_dataset,
         batch_size=BATCH_SIZE,
@@ -136,7 +141,7 @@ def train() -> None:
 
     val_loader = None
     if val_examples:
-        val_dataset = PokerDataset(val_examples)
+        val_dataset = PokerDataset(val_examples, augment=False)
         val_loader = DataLoader(
             val_dataset,
             batch_size=BATCH_SIZE,
