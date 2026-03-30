@@ -148,6 +148,11 @@ def train() -> None:
     # Model
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logger.info(f"Using device: {device}")
+    if device.type == "cuda":
+        logger.info(f"GPU: {torch.cuda.get_device_name(0)}")
+        logger.info(f"GPU memory: {torch.cuda.get_device_properties(0).total_mem / 1024**3:.1f} GB")
+    else:
+        logger.warning("CUDA not available -- training on CPU (will be slow)")
 
     model = SolverTransformer().to(device)
     param_count = sum(p.numel() for p in model.parameters())
