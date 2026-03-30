@@ -1,0 +1,35 @@
+.grid-cell {
+  --gc-raise-color: 239 68 68; /* red */
+  --gc-call-color: 34 197 94; /* green */
+  --gc-fold-color: 60 120 250; /* blue-ish */
+
+  --gc-raise-percent: 0%;
+  --gc-call-percent: 0%;
+
+  background: linear-gradient(
+    to right,
+    rgb(var(--gc-raise-color)) 0%,
+    rgb(var(--gc-raise-color)) var(--gc-raise-percent),
+    rgb(var(--gc-call-color)) var(--gc-raise-percent),
+    rgb(var(--gc-call-color))
+      calc(var(--gc-raise-percent) + var(--gc-call-percent)),
+    rgb(var(--gc-fold-color))
+      calc(var(--gc-raise-percent) + var(--gc-call-percent)),
+    rgb(var(--gc-fold-color)) 100%
+  );
+
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+  transition:
+    background-color 150ms ease,
+    opacity 150ms ease;
+}
+
+.grid-cell:focus {
+  outline: 2px solid rgba(59, 130, 246, 0.6);
+  outline-offset: 2px;
+}
+
+.grid-cell--empty {
+  background: #1e2939;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.04);
+}

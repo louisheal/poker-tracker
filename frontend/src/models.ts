@@ -190,3 +190,38 @@ export interface HandEvResponse {
   hand_count: number;
   next_actor: "hero" | "villain" | null;
 }
+
+// --- Solver Types ---
+
+export interface SolverParams {
+  board: string[];
+  street: string;
+  actions: string[];
+}
+
+export interface SolverComboResult {
+  combo: string;
+  bestAction: string;
+  ev: number;
+  evs: Record<string, number>;
+}
+
+export interface SolverHandResult {
+  bestAction: string;
+  evs: Record<string, number>;
+  combos: SolverComboResult[];
+}
+
+export interface SolverActionSummary {
+  villainFoldPct: number;
+  villainCallPct: number;
+  villainRaisePct: number;
+  avgEv: number;
+  bestActionCount: number;
+}
+
+export interface SolverResult {
+  hands: Record<string, SolverHandResult>;
+  actions: Record<string, SolverActionSummary>;
+  totalHands: number;
+}

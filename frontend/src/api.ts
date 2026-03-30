@@ -380,3 +380,19 @@ export const getHandEv = async (
   );
   return response.json();
 };
+
+// --- Solver API ---
+
+export const getSolverResult = async (
+  params: import("./models").SolverParams,
+  signal?: AbortSignal,
+): Promise<import("./models").SolverResult> => {
+  const sp = new URLSearchParams();
+  for (const c of params.board) sp.append("board", c);
+  sp.append("street", params.street);
+  for (const a of params.actions) sp.append("actions", a);
+  const response = await fetch(`http://localhost:8000/solver/solve?${sp}`, {
+    signal,
+  });
+  return response.json();
+};

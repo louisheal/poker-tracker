@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.loader import load_hand_histories
-from app.routers import ranges, flop, turn, river, volume, line_analysis, hand_types, hand_ev, stats
+from app.routers import ranges, flop, turn, river, volume, line_analysis, hand_types, hand_ev, stats, solver
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -33,5 +33,6 @@ def create_app() -> FastAPI:
     app.include_router(hand_ev.router, prefix="/line-analysis/hand-ev")
     app.include_router(line_analysis.router, prefix="/line-analysis")
     app.include_router(stats.router, prefix="/stats")
+    app.include_router(solver.router, prefix="/solver")
 
     return app
