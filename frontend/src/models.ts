@@ -197,6 +197,7 @@ export interface SolverParams {
   board: string[];
   street: string;
   actions: string[];
+  heroPosition?: string;
 }
 
 export interface SolverComboResult {
@@ -220,8 +221,28 @@ export interface SolverActionSummary {
   bestActionCount: number;
 }
 
+export interface SolverModelOutput {
+  raw_fold: number;
+  raw_check: number;
+  raw_call: number;
+  raw_bet: number;
+  raw_raise: number;
+  villain_fold_pct: number;
+  villain_call_pct: number;
+  villain_raise_pct: number;
+}
+
+export interface SolverDebug {
+  oopRange: Record<string, number>;
+  ipRange: Record<string, number>;
+  oopPosition: string;
+  ipPosition: string;
+  modelOutput: Record<string, SolverModelOutput>;
+}
+
 export interface SolverResult {
   hands: Record<string, SolverHandResult>;
   actions: Record<string, SolverActionSummary>;
   totalHands: number;
+  debug?: SolverDebug;
 }

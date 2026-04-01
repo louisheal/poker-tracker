@@ -3,6 +3,12 @@
 Provides static opening/defending ranges per position and pot type,
 plus functions to split a range into raise/call/fold sub-ranges
 based on predicted villain response frequencies.
+
+Range types:
+  OPEN       - RFI (raise first in) per position
+  CALL_OPEN  - Flat call vs an open (keyed by vs_position)
+  THREE_BET  - 3-bet vs an open (keyed by vs_position)
+  FOUR_BET   - 4-bet vs a 3-bet
 """
 
 from __future__ import annotations
@@ -18,10 +24,9 @@ RANKS = list(Rank)
 GTO_WEIGHT = 0.7
 OBSERVED_WEIGHT = 0.3
 
-# Standard 6-max GTO opening ranges (frequencies 0.0-1.0).
-# Keys: (position, pot_type) -> dict[hand_key, frequency]
-# These are approximate RFI (raise first in) / 3-bet / 4-bet frequencies
-# derived from common GTO solutions.
+# ---------------------------------------------------------------------------
+# Opening ranges (RFI) per position
+# ---------------------------------------------------------------------------
 
 _LJ_OPEN = {
     "AA": 1.0, "KK": 1.0, "QQ": 1.0, "JJ": 1.0, "TT": 1.0, "99": 1.0, "88": 0.8,
@@ -88,82 +93,271 @@ _SB_OPEN = {
     "JTo": 0.5,
 }
 
-# 3-bet ranges (vs open from the listed position)
-_THREE_BET_BASE = {
-    "AA": 1.0, "KK": 1.0, "QQ": 1.0, "JJ": 0.8, "TT": 0.5,
-    "AKs": 1.0, "AQs": 0.8, "AJs": 0.5, "A5s": 0.5, "A4s": 0.3,
-    "KQs": 0.5,
-    "AKo": 1.0, "AQo": 0.5,
+OPEN_RANGES: dict[str, dict[str, float]] = {
+    "LJ": _LJ_OPEN, "HJ": _HJ_OPEN, "CO": _CO_OPEN,
+    "BTN": _BTN_OPEN, "SB": _SB_OPEN,
 }
 
-# 4-bet ranges
-_FOUR_BET_BASE = {
+# ---------------------------------------------------------------------------
+# BB 3-bet ranges vs each opener (premiums + polarised bluffs)
+# Wider vs later positions, tighter vs early positions
+# ---------------------------------------------------------------------------
+
+_BB_3BET_VS_LJ = {
+    "AA": 1.0, "KK": 1.0, "QQ": 1.0, "JJ": 0.5,
+    "AKs": 1.0, "AQs": 0.3, "A5s": 0.5, "A4s": 0.3,
+    "AKo": 0.8,
+}
+
+_BB_3BET_VS_HJ = {
+    **_BB_3BET_VS_LJ,
+    "JJ": 0.7, "TT": 0.3,
+    "AQs": 0.5, "A4s": 0.5, "A3s": 0.3,
+    "KQs": 0.3,
+    "AQo": 0.3,
+}
+
+_BB_3BET_VS_CO = {
+    **_BB_3BET_VS_HJ,
+    "JJ": 1.0, "TT": 0.5,
+    "AQs": 0.8, "AJs": 0.3, "A3s": 0.5, "A2s": 0.3,
+    "KQs": 0.5,
+    "AQo": 0.5,
+}
+
+_BB_3BET_VS_BTN = {
+    "AA": 1.0, "KK": 1.0, "QQ": 1.0, "JJ": 1.0, "TT": 0.8, "99": 0.3,
+    "AKs": 1.0, "AQs": 1.0, "AJs": 0.7, "ATs": 0.3,
+    "A5s": 1.0, "A4s": 0.8, "A3s": 0.5, "A2s": 0.3,
+    "KQs": 0.8, "KJs": 0.3,
+    "QJs": 0.3,
+    "AKo": 1.0, "AQo": 0.8, "AJo": 0.3,
+    "KQo": 0.3,
+}
+
+_BB_3BET_VS_SB = {
+    "AA": 1.0, "KK": 1.0, "QQ": 1.0, "JJ": 1.0, "TT": 1.0, "99": 0.5,
+    "AKs": 1.0, "AQs": 1.0, "AJs": 1.0, "ATs": 0.5,
+    "A5s": 1.0, "A4s": 1.0, "A3s": 0.7, "A2s": 0.5,
+    "KQs": 1.0, "KJs": 0.5, "KTs": 0.3,
+    "QJs": 0.5, "QTs": 0.3,
+    "JTs": 0.3,
+    "AKo": 1.0, "AQo": 1.0, "AJo": 0.5,
+    "KQo": 0.5,
+}
+
+BB_3BET_RANGES: dict[str, dict[str, float]] = {
+    "LJ": _BB_3BET_VS_LJ, "HJ": _BB_3BET_VS_HJ, "CO": _BB_3BET_VS_CO,
+    "BTN": _BB_3BET_VS_BTN, "SB": _BB_3BET_VS_SB,
+}
+
+# ---------------------------------------------------------------------------
+# BB flat call vs each opener (NO premiums -- those go in the 3-bet range)
+# Suited connectors, suited broadways, medium/small pairs, some offsuit
+# ---------------------------------------------------------------------------
+
+_BB_CALL_VS_LJ = {
+    "TT": 0.5, "99": 1.0, "88": 1.0, "77": 1.0, "66": 0.8, "55": 0.5, "44": 0.3,
+    "AJs": 0.7, "ATs": 1.0, "A9s": 1.0, "A8s": 0.8, "A7s": 0.7, "A6s": 0.5,
+    "A5s": 0.5, "A4s": 0.5, "A3s": 0.5, "A2s": 0.3,
+    "KQs": 0.7, "KJs": 1.0, "KTs": 1.0, "K9s": 0.7, "K8s": 0.3,
+    "QJs": 1.0, "QTs": 1.0, "Q9s": 0.5,
+    "JTs": 1.0, "J9s": 0.8,
+    "T9s": 1.0, "T8s": 0.5,
+    "98s": 0.8, "97s": 0.3,
+    "87s": 0.8, "76s": 0.7, "65s": 0.5, "54s": 0.3,
+    "AJo": 0.5, "ATo": 0.7, "A9o": 0.3,
+    "KQo": 0.5, "KJo": 0.3,
+    "QJo": 0.3,
+}
+
+_BB_CALL_VS_HJ = {
+    **_BB_CALL_VS_LJ,
+    "TT": 0.7, "55": 0.7, "44": 0.5, "33": 0.3,
+    "AJs": 0.5, "A6s": 0.7, "A2s": 0.5,
+    "KQs": 0.5, "K8s": 0.5,
+    "Q9s": 0.7, "Q8s": 0.3,
+    "J9s": 1.0, "J8s": 0.3,
+    "T8s": 0.7,
+    "98s": 1.0, "97s": 0.5,
+    "87s": 1.0, "86s": 0.3, "76s": 0.8, "65s": 0.7, "54s": 0.5,
+    "AJo": 0.8, "ATo": 0.8, "A9o": 0.5,
+    "KQo": 0.8, "KJo": 0.5, "KTo": 0.3,
+    "QJo": 0.5,
+}
+
+_BB_CALL_VS_CO = {
+    **_BB_CALL_VS_HJ,
+    "TT": 1.0, "55": 0.8, "44": 0.7, "33": 0.5, "22": 0.3,
+    "A8s": 1.0, "A7s": 1.0, "A6s": 0.8, "A2s": 0.7,
+    "K8s": 0.7, "K7s": 0.3,
+    "Q8s": 0.5,
+    "J8s": 0.5,
+    "T8s": 0.8, "97s": 0.7,
+    "86s": 0.5, "75s": 0.3, "65s": 0.8, "54s": 0.7,
+    "A9o": 0.7,
+    "KTo": 0.5,
+    "QJo": 0.7, "QTo": 0.3,
+    "JTo": 0.3,
+}
+
+_BB_CALL_VS_BTN = {
+    **_BB_CALL_VS_CO,
+    "55": 1.0, "44": 1.0, "33": 0.8, "22": 0.5,
+    "A7s": 1.0, "A6s": 1.0, "A5s": 0.3, "A2s": 1.0,
+    "K7s": 0.5, "K6s": 0.3,
+    "Q8s": 0.7, "Q7s": 0.3,
+    "J8s": 0.7,
+    "T8s": 1.0, "97s": 0.8, "96s": 0.3,
+    "86s": 0.7, "75s": 0.5,
+    "A9o": 1.0, "A8o": 0.3,
+    "KTo": 0.7, "K9o": 0.3,
+    "QTo": 0.5, "Q9o": 0.3,
+    "JTo": 0.5, "J9o": 0.3,
+    "T9o": 0.3,
+}
+
+_BB_CALL_VS_SB = {
+    **_BB_CALL_VS_BTN,
+    "22": 0.8,
+    "K6s": 0.5, "K5s": 0.3,
+    "Q7s": 0.5,
+    "96s": 0.5,
+    "85s": 0.3, "75s": 0.7, "64s": 0.3,
+    "A8o": 0.5, "A7o": 0.3,
+    "K9o": 0.5,
+    "Q9o": 0.5,
+    "J9o": 0.5,
+    "T9o": 0.5,
+}
+
+BB_CALL_RANGES: dict[str, dict[str, float]] = {
+    "LJ": _BB_CALL_VS_LJ, "HJ": _BB_CALL_VS_HJ, "CO": _BB_CALL_VS_CO,
+    "BTN": _BB_CALL_VS_BTN, "SB": _BB_CALL_VS_SB,
+}
+
+# ---------------------------------------------------------------------------
+# Non-BB 3-bet ranges (any position 3-betting vs an open)
+# Used when e.g. BTN 3-bets vs CO open
+# ---------------------------------------------------------------------------
+
+_IP_3BET_VS_EP = {
+    "AA": 1.0, "KK": 1.0, "QQ": 1.0, "JJ": 0.5,
+    "AKs": 1.0, "AQs": 0.5, "A5s": 0.5, "A4s": 0.3,
+    "AKo": 1.0, "AQo": 0.3,
+}
+
+_IP_3BET_VS_MP = {
+    **_IP_3BET_VS_EP,
+    "JJ": 0.8, "TT": 0.3,
+    "AQs": 0.8, "AJs": 0.3, "A4s": 0.5,
+    "KQs": 0.3,
+    "AQo": 0.5,
+}
+
+_IP_3BET_VS_LP = {
+    "AA": 1.0, "KK": 1.0, "QQ": 1.0, "JJ": 1.0, "TT": 0.7, "99": 0.3,
+    "AKs": 1.0, "AQs": 1.0, "AJs": 0.5, "ATs": 0.3,
+    "A5s": 0.8, "A4s": 0.5, "A3s": 0.3,
+    "KQs": 0.7, "KJs": 0.3,
+    "AKo": 1.0, "AQo": 0.8, "AJo": 0.3,
+    "KQo": 0.3,
+}
+
+IP_3BET_RANGES: dict[str, dict[str, float]] = {
+    "LJ": _IP_3BET_VS_EP, "HJ": _IP_3BET_VS_MP, "CO": _IP_3BET_VS_MP,
+    "BTN": _IP_3BET_VS_LP, "SB": _IP_3BET_VS_LP,
+}
+
+# ---------------------------------------------------------------------------
+# 4-bet ranges per position (vs a 3-bet)
+# ---------------------------------------------------------------------------
+
+_FOUR_BET_EP = {
+    "AA": 1.0, "KK": 1.0, "QQ": 0.7,
+    "AKs": 1.0, "A5s": 0.3,
+    "AKo": 0.7,
+}
+
+_FOUR_BET_MP = {
     "AA": 1.0, "KK": 1.0, "QQ": 0.8, "JJ": 0.3,
     "AKs": 1.0, "AQs": 0.3, "A5s": 0.3,
     "AKo": 0.8,
 }
 
+_FOUR_BET_LP = {
+    "AA": 1.0, "KK": 1.0, "QQ": 1.0, "JJ": 0.5,
+    "AKs": 1.0, "AQs": 0.5, "A5s": 0.5, "A4s": 0.3,
+    "AKo": 1.0, "AQo": 0.3,
+}
 
-def _build_gto_ranges() -> dict[tuple[str, str], dict[str, float]]:
-    """Build the full GTO_RANGES lookup table."""
-    opens = {
-        "LJ": _LJ_OPEN, "HJ": _HJ_OPEN, "CO": _CO_OPEN,
-        "BTN": _BTN_OPEN, "SB": _SB_OPEN,
-    }
+FOUR_BET_RANGES: dict[str, dict[str, float]] = {
+    "LJ": _FOUR_BET_EP, "HJ": _FOUR_BET_MP, "CO": _FOUR_BET_MP,
+    "BTN": _FOUR_BET_LP, "SB": _FOUR_BET_LP, "BB": _FOUR_BET_LP,
+}
 
-    ranges: dict[tuple[str, str], dict[str, float]] = {}
+# ---------------------------------------------------------------------------
+# Position classification helpers
+# ---------------------------------------------------------------------------
 
-    # SRP ranges = opening ranges per position
-    for pos, r in opens.items():
-        ranges[(pos, "SRP")] = dict(r)
-
-    # 3-bet ranges per position (slightly wider from later positions)
-    for pos in ("LJ", "HJ", "CO", "BTN", "SB"):
-        base = dict(_THREE_BET_BASE)
-        ranges[(pos, "THREE_BET")] = base
-
-    # 4-bet ranges
-    for pos in ("LJ", "HJ", "CO", "BTN", "SB"):
-        base = dict(_FOUR_BET_BASE)
-        ranges[(pos, "FOUR_BET")] = base
-
-    # BB defense ranges (calling range vs open)
-    bb_defend = {
-        "AA": 1.0, "KK": 1.0, "QQ": 1.0, "JJ": 1.0, "TT": 1.0, "99": 1.0,
-        "88": 1.0, "77": 1.0, "66": 0.8, "55": 0.7, "44": 0.5, "33": 0.3, "22": 0.3,
-        "AKs": 1.0, "AQs": 1.0, "AJs": 1.0, "ATs": 1.0, "A9s": 1.0, "A8s": 0.8,
-        "A7s": 0.8, "A6s": 0.7, "A5s": 1.0, "A4s": 0.8, "A3s": 0.7, "A2s": 0.5,
-        "KQs": 1.0, "KJs": 1.0, "KTs": 1.0, "K9s": 0.8, "K8s": 0.5, "K7s": 0.3,
-        "QJs": 1.0, "QTs": 1.0, "Q9s": 0.8, "Q8s": 0.3,
-        "JTs": 1.0, "J9s": 0.8, "J8s": 0.3,
-        "T9s": 1.0, "T8s": 0.7, "98s": 0.8, "97s": 0.5,
-        "87s": 0.8, "86s": 0.3, "76s": 0.7, "75s": 0.3, "65s": 0.7, "54s": 0.5,
-        "AKo": 1.0, "AQo": 1.0, "AJo": 0.8, "ATo": 0.7, "A9o": 0.3,
-        "KQo": 0.8, "KJo": 0.5, "KTo": 0.3,
-        "QJo": 0.5, "QTo": 0.3,
-        "JTo": 0.3,
-    }
-    for pot_type in ("SRP", "THREE_BET", "FOUR_BET"):
-        ranges[("BB", pot_type)] = dict(bb_defend)
-
-    return ranges
+_EP_POSITIONS = {"LJ", "HJ"}
+_MP_POSITIONS = {"CO"}
+_LP_POSITIONS = {"BTN", "SB"}
 
 
-GTO_RANGES = _build_gto_ranges()
+def _opener_category(position: str) -> str:
+    """Classify opener position for 3-bet range selection."""
+    if position in _EP_POSITIONS:
+        return "EP"
+    if position in _MP_POSITIONS:
+        return "MP"
+    return "LP"
 
 
 def get_starting_range(
     position: str,
     pot_type: str,
+    vs_position: str | None = None,
     observed_freqs: dict[str, float] | None = None,
 ) -> dict[str, float]:
     """Get a starting range for a position and pot type.
 
-    If observed_freqs is provided, blends GTO with observed frequencies.
+    pot_type values:
+      SRP       - single raised pot (opener's range or caller's range)
+      THREE_BET - 3-bet pot (3-bettor's range)
+      FOUR_BET  - 4-bet pot
+
+    For BB in SRP, returns the flat-call range (no premiums).
+    For BB in THREE_BET, returns the 3-bet range.
+    vs_position indicates who the player was facing (the opener).
     """
-    gto = GTO_RANGES.get((position, pot_type), {})
+    gto: dict[str, float] = {}
+
+    if pot_type == "SRP":
+        if position == "BB":
+            # BB flatted an open -- use call range keyed by opener
+            vs = vs_position or "BTN"
+            gto = BB_CALL_RANGES.get(vs, BB_CALL_RANGES["BTN"])
+        else:
+            # Opener's RFI range
+            gto = OPEN_RANGES.get(position, {})
+
+    elif pot_type == "THREE_BET":
+        if position == "BB":
+            vs = vs_position or "BTN"
+            gto = BB_3BET_RANGES.get(vs, BB_3BET_RANGES["BTN"])
+        else:
+            # Non-BB 3-betting an open
+            vs = vs_position or "CO"
+            gto = IP_3BET_RANGES.get(vs, IP_3BET_RANGES["CO"])
+
+    elif pot_type == "FOUR_BET":
+        gto = FOUR_BET_RANGES.get(position, FOUR_BET_RANGES.get("BTN", {}))
+
+    gto = dict(gto)
+
     if observed_freqs is None:
-        return dict(gto)
+        return gto
 
     blended: dict[str, float] = {}
     all_keys = set(gto) | set(observed_freqs)

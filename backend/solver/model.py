@@ -67,6 +67,7 @@ class SolverTransformer(nn.Module):
         self.transformer = nn.TransformerEncoder(
             encoder_layer,
             num_layers=NUM_LAYERS,
+            enable_nested_tensor=False,
         )
 
         # Output head: 5-way action prediction

@@ -8,6 +8,7 @@ import { buildTiles } from "./gameTree";
 import { ActionSequence } from "./components/ActionSequence";
 import { HandGrid } from "./components/HandGrid";
 import { SolverResults } from "./components/SolverResults";
+import { DebugPanels } from "./components/DebugPanels";
 
 export const SolverView = () => {
   const [spot, setSpot] = useState<SolverSpot>(INITIAL_SPOT);
@@ -55,15 +56,31 @@ export const SolverView = () => {
         actions.push(`${t.label}:${t.selected}`);
       }
     }
-    const board = allBoardCards.map(
+
+    // Only include board cards up to the viewed tile's street
+    const street = viewedTile.section;
+    const boardCards: CardJson[] = [];
+    if (street === "flop" || street === "turn" || street === "river") {
+      boardCards.push(...spot.flopCards);
+    }
+    if (street === "turn" || street === "river") {
+      if (spot.turnCard) boardCards.push(spot.turnCard);
+    }
+    if (street === "river") {
+      if (spot.riverCard) boardCards.push(spot.riverCard);
+    }
+    const board = boardCards.map(
       (c) => `${c.Rank}${c.Suit.toLowerCase()}`,
     );
+
+    const heroPosition = viewedTile.sublabel ?? viewedTile.label;
     return {
       board,
-      street: viewedTile.section,
+      street,
       actions,
+      heroPosition,
     };
-  }, [viewedTile, tiles, allBoardCards]);
+  }, [viewedTile, tiles, spot.flopCards, spot.turnCard, spot.riverCard]);
 
   useEffect(() => {
     if (!solverParams) {
@@ -245,6 +262,14 @@ export const SolverView = () => {
               actionOptions={viewedActionOptions}
             />
           </div>
+          {solverResult.debug && (
+            <div className="w-[320px] shrink-0">
+              <DebugPanels
+                debug={solverResult.debug}
+                actionOptions={viewedActionOptions}
+              />
+            </div>
+          )}
         </div>
       )}
     </div>

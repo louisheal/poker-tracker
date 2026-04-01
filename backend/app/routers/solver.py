@@ -153,11 +153,56 @@ def _solve_mock(board: list[str], street: str, actions: list[str]) -> dict:
     return {"hands": hands, "actions": result_actions, "totalHands": total}
 
 
+POSTFLOP_POSITION_ORDER = ["SB", "BB", "LJ", "HJ", "CO", "BTN"]
+
+
+def _parse_preflop_context(actions: list[str]) -> dict:
+    """Parse preflop actions to determine active players, pot type, and positions."""
+    active: list[str] = []
+    raise_count = 0
+
+    for action_str in actions:
+        parts = action_str.split(":")
+        if len(parts) < 2:
+            continue
+        label, action_key = parts[0], parts[1]
+        if label in ("OOP", "IP"):
+            break
+        if action_key != "Fold":
+            if label not in active:
+                active.append(label)
+        if action_key == "Raise":
+            raise_count += 1
+
+    if raise_count >= 3:
+        pot_type = "4BET"
+    elif raise_count >= 2:
+        pot_type = "3BET"
+    else:
+        pot_type = "SRP"
+
+    # Determine OOP/IP by position order (earlier = OOP)
+    active_sorted = sorted(
+        active,
+        key=lambda p: POSTFLOP_POSITION_ORDER.index(p) if p in POSTFLOP_POSITION_ORDER else 0,
+    )
+    oop = active_sorted[0] if active_sorted else "BB"
+    ip = active_sorted[1] if len(active_sorted) > 1 else "BTN"
+
+    return {
+        "active_players": active,
+        "pot_type": pot_type,
+        "oop_position": oop,
+        "ip_position": ip,
+    }
+
+
 def _solve_real(
     request: Request,
     board: list[str],
     street: str,
     actions: list[str],
+    hero_position: str | None = None,
 ) -> dict:
     """Real solver: uses the trained model for villain predictions."""
     from app.parsers.lexer import to_card
@@ -168,11 +213,17 @@ def _solve_real(
 
     action_keys = _detect_action_keys(street, actions)
 
-    # Infer positions from the action sequence
-    # For now, use reasonable defaults
-    hero_position = "BTN"
-    villain_position = "BB"
-    pot_type = "SRP"
+    ctx = _parse_preflop_context(actions)
+    pot_type = ctx["pot_type"]
+    oop_pos = ctx["oop_position"]
+    ip_pos = ctx["ip_position"]
+
+    # Determine hero from parameter or infer from action count
+    if not hero_position:
+        postflop_count = sum(1 for a in actions if a.split(":")[0] in ("OOP", "IP"))
+        hero_position = oop_pos if postflop_count % 2 == 0 else ip_pos
+
+    villain_position = ip_pos if hero_position == oop_pos else oop_pos
 
     # Estimate pot size from the action prefix
     pot_bb = 2.5  # default SRP pot
@@ -202,11 +253,12 @@ def solve(
     board: list[str] = Query(default=[]),
     street: str = Query(default="preflop"),
     actions: list[str] = Query(default=[]),
+    hero_position: str | None = Query(default=None),
 ):
     """Solver endpoint. Uses real model if loaded, otherwise falls back to mock."""
     has_model = hasattr(request.app.state, "solver_model") and request.app.state.solver_model is not None
 
     if has_model:
-        return _solve_real(request, board, street, actions)
+        return _solve_real(request, board, street, actions, hero_position)
     else:
         return _solve_mock(board, street, actions)

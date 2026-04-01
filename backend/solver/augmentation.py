@@ -1,11 +1,11 @@
 """Data augmentation for poker training sequences.
 
-Provides token-level augmentation functions applied lazily during training:
+Provides augmentation constants and GPU batch augmentation:
   - Suit permutation (24 variants): all suits are strategically equivalent
   - Flop reordering (6 variants): flop card order is irrelevant
 
 Total effective augmentation: 24 x 6 = 144 variants per example.
-Applied randomly per __getitem__ call in PokerDataset, not pre-generated.
+Applied per-batch on GPU via augment_batch_gpu() in dataset.py.
 
 Note: Hole card swap is removed -- no hole cards are in the model input.
 """

@@ -391,6 +391,7 @@ export const getSolverResult = async (
   for (const c of params.board) sp.append("board", c);
   sp.append("street", params.street);
   for (const a of params.actions) sp.append("actions", a);
+  if (params.heroPosition) sp.append("hero_position", params.heroPosition);
   const response = await fetch(`http://localhost:8000/solver/solve?${sp}`, {
     signal,
   });
