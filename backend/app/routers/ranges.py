@@ -1,21 +1,33 @@
+import sqlite3
+
 from fastapi import APIRouter, Depends
 
-from app.dependencies import get_store, get_date_range
-from app.loader import EventStore
+from playing_cards_lib.poker import PokerPosition
+
+from app.dependencies import get_db, get_date_range
+from app.db.queries import query_ranges
 from app.models import Ranges
-from app.routers.params import in_date_range
+from app.models.enums import PotType
 
 router = APIRouter()
+
+_POS_MAP = {str(p.value): p for p in PokerPosition}
+_POT_MAP = {p.value: p for p in PotType}
 
 
 @router.get("/")
 def get_ranges(
-    store: EventStore = Depends(get_store),
+    db: sqlite3.Connection = Depends(get_db),
     dates: tuple = Depends(get_date_range),
 ):
     start, end = dates
-    filtered = [e for e in store.range_events if in_date_range(e.played_on, start, end)]
+    rows = query_ranges(db, start=start, end=end)
     ranges = Ranges()
-    for event in filtered:
-        ranges.add_hand(event.hand_key, event.position, event.action, event.pot_type, event.villain)
+    for row in rows:
+        position = _POS_MAP.get(row["position"])
+        pot_type = _POT_MAP.get(row["pot_type"])
+        villain = _POS_MAP.get(row["villain"]) if row["villain"] else None
+        if position is None or pot_type is None:
+            continue
+        ranges.add_hand(row["hand_key"], position, row["action"], pot_type, villain)
     return ranges.json()

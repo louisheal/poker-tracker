@@ -1,6 +1,14 @@
 from enum import Enum
 
 
+class Action(str, Enum):
+	FOLD = "F"
+	CHECK = "X"
+	CALL = "C"
+	BET = "B"
+	RAISE = "R"
+
+
 class BoardType(Enum):
 	MONOTONE = 0
 	TWO_TONE = 1
@@ -52,6 +60,18 @@ class MadeHandType(str, Enum):
 	PAIR = "PAIR"
 	ACE_HIGH = "ACE_HIGH"
 	NO_MADE_HAND = "NO_MADE_HAND"
+
+
+class FlushDrawType(str, Enum):
+	FRONT_DOOR = "FRONT_DOOR"
+	BACK_DOOR = "BACK_DOOR"
+	NONE = "NONE"
+
+
+class StraightDrawType(str, Enum):
+	OESD = "OESD"
+	GUTSHOT = "GUTSHOT"
+	NONE = "NONE"
 
 
 class DrawType(str, Enum):

@@ -1,0 +1,264 @@
+import hashlib
+import logging
+import os
+
+from fastapi import APIRouter, Query, Request
+
+router = APIRouter()
+
+logger = logging.getLogger(__name__)
+
+RANKS = "A K Q J T 9 8 7 6 5 4 3 2".split()
+SUITS = ["h", "d", "s", "c"]
+
+# Action key -> bet size as pct of pot (for pot_bb calculation)
+_ACTION_BET_PCT: dict[str, float] = {
+    "Fold": 0, "Check": 0, "Call": 0, "Raise": 300,
+    "B33": 33, "B50": 50, "B66": 66, "B100": 100, "B133": 133, "B200": 200,
+    "R3x": 300, "R4x": 400, "R5x": 500,
+}
+
+
+def _hand_keys() -> list[str]:
+    """Generate all 169 distinct starting hand keys."""
+    keys = []
+    for i, r1 in enumerate(RANKS):
+        for j, r2 in enumerate(RANKS):
+            if i == j:
+                keys.append(f"{r1}{r2}")
+            elif i < j:
+                keys.append(f"{r1}{r2}s")
+            else:
+                keys.append(f"{r2}{r1}o")
+    return keys
+
+
+def _combos_for_key(key: str) -> list[str]:
+    """Generate all specific combos for a hand key."""
+    if len(key) == 2:
+        r = key[0]
+        combos = []
+        for i, s1 in enumerate(SUITS):
+            for s2 in SUITS[i + 1:]:
+                combos.append(f"{r}{s1}{r}{s2}")
+        return combos
+    elif key.endswith("s"):
+        r1, r2 = key[0], key[1]
+        return [f"{r1}{s}{r2}{s}" for s in SUITS]
+    else:
+        r1, r2 = key[0], key[1]
+        combos = []
+        for s1 in SUITS:
+            for s2 in SUITS:
+                if s1 != s2:
+                    combos.append(f"{r1}{s1}{r2}{s2}")
+        return combos
+
+
+def _seeded_float(seed: str, low: float, high: float) -> float:
+    h = int(hashlib.md5(seed.encode()).hexdigest()[:8], 16)
+    t = (h % 10000) / 10000
+    return low + t * (high - low)
+
+
+def _hand_strength(key: str) -> float:
+    rank_values = {r: i for i, r in enumerate(reversed(RANKS))}
+    r1 = rank_values.get(key[0], 0)
+    r2 = rank_values.get(key[1], 0)
+    is_pair = len(key) == 2 or (len(key) == 3 and key[0] == key[1])
+    is_suited = key.endswith("s")
+    strength = (r1 + r2) / 24
+    if is_pair:
+        strength += 0.3
+    if is_suited:
+        strength += 0.08
+    if abs(r1 - r2) <= 2 and not is_pair:
+        strength += 0.05
+    return min(strength, 1.0)
+
+
+def _detect_action_keys(street: str, actions: list[str]) -> list[str]:
+    """Determine which action set to use based on street/context."""
+    last_action = actions[-1].split(":")[-1] if actions else ""
+    is_facing_bet = last_action.startswith("B") or last_action.startswith("R")
+
+    if street == "preflop":
+        return ["Fold", "Call", "Raise"]
+    elif is_facing_bet:
+        return ["Fold", "Call", "R3x", "R4x", "R5x"]
+    else:
+        return ["Check", "B33", "B50", "B66", "B100", "B133", "B200"]
+
+
+def _solve_mock(board: list[str], street: str, actions: list[str]) -> dict:
+    """Mock solver: returns deterministic plausible data when no model is loaded."""
+    context_seed = f"{''.join(sorted(board))}_{street}_{'|'.join(actions)}"
+    action_keys = _detect_action_keys(street, actions)
+
+    hands: dict = {}
+    action_counts: dict[str, int] = {a: 0 for a in action_keys}
+    action_ev_sums: dict[str, float] = {a: 0.0 for a in action_keys}
+
+    for key in _hand_keys():
+        strength = _hand_strength(key)
+        evs: dict[str, float] = {}
+
+        for i, action in enumerate(action_keys):
+            seed = f"{context_seed}_{key}_{action}"
+            noise = _seeded_float(seed, -2.0, 2.0)
+            aggression = i / max(len(action_keys) - 1, 1)
+            ev = (strength - 0.3 - aggression * 0.2) * (8 + aggression * 8) + noise
+            evs[action] = round(ev, 2)
+
+        best = max(evs, key=lambda k: evs[k])
+
+        combos = []
+        for combo in _combos_for_key(key):
+            combo_seed = f"{context_seed}_{combo}"
+            combo_noise = _seeded_float(combo_seed, -1.5, 1.5)
+            combo_evs = {}
+            for j, a in enumerate(action_keys):
+                combo_evs[a] = round(evs[a] + combo_noise * (0.5 + 0.2 * j), 2)
+            combo_best = max(combo_evs, key=lambda k: combo_evs[k])
+            combos.append({
+                "combo": combo,
+                "bestAction": combo_best,
+                "ev": combo_evs[combo_best],
+                "evs": combo_evs,
+            })
+
+        hands[key] = {"bestAction": best, "evs": evs, "combos": combos}
+        action_counts[best] += 1
+        action_ev_sums[best] += evs[best]
+
+    total = len(hands)
+    result_actions: dict = {}
+    for a in action_keys:
+        seed = f"{context_seed}_{a}"
+        fold_base = 30.0 + _seeded_float(seed + "_f", 0, 20)
+        call_base = 40.0 + _seeded_float(seed + "_c", 0, 15)
+        fold_pct = round(fold_base + _seeded_float(seed + "_f2", -5, 5), 1)
+        call_pct = round(call_base + _seeded_float(seed + "_c2", -5, 5), 1)
+        raise_pct = round(max(100 - fold_pct - call_pct, 5), 1)
+        count = action_counts[a]
+        avg_ev = round(action_ev_sums[a] / count, 2) if count > 0 else 0.0
+        result_actions[a] = {
+            "villainFoldPct": fold_pct,
+            "villainCallPct": call_pct,
+            "villainRaisePct": raise_pct,
+            "avgEv": avg_ev,
+            "bestActionCount": count,
+        }
+
+    return {"hands": hands, "actions": result_actions, "totalHands": total}
+
+
+POSTFLOP_POSITION_ORDER = ["SB", "BB", "LJ", "HJ", "CO", "BTN"]
+
+
+def _parse_preflop_context(actions: list[str]) -> dict:
+    """Parse preflop actions to determine active players, pot type, and positions."""
+    active: list[str] = []
+    raise_count = 0
+
+    for action_str in actions:
+        parts = action_str.split(":")
+        if len(parts) < 2:
+            continue
+        label, action_key = parts[0], parts[1]
+        if label in ("OOP", "IP"):
+            break
+        if action_key != "Fold":
+            if label not in active:
+                active.append(label)
+        if action_key == "Raise":
+            raise_count += 1
+
+    if raise_count >= 3:
+        pot_type = "4BET"
+    elif raise_count >= 2:
+        pot_type = "3BET"
+    else:
+        pot_type = "SRP"
+
+    # Determine OOP/IP by position order (earlier = OOP)
+    active_sorted = sorted(
+        active,
+        key=lambda p: POSTFLOP_POSITION_ORDER.index(p) if p in POSTFLOP_POSITION_ORDER else 0,
+    )
+    oop = active_sorted[0] if active_sorted else "BB"
+    ip = active_sorted[1] if len(active_sorted) > 1 else "BTN"
+
+    return {
+        "active_players": active,
+        "pot_type": pot_type,
+        "oop_position": oop,
+        "ip_position": ip,
+    }
+
+
+def _solve_real(
+    request: Request,
+    board: list[str],
+    street: str,
+    actions: list[str],
+    hero_position: str | None = None,
+) -> dict:
+    """Real solver: uses the trained model for villain predictions."""
+    from app.parsers.lexer import to_card
+    from solver.ev_calculator import solve_spot
+
+    model = request.app.state.solver_model
+    board_cards = [to_card(c) for c in board]
+
+    action_keys = _detect_action_keys(street, actions)
+
+    ctx = _parse_preflop_context(actions)
+    pot_type = ctx["pot_type"]
+    oop_pos = ctx["oop_position"]
+    ip_pos = ctx["ip_position"]
+
+    # Determine hero from parameter or infer from action count
+    if not hero_position:
+        postflop_count = sum(1 for a in actions if a.split(":")[0] in ("OOP", "IP"))
+        hero_position = oop_pos if postflop_count % 2 == 0 else ip_pos
+
+    villain_position = ip_pos if hero_position == oop_pos else oop_pos
+
+    # Estimate pot size from the action prefix
+    pot_bb = 2.5  # default SRP pot
+    for a in actions:
+        parts = a.split(":")
+        act = parts[-1] if len(parts) > 1 else parts[0]
+        pct = _ACTION_BET_PCT.get(act, 0)
+        if pct > 0:
+            pot_bb += (pct / 100.0) * pot_bb
+
+    return solve_spot(
+        model=model,
+        board=board_cards,
+        street=street if board_cards else "preflop",
+        action_prefix=actions,
+        hero_position=hero_position,
+        villain_position=villain_position,
+        pot_type=pot_type,
+        pot_bb=pot_bb,
+        hero_actions=action_keys,
+    )
+
+
+@router.get("/solve")
+def solve(
+    request: Request,
+    board: list[str] = Query(default=[]),
+    street: str = Query(default="preflop"),
+    actions: list[str] = Query(default=[]),
+    hero_position: str | None = Query(default=None),
+):
+    """Solver endpoint. Uses real model if loaded, otherwise falls back to mock."""
+    has_model = hasattr(request.app.state, "solver_model") and request.app.state.solver_model is not None
+
+    if has_model:
+        return _solve_real(request, board, street, actions, hero_position)
+    else:
+        return _solve_mock(board, street, actions)

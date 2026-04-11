@@ -7,7 +7,8 @@ from datetime import datetime
 from playing_cards_lib.core import Card, Rank, Suit
 from playing_cards_lib.poker import HoleCards
 
-from .ast import HandAST, Action, ActionType, BlindPost, Street
+from .ast import HandAST, PlayerAction, BlindPost, Street
+from app.models.enums import Action
 
 logger = logging.getLogger(__name__)
 
@@ -18,16 +19,16 @@ BET_AMOUNT_RE = re.compile(r": bets \$(\d+\.?\d*)")
 CALL_AMOUNT_RE = re.compile(r": calls \$(\d+\.?\d*)")
 RAISE_INC_RE = re.compile(r": raises \$(\d+\.?\d*) to \$(\d+\.?\d*)")
 UNCALLED_RE = re.compile(r"Uncalled bet \(\$(\d+\.?\d*)\)")
-COLLECTED_RE = re.compile(r"(\S+) collected \$(\d+\.?\d*)")
+COLLECTED_RE = re.compile(r"(.+?) collected \$(\d+\.?\d*)")
 HERO_WON_RE = re.compile(r"Hero.*and won \(\$(\d+\.?\d*)\)")
 HERO_SHOWDOWN_RE = re.compile(r"Hero.*showed.*and (won|lost)")
-SUMMARY_COLLECTED_RE = re.compile(r"Seat \d+: (\S+).*collected \(\$(\d+\.?\d*)\)")
+SUMMARY_COLLECTED_RE = re.compile(r"Seat \d+: (.+?) collected \(\$(\d+\.?\d*)\)")
 TOTAL_POT_RE = re.compile(r"Total pot \$(\d+\.?\d*)")
-SHOWS_RE = re.compile(r"(\S+): shows \[([2-9TJQKA][shdc]) ([2-9TJQKA][shdc])\]", re.IGNORECASE)
+SHOWS_RE = re.compile(r"(.+?): shows \[([2-9TJQKA][shdc]) ([2-9TJQKA][shdc])\]", re.IGNORECASE)
 FLOP_RE = re.compile(r"\*\*\* FLOP \*\*\* \[([2-9TJQKA][shdc]) ([2-9TJQKA][shdc]) ([2-9TJQKA][shdc])\]", re.IGNORECASE)
 TURN_RE = re.compile(r"\*\*\* TURN \*\*\* \[([2-9TJQKA][shdc]) ([2-9TJQKA][shdc]) ([2-9TJQKA][shdc])\] \[([2-9TJQKA][shdc])\]", re.IGNORECASE)
 RIVER_RE = re.compile(r"\*\*\* RIVER \*\*\* \[([2-9TJQKA][shdc]) ([2-9TJQKA][shdc]) ([2-9TJQKA][shdc]) ([2-9TJQKA][shdc])\] \[([2-9TJQKA][shdc])\]", re.IGNORECASE)
-SEAT_RE = re.compile(r"^Seat\s+\d+:\s+([^\s]+)")
+SEAT_RE = re.compile(r"^Seat\s+\d+:\s+(.+?)\s+\(\$")
 
 
 def to_card(token: str) -> Card:
@@ -45,7 +46,7 @@ def to_hole_cards(fst: str, snd: str) -> HoleCards:
 	return HoleCards(fst_card, snd_card)
 
 BUTTON_RE = re.compile(r"Seat #(\d+) is the button")
-SEAT_STACK_RE = re.compile(r"^Seat\s+(\d+):\s+(\S+)\s+\(\$(\d+\.?\d*)\s+in chips\)")
+SEAT_STACK_RE = re.compile(r"^Seat\s+(\d+):\s+(.+?)\s+\(\$(\d+\.?\d*)\s+in chips\)")
 BLIND_POST_RE = re.compile(r"^(.+?):\s+posts\s+(small|big)\s+blind\s+\$(\d+\.?\d*)")
 UNCALLED_FULL_RE = re.compile(r"Uncalled bet \(\$(\d+\.?\d*)\) returned to (.+)")
 
@@ -64,33 +65,33 @@ class _State:
 
 
 def _parse_action(line: str, action_m: re.Match) -> Action:
-	"""Build an Action from an ACTION_RE match, extracting amounts from the line."""
+	"""Build a PlayerAction from an ACTION_RE match, extracting amounts from the line."""
 	player = action_m.group(1)
 	act = action_m.group(2).lower()
 	is_hero = player == "Hero"
 
 	if act == "folds":
-		return Action(player=player, type=ActionType.FOLD, is_hero=is_hero)
+		return PlayerAction(player=player, type=Action.FOLD, is_hero=is_hero)
 	elif act == "checks":
-		return Action(player=player, type=ActionType.CHECK, is_hero=is_hero)
+		return PlayerAction(player=player, type=Action.CHECK, is_hero=is_hero)
 	elif act == "calls":
 		amt_m = CALL_AMOUNT_RE.search(line)
 		amount = float(amt_m.group(1)) if amt_m else None
-		return Action(player=player, type=ActionType.CALL, amount=amount, is_hero=is_hero)
+		return PlayerAction(player=player, type=Action.CALL, amount=amount, is_hero=is_hero)
 	elif act == "bets":
 		amt_m = BET_AMOUNT_RE.search(line)
 		amount = float(amt_m.group(1)) if amt_m else None
-		return Action(player=player, type=ActionType.BET, amount=amount, is_hero=is_hero)
+		return PlayerAction(player=player, type=Action.BET, amount=amount, is_hero=is_hero)
 	else:  # raises
 		raise_m = RAISE_INC_RE.search(line)
 		if raise_m:
-			return Action(
-				player=player, type=ActionType.RAISE,
+			return PlayerAction(
+				player=player, type=Action.RAISE,
 				amount=float(raise_m.group(1)),
 				raise_to=float(raise_m.group(2)),
 				is_hero=is_hero,
 			)
-		return Action(player=player, type=ActionType.RAISE, is_hero=is_hero)
+		return PlayerAction(player=player, type=Action.RAISE, is_hero=is_hero)
 
 
 def lex_hand(lines: list[str]) -> HandAST | None:
@@ -218,8 +219,12 @@ def lex_hand(lines: list[str]) -> HandAST | None:
 				current_actions.append(_parse_action(line, action_m))
 			continue
 
-		# ---- SHOWDOWN: collected lines ----
+		# ---- SHOWDOWN: collected lines + shown cards ----
 		if state == _State.SHOWDOWN:
+			shows_m = SHOWS_RE.search(line)
+			if shows_m:
+				shown_cards[shows_m.group(1)] = to_hole_cards(shows_m.group(2), shows_m.group(3))
+				continue
 			coll_m = COLLECTED_RE.search(line)
 			if coll_m:
 				player = coll_m.group(1)

@@ -1,17 +1,16 @@
 import logging
 import re
+from dataclasses import dataclass, field
 from datetime import date
 
-from playing_cards_lib.poker import PokerPosition
-from app.models.events import RangeEvent, FlopEvent, TurnEvent, RiverEvent, LineEvent
+from app.models.events import RangeEvent, FlopEvent, TurnEvent, RiverEvent, LineEvent, ObservedSpot
 
-from .lexer import lex_hand
-from .analyzers import build_context, analyze_range, analyze_cbet, analyze_turn, analyze_river, analyze_line, _get_flop_players
+from .lexer import lex_hand, SEAT_STACK_RE
+from .analyzers import build_context, analyze_range, analyze_cbet, analyze_turn, analyze_river, analyze_line, emit_observed_spots, _get_flop_players
 
 logger = logging.getLogger(__name__)
 
 FLOP_RE = re.compile(r"\*\*\* FLOP \*\*\* \[([2-9TJQKA][shdc]) ([2-9TJQKA][shdc]) ([2-9TJQKA][shdc])\]", re.IGNORECASE)
-SEAT_RE = re.compile(r"^Seat\s+\d+:\s+([^\s]+)")
 ACTION_RE = re.compile(r"(.*): (folds|calls|raises|checks|bets)\b", re.IGNORECASE)
 START_RE = re.compile(r"^Poker Hand #[^:]+: .* - (\d{4}/\d{2}/\d{2}) \d{2}:\d{2}:\d{2}$")
 
@@ -29,9 +28,9 @@ def parse_hand_date(lines: list[str]) -> date | None:
 def flop_player_count(lines: list[str]) -> int | None:
 	players: set[str] = set()
 	for line in lines:
-		seat = SEAT_RE.search(line)
+		seat = SEAT_STACK_RE.search(line)
 		if seat:
-			players.add(seat.group(1))
+			players.add(seat.group(2))
 
 	active_players = set(players)
 	for line in lines:
@@ -83,71 +82,109 @@ def group_hands(file, include_multiway: bool = False):
 
 
 def parse_histories(files: list[str]) -> tuple[list[RangeEvent], list[FlopEvent], list[TurnEvent], list[RiverEvent], list[LineEvent]]:
-	range_events: list[RangeEvent] = []
-	cbet_events: list[FlopEvent] = []
-	turn_events: list[TurnEvent] = []
-	river_events: list[RiverEvent] = []
-	line_events: list[LineEvent] = []
-	hand_count = 0
-
+	combined = FileParseResult()
 	for file in files:
-		for hand in group_hands(file, include_multiway=False):
-			hand_count += 1
-			if hand_count % 1000 == 0:
-				logger.info(f"Parsed {hand_count} hands...")
+		result = parse_file(file)
+		combined.merge(result)
+	logger.info(f"Parsing complete. Total hands: {combined.hand_count}")
+	return combined.range_events, combined.cbet_events, combined.turn_events, combined.river_events, combined.line_events
 
-			ast = lex_hand(hand)
-			if ast is None:
-				continue
 
-			ctx = build_context(ast)
+@dataclass
+class FileParseResult:
+	"""All events and metadata parsed from a single hand history file."""
+	range_events: list[RangeEvent] = field(default_factory=list)
+	cbet_events: list[FlopEvent] = field(default_factory=list)
+	turn_events: list[TurnEvent] = field(default_factory=list)
+	river_events: list[RiverEvent] = field(default_factory=list)
+	line_events: list[LineEvent] = field(default_factory=list)
+	observed_spots: list[ObservedSpot] = field(default_factory=list)
+	hand_dates: list[date] = field(default_factory=list)
+	hand_count: int = 0
 
-			range_events.extend(analyze_range(ast))
+	def merge(self, other: "FileParseResult"):
+		self.range_events.extend(other.range_events)
+		self.cbet_events.extend(other.cbet_events)
+		self.turn_events.extend(other.turn_events)
+		self.river_events.extend(other.river_events)
+		self.line_events.extend(other.line_events)
+		self.observed_spots.extend(other.observed_spots)
+		self.hand_dates.extend(other.hand_dates)
+		self.hand_count += other.hand_count
 
-			cbet_event = analyze_cbet(ctx)
-			if cbet_event:
-				cbet_events.append(cbet_event)
 
-			turn_event = analyze_turn(ctx)
-			if turn_event:
-				turn_events.append(turn_event)
+def parse_file(file: str) -> FileParseResult:
+	"""Parse a single hand history file into events."""
+	result = FileParseResult()
 
-			river_event = analyze_river(ctx)
-			if river_event:
-				river_events.append(river_event)
+	for hand in group_hands(file, include_multiway=True):
+		ast = lex_hand(hand)
+		if ast is None:
+			continue
 
-			line_event = analyze_line(ctx)
-			if line_event:
-				line_events.append(line_event)
+		result.hand_dates.append(ast.played_on)
 
-			# Pool events: when hero didn't see flop, generate from each player's perspective
-			if not ctx.hero_sees_flop and ast.flop is not None:
-				pool_players = _get_flop_players(ast)
-				if len(pool_players) == 2:
-					for player in pool_players:
-						pool_ctx = build_context(ast, player=player)
-						pool_cbet = analyze_cbet(pool_ctx)
-						if pool_cbet:
-							pool_cbet.is_pool = True
-							cbet_events.append(pool_cbet)
-						pool_turn = analyze_turn(pool_ctx)
-						if pool_turn:
-							pool_turn.is_pool = True
-							turn_events.append(pool_turn)
-						pool_river = analyze_river(pool_ctx)
-						if pool_river:
-							pool_river.is_pool = True
-							river_events.append(pool_river)
-						pool_line = analyze_line(pool_ctx)
-						if pool_line:
-							pool_line.is_pool = True
-							line_events.append(pool_line)
+		players_on_flop = flop_player_count(hand)
+		if players_on_flop is not None and players_on_flop > 2:
+			continue
 
-	logger.info(f"Parsing complete. Total hands: {hand_count}")
-	return range_events, cbet_events, turn_events, river_events, line_events
+		result.hand_count += 1
+
+		ctx = build_context(ast)
+
+		result.range_events.extend(analyze_range(ast))
+
+		cbet_event = analyze_cbet(ctx)
+		if cbet_event:
+			result.cbet_events.append(cbet_event)
+
+		turn_event = analyze_turn(ctx)
+		if turn_event:
+			result.turn_events.append(turn_event)
+
+		river_event = analyze_river(ctx)
+		if river_event:
+			result.river_events.append(river_event)
+
+		line_event = analyze_line(ctx)
+		if line_event:
+			result.line_events.append(line_event)
+
+		# Emit observed spots for the stats panel
+		if ctx.hero_sees_flop:
+			result.observed_spots.extend(emit_observed_spots(ctx))
+
+		# Pool events: when hero didn't see flop, generate from each player's perspective
+		if not ctx.hero_sees_flop and ast.flop is not None:
+			pool_players = _get_flop_players(ast)
+			if len(pool_players) == 2:
+				for player in pool_players:
+					pool_ctx = build_context(ast, player=player)
+					pool_cbet = analyze_cbet(pool_ctx)
+					if pool_cbet:
+						pool_cbet.is_pool = True
+						result.cbet_events.append(pool_cbet)
+					pool_turn = analyze_turn(pool_ctx)
+					if pool_turn:
+						pool_turn.is_pool = True
+						result.turn_events.append(pool_turn)
+					pool_river = analyze_river(pool_ctx)
+					if pool_river:
+						pool_river.is_pool = True
+						result.river_events.append(pool_river)
+					pool_line = analyze_line(pool_ctx)
+					if pool_line:
+						pool_line.is_pool = True
+						result.line_events.append(pool_line)
+					result.observed_spots.extend(
+						emit_observed_spots(pool_ctx, is_pool=True)
+					)
+
+	return result
 
 
 def parse_hand_dates(files: list[str]) -> list[date]:
+	"""Deprecated: use parse_file() results instead. Kept for backwards compat."""
 	hand_dates: list[date] = []
 	for file in files:
 		for hand in group_hands(file, include_multiway=True):

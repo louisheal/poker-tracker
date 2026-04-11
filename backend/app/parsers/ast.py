@@ -4,33 +4,25 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
-from enum import Enum
 
 from playing_cards_lib.core import Card
 from playing_cards_lib.poker import HoleCards
 
 from app.models.enums import (
+	Action,
 	ActionSequence, Runout,
 	FlopRankTexture, ShowdownType,
 	BoardType, PotType,
 )
 
 
-class ActionType(Enum):
-	FOLD = "fold"
-	CHECK = "check"
-	CALL = "call"
-	BET = "bet"
-	RAISE = "raise"
-
-
 @dataclass
-class Action:
+class PlayerAction:
 	"""A single player action in any street."""
 	player: str
-	type: ActionType
+	type: Action
 	amount: float | None = None       # $ for bet/call; raise increment for raise
-	raise_to: float | None = None     # "raises $X to $Y" — Y (total)
+	raise_to: float | None = None     # "raises $X to $Y" -- Y (total)
 	is_hero: bool = False
 
 
@@ -47,7 +39,7 @@ class BlindPost:
 class Street:
 	"""A post-flop street: community cards + actions."""
 	cards: list[Card]
-	actions: list[Action] = field(default_factory=list)
+	actions: list[PlayerAction] = field(default_factory=list)
 
 
 @dataclass
@@ -59,7 +51,7 @@ class HandAST:
 	players: list[tuple[str, int, float]]
 	hero_hole_cards: HoleCards | None
 	blinds: list[BlindPost]
-	preflop: list[Action]
+	preflop: list[PlayerAction]
 	flop: Street | None = None
 	turn: Street | None = None
 	river: Street | None = None

@@ -3,6 +3,7 @@ import "./App.css";
 import { useEffect, useState } from "react";
 import {
   BarChart2,
+  BrainCircuit,
   Grid2x2,
   TrendingUp,
   CircleDollarSign,
@@ -15,11 +16,12 @@ import { FlopView } from "./tabs/flop/FlopView";
 import { TurnView } from "./tabs/turn/TurnView";
 import { RiverView } from "./tabs/river/RiverView";
 import { LineAnalyserView } from "./tabs/lineAnalyser/LineAnalyserView";
+import { SolverView } from "./tabs/solver/SolverView";
 import { DateRangeDock } from "./components/DateRangeDock";
 import { getHandVolume } from "./api";
 import type { DailyVolumePoint, DateRangeFilter } from "./models";
 
-type View = "ranges" | "flop" | "turn" | "river" | "lineAnalyser";
+type View = "ranges" | "flop" | "turn" | "river" | "lineAnalyser" | "solver";
 
 const NAV_ITEMS = [
   { id: "ranges" as View, label: "Ranges", icon: Grid2x2 },
@@ -27,6 +29,7 @@ const NAV_ITEMS = [
   { id: "turn" as View, label: "Turn", icon: TrendingUp },
   { id: "river" as View, label: "River", icon: CircleDollarSign },
   { id: "lineAnalyser" as View, label: "Line Analyser", icon: Search },
+  { id: "solver" as View, label: "Solver", icon: BrainCircuit },
 ];
 
 function App() {
@@ -100,15 +103,19 @@ function App() {
               <TurnView dateRange={dateRange} includePool={includePool} />
             ) : view === "river" ? (
               <RiverView dateRange={dateRange} includePool={includePool} />
-            ) : (
+            ) : view === "lineAnalyser" ? (
               <LineAnalyserView dateRange={dateRange} includePool={includePool} />
+            ) : (
+              <SolverView />
             )}
           </main>
-          <DateRangeDock
-            points={handVolume}
-            value={dateRange}
-            onChange={setDateRange}
-          />
+          {view !== "solver" && (
+            <DateRangeDock
+              points={handVolume}
+              value={dateRange}
+              onChange={setDateRange}
+            />
+          )}
         </div>
       </div>
     </ThemeProvider>

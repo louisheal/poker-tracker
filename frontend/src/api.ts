@@ -12,6 +12,7 @@ import type {
   RiverRunoutFilter,
   RiverStats,
   HandTypeDistributionResponse,
+  HandEvResponse,
 } from "./models";
 
 export const getRanges = async (startDate?: string, endDate?: string) => {
@@ -240,6 +241,65 @@ export interface HandResult {
   river_card: CardJson | null;
 }
 
+// --- Shared params for all line-analysis endpoints ---
+
+export interface LineAnalysisParams {
+  heroInPosition: boolean;
+  heroPfr: boolean;
+  boardTypes: BoardTypeFilter[];
+  potTypes: PotTypeFilter[];
+  actions?: string[];
+  turnRunouts?: TurnRunoutFilter[];
+  riverRunouts?: RiverRunoutFilter[];
+  startDate?: string;
+  endDate?: string;
+  includePool?: boolean;
+}
+
+function buildLineAnalysisSearchParams(p: LineAnalysisParams): URLSearchParams {
+  const sp = new URLSearchParams();
+  sp.append("hero_in_position", String(p.heroInPosition));
+  sp.append("hero_preflop_raiser", String(p.heroPfr));
+  for (const v of p.boardTypes) sp.append("board_types", v);
+  for (const v of p.potTypes) sp.append("pot_types", v);
+  if (p.actions) for (const a of p.actions) sp.append("actions", a);
+  if (p.turnRunouts) for (const v of p.turnRunouts) sp.append("turn_runouts", v);
+  if (p.riverRunouts) for (const v of p.riverRunouts) sp.append("river_runouts", v);
+  if (p.startDate) sp.append("start_date", p.startDate);
+  if (p.endDate) sp.append("end_date", p.endDate);
+  if (p.includePool) sp.append("include_pool", "true");
+  return sp;
+}
+
+// --- Split endpoint response types ---
+
+export interface StreetStatsResponse {
+  street: "flop" | "turn" | "river";
+  hand_count: number;
+  street_stats: Record<string, number>;
+}
+
+export interface EvSummaryResponse {
+  ev_stats: {
+    overall_ev: number;
+    next_actions: NextAction[];
+  };
+  next_actor: "hero" | "villain" | null;
+  bet_sizes: number[];
+  action_depth: number;
+  flop_complete: boolean;
+  turn_available: boolean;
+  turn_complete: boolean;
+  river_available: boolean;
+}
+
+export interface TopHandsResponse {
+  top_wins: HandResult[];
+  top_losses: HandResult[];
+}
+
+// --- Legacy monolithic response (kept for backwards compat) ---
+
 export interface LineAnalysisResponse {
   hand_count: number;
   street: "flop" | "turn" | "river";
@@ -259,104 +319,81 @@ export interface LineAnalysisResponse {
   top_losses: HandResult[];
 }
 
-export const getLineAnalysis = async (
-  heroInPosition: boolean,
-  heroPfr: boolean,
-  boardTypes: BoardTypeFilter[],
-  potTypes: PotTypeFilter[],
-  actions?: string[],
-  turnRunouts?: TurnRunoutFilter[],
-  riverRunouts?: RiverRunoutFilter[],
-  startDate?: string,
-  endDate?: string,
-  includePool?: boolean,
-): Promise<LineAnalysisResponse> => {
-  const params = new URLSearchParams();
-  params.append("hero_in_position", String(heroInPosition));
-  params.append("hero_preflop_raiser", String(heroPfr));
-  for (const value of boardTypes) {
-    params.append("board_types", value);
-  }
-  for (const value of potTypes) {
-    params.append("pot_types", value);
-  }
-  if (actions) {
-    for (const a of actions) {
-      params.append("actions", a);
-    }
-  }
-  if (turnRunouts) {
-    for (const value of turnRunouts) {
-      params.append("turn_runouts", value);
-    }
-  }
-  if (riverRunouts) {
-    for (const value of riverRunouts) {
-      params.append("river_runouts", value);
-    }
-  }
-  if (startDate) {
-    params.append("start_date", startDate);
-  }
-  if (endDate) {
-    params.append("end_date", endDate);
-  }
-  if (includePool) {
-    params.append("include_pool", "true");
-  }
+// --- Split endpoint API functions ---
+
+export const getStreetStats = async (
+  params: LineAnalysisParams,
+  signal?: AbortSignal,
+): Promise<StreetStatsResponse> => {
+  const sp = buildLineAnalysisSearchParams(params);
   const response = await fetch(
-    `http://localhost:8000/line-analysis?${params}`,
+    `http://localhost:8000/line-analysis/street-stats?${sp}`,
+    { signal },
+  );
+  return response.json();
+};
+
+export const getEvSummary = async (
+  params: LineAnalysisParams,
+  signal?: AbortSignal,
+): Promise<EvSummaryResponse> => {
+  const sp = buildLineAnalysisSearchParams(params);
+  const response = await fetch(
+    `http://localhost:8000/line-analysis/ev-summary?${sp}`,
+    { signal },
+  );
+  return response.json();
+};
+
+export const getTopHands = async (
+  params: LineAnalysisParams,
+  signal?: AbortSignal,
+): Promise<TopHandsResponse> => {
+  const sp = buildLineAnalysisSearchParams(params);
+  const response = await fetch(
+    `http://localhost:8000/line-analysis/top-hands?${sp}`,
+    { signal },
   );
   return response.json();
 };
 
 export const getHandTypeDistribution = async (
-  heroInPosition: boolean,
-  heroPfr: boolean,
-  boardTypes: BoardTypeFilter[],
-  potTypes: PotTypeFilter[],
-  actions?: string[],
-  turnRunouts?: TurnRunoutFilter[],
-  riverRunouts?: RiverRunoutFilter[],
-  startDate?: string,
-  endDate?: string,
-  includePool?: boolean,
+  params: LineAnalysisParams,
+  signal?: AbortSignal,
 ): Promise<HandTypeDistributionResponse> => {
-  const params = new URLSearchParams();
-  params.append("hero_in_position", String(heroInPosition));
-  params.append("hero_preflop_raiser", String(heroPfr));
-  for (const value of boardTypes) {
-    params.append("board_types", value);
-  }
-  for (const value of potTypes) {
-    params.append("pot_types", value);
-  }
-  if (actions) {
-    for (const a of actions) {
-      params.append("actions", a);
-    }
-  }
-  if (turnRunouts) {
-    for (const value of turnRunouts) {
-      params.append("turn_runouts", value);
-    }
-  }
-  if (riverRunouts) {
-    for (const value of riverRunouts) {
-      params.append("river_runouts", value);
-    }
-  }
-  if (startDate) {
-    params.append("start_date", startDate);
-  }
-  if (endDate) {
-    params.append("end_date", endDate);
-  }
-  if (includePool) {
-    params.append("include_pool", "true");
-  }
+  const sp = buildLineAnalysisSearchParams(params);
   const response = await fetch(
-    `http://localhost:8000/line-analysis/hand-types?${params}`,
+    `http://localhost:8000/line-analysis/hand-types?${sp}`,
+    { signal },
   );
+  return response.json();
+};
+
+export const getHandEv = async (
+  params: LineAnalysisParams,
+  signal?: AbortSignal,
+): Promise<HandEvResponse> => {
+  const sp = buildLineAnalysisSearchParams(params);
+  const response = await fetch(
+    `http://localhost:8000/line-analysis/hand-ev?${sp}`,
+    { signal },
+  );
+  return response.json();
+};
+
+// --- Solver API ---
+
+export const getSolverResult = async (
+  params: import("./models").SolverParams,
+  signal?: AbortSignal,
+): Promise<import("./models").SolverResult> => {
+  const sp = new URLSearchParams();
+  for (const c of params.board) sp.append("board", c);
+  sp.append("street", params.street);
+  for (const a of params.actions) sp.append("actions", a);
+  if (params.heroPosition) sp.append("hero_position", params.heroPosition);
+  const response = await fetch(`http://localhost:8000/solver/solve?${sp}`, {
+    signal,
+  });
   return response.json();
 };

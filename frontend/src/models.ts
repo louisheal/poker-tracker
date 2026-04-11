@@ -162,3 +162,87 @@ export interface HandTypeDistributionResponse {
   hero: PlayerHandTypes;
   villain: PlayerHandTypes;
 }
+
+export type FlushDrawType = "FRONT_DOOR" | "BACK_DOOR" | "NONE";
+export type StraightDrawType = "OESD" | "GUTSHOT" | "NONE";
+
+export interface HandEvRow {
+  made: MadeHandType;
+  flush_draw: FlushDrawType;
+  straight_draw: StraightDrawType;
+  evs: Record<string, number>;
+  best_action: string;
+}
+
+export interface VillainData {
+  range_count: number;
+  fold_pct: number;
+  call_pct: number;
+  raise_pct: number;
+}
+
+export interface HandEvResponse {
+  rows: HandEvRow[];
+  available_actions: string[];
+  villain_data: VillainData;
+  pot_bb: number;
+  street: "flop" | "turn" | "river";
+  hand_count: number;
+  next_actor: "hero" | "villain" | null;
+}
+
+// --- Solver Types ---
+
+export interface SolverParams {
+  board: string[];
+  street: string;
+  actions: string[];
+  heroPosition?: string;
+}
+
+export interface SolverComboResult {
+  combo: string;
+  bestAction: string;
+  ev: number;
+  evs: Record<string, number>;
+}
+
+export interface SolverHandResult {
+  bestAction: string;
+  evs: Record<string, number>;
+  combos: SolverComboResult[];
+}
+
+export interface SolverActionSummary {
+  villainFoldPct: number;
+  villainCallPct: number;
+  villainRaisePct: number;
+  avgEv: number;
+  bestActionCount: number;
+}
+
+export interface SolverModelOutput {
+  raw_fold: number;
+  raw_check: number;
+  raw_call: number;
+  raw_bet: number;
+  raw_raise: number;
+  villain_fold_pct: number;
+  villain_call_pct: number;
+  villain_raise_pct: number;
+}
+
+export interface SolverDebug {
+  oopRange: Record<string, number>;
+  ipRange: Record<string, number>;
+  oopPosition: string;
+  ipPosition: string;
+  modelOutput: Record<string, SolverModelOutput>;
+}
+
+export interface SolverResult {
+  hands: Record<string, SolverHandResult>;
+  actions: Record<string, SolverActionSummary>;
+  totalHands: number;
+  debug?: SolverDebug;
+}

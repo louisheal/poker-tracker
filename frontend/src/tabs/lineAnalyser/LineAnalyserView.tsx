@@ -2,17 +2,20 @@ import { useState, useMemo, useEffect } from "react";
 import { FilterGroup } from "@/components/FilterGroup";
 import { BetSizeDistribution } from "@/components/BetSizeDistribution";
 import {
-  getLineAnalysis,
+  getStreetStats,
+  getEvSummary,
   getHandTypeDistribution,
-  type LineAnalysisResponse,
+  getHandEv,
+  type LineAnalysisParams,
+  type StreetStatsResponse,
+  type EvSummaryResponse,
 } from "@/api";
 import type {
   DateRangeFilter,
   ActionLine as ActionLineType,
   LineActionItem,
-  TurnRunoutFilter,
-  RiverRunoutFilter,
   HandTypeDistributionResponse,
+  HandEvResponse,
 } from "@/models";
 import { useToggleFilter } from "@/hooks/useToggleFilter";
 import {
@@ -26,8 +29,8 @@ import {
 import { ActionLine } from "./components/ActionLine";
 import { StreetStatsPanel } from "./components/StreetStatsPanel";
 import { EvPanel } from "./components/EvPanel";
-import { TopHandsPanel } from "./components/TopHandsPanel";
 import { HandTypePanel } from "./components/HandTypePanel";
+import { HandEvPanel } from "./components/HandEvPanel";
 
 const ACTION_LABELS: Record<string, string> = {
   X: "Check",
@@ -120,23 +123,21 @@ const INITIAL_RIVER_RUNOUT_FILTERS = {
   OTHER: false,
 };
 
-const EMPTY_RESPONSE: LineAnalysisResponse = {
-  hand_count: 0,
+const INITIAL_STREET_STATS: StreetStatsResponse = {
   street: "flop",
+  hand_count: 0,
   street_stats: {},
-  ev_stats: {
-    overall_ev: 0,
-    next_actions: [],
-  },
+};
+
+const INITIAL_EV_SUMMARY: EvSummaryResponse = {
+  ev_stats: { overall_ev: 0, next_actions: [] },
+  next_actor: null,
   bet_sizes: [],
-  next_actor: "villain" as const,
   action_depth: 0,
   flop_complete: false,
   turn_available: false,
   turn_complete: false,
   river_available: false,
-  top_wins: [],
-  top_losses: [],
 };
 
 interface Props {
@@ -159,9 +160,13 @@ export const LineAnalyserView = ({ dateRange, includePool }: Props) => {
     useToggleFilter(INITIAL_TURN_RUNOUT_FILTERS, TURN_RUNOUT_MAP);
   const [riverRunoutFilters, toggleRiverRunout, activeRiverRunouts] =
     useToggleFilter(INITIAL_RIVER_RUNOUT_FILTERS, RIVER_RUNOUT_MAP);
-  const [data, setData] = useState<LineAnalysisResponse>(EMPTY_RESPONSE);
+  const [streetStats, setStreetStats] =
+    useState<StreetStatsResponse>(INITIAL_STREET_STATS);
+  const [evSummary, setEvSummary] =
+    useState<EvSummaryResponse>(INITIAL_EV_SUMMARY);
   const [handTypes, setHandTypes] =
     useState<HandTypeDistributionResponse | null>(null);
+  const [handEv, setHandEv] = useState<HandEvResponse | null>(null);
 
   const [actionLine, setActionLine] = useState<ActionLineType>({
     actions: [],
@@ -198,84 +203,66 @@ export const LineAnalyserView = ({ dateRange, includePool }: Props) => {
     return actionLine.actions.slice(0, actionLine.cursor).map(actionToPrefix);
   }, [actionLine]);
 
+  const lineParams = useMemo<LineAnalysisParams>(
+    () => ({
+      heroInPosition: position === "ip",
+      heroPfr: role === "pfr",
+      boardTypes: activeBoards,
+      potTypes: activePots,
+      actions: actionPrefix,
+      turnRunouts: isOnTurn ? activeTurnRunouts : undefined,
+      riverRunouts: isOnRiver ? activeRiverRunouts : undefined,
+      startDate: dateRange.startDate,
+      endDate: dateRange.endDate,
+      includePool,
+    }),
+    [
+      position,
+      role,
+      activeBoards,
+      activePots,
+      actionPrefix,
+      isOnTurn,
+      activeTurnRunouts,
+      isOnRiver,
+      activeRiverRunouts,
+      dateRange,
+      includePool,
+    ],
+  );
+
   useEffect(() => {
-    const fetchLineData = async () => {
-      const turnRunouts: TurnRunoutFilter[] | undefined = isOnTurn
-        ? activeTurnRunouts
-        : undefined;
-      const riverRunouts: RiverRunoutFilter[] | undefined = isOnRiver
-        ? activeRiverRunouts
-        : undefined;
-      const result = await getLineAnalysis(
-        position === "ip",
-        role === "pfr",
-        activeBoards,
-        activePots,
-        actionPrefix,
-        turnRunouts,
-        riverRunouts,
-        dateRange.startDate,
-        dateRange.endDate,
-        includePool,
-      );
-      setData(result);
+    const controller = new AbortController();
+    const { signal } = controller;
+
+    const fetchStreetStats = async () => {
+      const result = await getStreetStats(lineParams, signal);
+      setStreetStats(result);
     };
-
-    fetchLineData();
-  }, [
-    position,
-    role,
-    activeBoards,
-    activePots,
-    actionPrefix,
-    dateRange,
-    isOnTurn,
-    activeTurnRunouts,
-    isOnRiver,
-    activeRiverRunouts,
-    includePool,
-  ]);
-
-  useEffect(() => {
+    const fetchEvSummary = async () => {
+      const result = await getEvSummary(lineParams, signal);
+      setEvSummary(result);
+    };
     const fetchHandTypes = async () => {
-      const turnRunouts: TurnRunoutFilter[] | undefined = isOnTurn
-        ? activeTurnRunouts
-        : undefined;
-      const riverRunouts: RiverRunoutFilter[] | undefined = isOnRiver
-        ? activeRiverRunouts
-        : undefined;
-      const result = await getHandTypeDistribution(
-        position === "ip",
-        role === "pfr",
-        activeBoards,
-        activePots,
-        actionPrefix,
-        turnRunouts,
-        riverRunouts,
-        dateRange.startDate,
-        dateRange.endDate,
-        includePool,
-      );
+      const result = await getHandTypeDistribution(lineParams, signal);
       setHandTypes(result);
     };
+    const fetchHandEv = async () => {
+      const result = await getHandEv(lineParams, signal);
+      setHandEv(result);
+    };
 
-    fetchHandTypes();
-  }, [
-    position,
-    role,
-    activeBoards,
-    activePots,
-    actionPrefix,
-    dateRange,
-    isOnTurn,
-    activeTurnRunouts,
-    isOnRiver,
-    activeRiverRunouts,
-    includePool,
-  ]);
+    // Fire all 4 requests in parallel -- each updates state independently
+    fetchStreetStats().catch(() => {});
+    fetchEvSummary().catch(() => {});
+    fetchHandTypes().catch(() => {});
+    fetchHandEv().catch(() => {});
+
+    return () => controller.abort();
+  }, [lineParams]);
 
   const handleActionClick= (action: string, sizeRange?: [number, number]) => {
-    const actor = data.next_actor;
+    const actor = evSummary.next_actor;
     if (!actor) return;
     const newAction: LineActionItem = {
       actor,
@@ -360,7 +347,7 @@ export const LineAnalyserView = ({ dateRange, includePool }: Props) => {
 
   const betSizeTitle = useMemo(() => {
     const heroIsOop = position === "oop";
-    const nextActor = data.next_actor;
+    const nextActor = evSummary.next_actor;
     const isHeroNextToAct = nextActor === "hero";
     const actorName = isHeroNextToAct ? "Hero" : "Villain";
 
@@ -393,18 +380,18 @@ export const LineAnalyserView = ({ dateRange, includePool }: Props) => {
     }
 
     return `${actorName} ${actionType} Size Distribution`;
-  }, [position, data.next_actor, actionLine]);
+  }, [position, evSummary.next_actor, actionLine]);
 
   const showTurnTransition =
-    data.flop_complete &&
-    data.turn_available &&
-    data.ev_stats.next_actions.length === 0 &&
+    evSummary.flop_complete &&
+    evSummary.turn_available &&
+    evSummary.ev_stats.next_actions.length === 0 &&
     !isOnTurn;
 
   const showRiverTransition =
-    data.turn_complete &&
-    data.river_available &&
-    data.ev_stats.next_actions.length === 0 &&
+    evSummary.turn_complete &&
+    evSummary.river_available &&
+    evSummary.ev_stats.next_actions.length === 0 &&
     !isOnRiver;
 
   return (
@@ -480,29 +467,28 @@ export const LineAnalyserView = ({ dateRange, includePool }: Props) => {
       {/* Divider */}
       <div className="border-t border-border" />
 
-      {/* 2×3 grid: Stats | EV | Wins / BetDist (span 2) | Losses */}
+      {/* 2x3 grid: Stats | EV | HandEv (row-span-2) / BetDist */}
       <div className="grid gap-4 grid-cols-3">
         <StreetStatsPanel
-          street={data.street}
-          stats={{ hand_count: data.hand_count, ...data.street_stats }}
+          street={streetStats.street}
+          stats={{ hand_count: streetStats.hand_count, ...streetStats.street_stats }}
           isPfr={role === "pfr"}
         />
         <EvPanel
-          nextActor={data.next_actor}
-          overallEv={data.ev_stats.overall_ev}
-          handCount={data.hand_count}
-          nextActions={data.ev_stats.next_actions}
+          nextActor={evSummary.next_actor ?? ""}
+          overallEv={evSummary.ev_stats.overall_ev}
+          handCount={streetStats.hand_count}
+          nextActions={evSummary.ev_stats.next_actions}
           onActionClick={handleActionClick}
           showTurnTransition={showTurnTransition}
           onContinueToTurn={handleContinueToTurn}
           showRiverTransition={showRiverTransition}
           onContinueToRiver={handleContinueToRiver}
         />
-        <TopHandsPanel title="Biggest Wins" hands={data.top_wins} />
+        <HandEvPanel data={handEv} />
         <div className="col-span-2">
-          <BetSizeDistribution sizes={data.bet_sizes} title={betSizeTitle} />
+          <BetSizeDistribution sizes={evSummary.bet_sizes} title={betSizeTitle} />
         </div>
-        <TopHandsPanel title="Biggest Losses" hands={data.top_losses} />
       </div>
       <div className="grid gap-4 grid-cols-2">
         <HandTypePanel
