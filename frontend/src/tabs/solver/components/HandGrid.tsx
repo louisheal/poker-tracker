@@ -2,6 +2,12 @@ import type { SolverResult } from "@/models";
 import type { ActionOption } from "../types";
 import { HandGrid as SharedHandGrid } from "@/common/HandGrid";
 
+/** Extract hex colour from Tailwind bg-[#xxxxxx] class */
+function extractHex(colour: string): string {
+  const m = colour.match(/#[0-9a-fA-F]{6}/);
+  return m ? m[0] : "#888888";
+}
+
 interface Props {
   result: SolverResult;
   selectedHand: string | null;
@@ -29,8 +35,32 @@ export const HandGrid = ({
       cellProps={(key) => {
         const hand = result.hands[key];
         if (!hand) return {};
-        const opt = actionOptions.find((a) => a.key === hand.bestAction);
+
         const ev = hand.evs[hand.bestAction] ?? 0;
+        const counts = hand.actionCounts;
+
+        // If we have actionCounts, build gradient stops; otherwise fall back to solid
+        if (counts) {
+          const total = Object.values(counts).reduce((a, b) => a + b, 0);
+          if (total > 0) {
+            const stops = actionOptions
+              .filter((opt) => (counts[opt.key] ?? 0) > 0)
+              .map((opt) => ({
+                color: extractHex(opt.colour),
+                percent: ((counts[opt.key] ?? 0) / total) * 100,
+              }));
+
+            return {
+              gradientStops: stops,
+              onClick: () => onSelectHand(key),
+              isSelected: key === selectedHand,
+              title: `${key}: ${hand.bestAction} (EV ${ev >= 0 ? "+" : ""}${ev.toFixed(1)})`,
+            };
+          }
+        }
+
+        // Fallback: solid colour
+        const opt = actionOptions.find((a) => a.key === hand.bestAction);
         return {
           colour: opt?.colour ?? "bg-muted text-muted-foreground",
           onClick: () => onSelectHand(key),

@@ -128,6 +128,14 @@ def _solve_mock(board: list[str], street: str, actions: list[str]) -> dict:
             })
 
         hands[key] = {"bestAction": best, "evs": evs, "combos": combos}
+
+        # Compute per-combo actionCounts for this hand key
+        combo_action_counts: dict[str, int] = {}
+        for c in combos:
+            ba = c["bestAction"]
+            combo_action_counts[ba] = combo_action_counts.get(ba, 0) + 1
+        hands[key]["actionCounts"] = combo_action_counts
+
         action_counts[best] += 1
         action_ev_sums[best] += evs[best]
 

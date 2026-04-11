@@ -319,7 +319,7 @@ def get_starting_range(
     pot_type: str,
     vs_position: str | None = None,
     observed_freqs: dict[str, float] | None = None,
-) -> dict[str, float]:
+) -> dict[tuple[Card, Card], float]:
     """Get a starting range for a position and pot type.
 
     pot_type values:
@@ -330,6 +330,8 @@ def get_starting_range(
     For BB in SRP, returns the flat-call range (no premiums).
     For BB in THREE_BET, returns the 3-bet range.
     vs_position indicates who the player was facing (the opener).
+
+    Returns a combo-keyed range dict mapping (Card, Card) -> frequency.
     """
     gto: dict[str, float] = {}
 
@@ -357,7 +359,7 @@ def get_starting_range(
     gto = dict(gto)
 
     if observed_freqs is None:
-        return gto
+        return _expand_range_to_combos(gto)
 
     blended: dict[str, float] = {}
     all_keys = set(gto) | set(observed_freqs)
@@ -365,7 +367,7 @@ def get_starting_range(
         g = gto.get(key, 0.0)
         o = observed_freqs.get(key, 0.0)
         blended[key] = GTO_WEIGHT * g + OBSERVED_WEIGHT * o
-    return blended
+    return _expand_range_to_combos(blended)
 
 
 def _hand_key_to_combos(hand_key: str) -> list[tuple[Card, Card]]:
@@ -395,6 +397,23 @@ def _hand_key_to_combos(hand_key: str) -> list[tuple[Card, Card]]:
         ]
 
 
+def _expand_range_to_combos(
+    hand_key_range: dict[str, float],
+) -> dict[tuple[Card, Card], float]:
+    """Convert a hand-key range to a combo-keyed range.
+
+    Each hand key (e.g. 'AKs') is expanded to its specific combos,
+    all inheriting the same frequency.
+    """
+    combo_range: dict[tuple[Card, Card], float] = {}
+    for hand_key, freq in hand_key_range.items():
+        if freq <= 0:
+            continue
+        for combo in _hand_key_to_combos(hand_key):
+            combo_range[combo] = freq
+    return combo_range
+
+
 def _cards_conflict(combo: tuple[Card, Card], board: list[Card]) -> bool:
     """Check if a combo shares any card with the board."""
     for card in combo:
@@ -418,7 +437,7 @@ def _classify_hand(
 
 def compute_hand_equity_vs_range(
     hero_triple: HandTriple,
-    villain_range: dict[str, float],
+    villain_range: dict[tuple[Card, Card], float],
     board: list[Card],
     street: str,
     classify_cache: dict[tuple[Card, Card], HandTriple] | None = None,
@@ -427,24 +446,16 @@ def compute_hand_equity_vs_range(
     total_weight = 0.0
     weighted_equity = 0.0
 
-    for hand_key, freq in villain_range.items():
-        if freq <= 0:
+    for combo, freq in villain_range.items():
+        if freq <= 0 or _cards_conflict(combo, board):
             continue
-        combos = _hand_key_to_combos(hand_key)
-        combo_equities = []
-        for combo in combos:
-            if _cards_conflict(combo, board):
-                continue
-            if classify_cache and combo in classify_cache:
-                villain_triple = classify_cache[combo]
-            else:
-                villain_triple = _classify_hand(combo, board)
-            eq = get_equity(hero_triple, villain_triple, street)
-            combo_equities.append(eq)
-        if combo_equities:
-            avg_eq = sum(combo_equities) / len(combo_equities)
-            weighted_equity += avg_eq * freq
-            total_weight += freq
+        if classify_cache and combo in classify_cache:
+            villain_triple = classify_cache[combo]
+        else:
+            villain_triple = _classify_hand(combo, board)
+        eq = get_equity(hero_triple, villain_triple, street)
+        weighted_equity += eq * freq
+        total_weight += freq
 
     return weighted_equity / total_weight if total_weight > 0 else 0.5
 
@@ -462,7 +473,7 @@ def build_classify_cache(
 
 
 def build_equity_map(
-    villain_range: dict[str, float],
+    villain_range: dict[tuple[Card, Card], float],
     board: list[Card],
     street: str,
     classify_cache: dict[tuple[Card, Card], HandTriple],
@@ -486,22 +497,22 @@ DAMPENING_FACTOR = 0.3
 
 
 def filter_range_by_equity(
-    range_: dict[str, float],
+    range_: dict[tuple[Card, Card], float],
     board: list[Card],
     street: str,
     raise_pct: float,
     call_pct: float,
     classify_cache: dict[tuple[Card, Card], HandTriple] | None = None,
-) -> tuple[dict[str, float], dict[str, float], dict[str, float]]:
+) -> tuple[dict[tuple[Card, Card], float], dict[tuple[Card, Card], float], dict[tuple[Card, Card], float]]:
     """Split a range into raise/call/fold sub-ranges by equity ranking.
 
-    Sorts hands by equity vs the full range, then assigns:
+    Sorts combos by equity vs the full range, then assigns:
       - Top raise_pct to raising range
       - Next call_pct to calling range
       - Remainder to folding range
 
-    Uses soft filtering: hands in the matching bucket keep full weight,
-    hands outside retain DAMPENING_FACTOR of their weight. This prevents
+    Uses soft filtering: combos in the matching bucket keep full weight,
+    combos outside retain DAMPENING_FACTOR of their weight. This prevents
     ranges from collapsing to nothing over multiple streets.
 
     Returns (raising_range, calling_range, folding_range).
@@ -512,45 +523,35 @@ def filter_range_by_equity(
     else:
         equity_map = None
 
-    # Compute equity for each hand in range
-    equities: list[tuple[str, float, float]] = []  # (hand_key, freq, equity)
+    # Compute equity for each combo in range
+    equities: list[tuple[tuple[Card, Card], float, float]] = []  # (combo, freq, equity)
 
-    for hand_key, freq in range_.items():
-        if freq <= 0:
+    for combo, freq in range_.items():
+        if freq <= 0 or _cards_conflict(combo, board):
             continue
-        combos = _hand_key_to_combos(hand_key)
 
-        # Average equity across all valid combos for this hand key
-        combo_eqs: list[float] = []
-        for combo in combos:
-            if _cards_conflict(combo, board):
-                continue
-            if classify_cache and combo in classify_cache:
-                triple = classify_cache[combo]
-            else:
-                triple = _classify_hand(combo, board)
+        if classify_cache and combo in classify_cache:
+            triple = classify_cache[combo]
+        else:
+            triple = _classify_hand(combo, board)
 
-            if equity_map and triple in equity_map:
-                combo_eqs.append(equity_map[triple])
-            else:
-                combo_eqs.append(
-                    compute_hand_equity_vs_range(triple, range_, board, street, classify_cache)
-                )
+        if equity_map and triple in equity_map:
+            eq = equity_map[triple]
+        else:
+            eq = compute_hand_equity_vs_range(
+                triple, range_, board, street, classify_cache
+            )
+        equities.append((combo, freq, eq))
 
-        if not combo_eqs:
-            continue
-        eq = sum(combo_eqs) / len(combo_eqs)
-        equities.append((hand_key, freq, eq))
-
-    # Sort by equity descending (strongest hands first)
+    # Sort by equity descending (strongest combos first)
     equities.sort(key=lambda x: x[2], reverse=True)
 
     total_combos = sum(freq for _, freq, _ in equities)
     if total_combos <= 0:
         return {}, {}, {}
 
-    # First pass: determine which bucket each hand falls into
-    buckets: list[str] = []  # "raise", "call", or "fold" per hand
+    # First pass: determine which bucket each combo falls into
+    buckets: list[str] = []  # "raise", "call", or "fold" per combo
     cumulative = 0.0
     raise_threshold = raise_pct / 100.0
     call_threshold = (raise_pct + call_pct) / 100.0
@@ -566,23 +567,23 @@ def filter_range_by_equity(
         cumulative += freq
 
     # Second pass: soft-assign weights with dampening
-    raising_range: dict[str, float] = {}
-    calling_range: dict[str, float] = {}
-    folding_range: dict[str, float] = {}
+    raising_range: dict[tuple[Card, Card], float] = {}
+    calling_range: dict[tuple[Card, Card], float] = {}
+    folding_range: dict[tuple[Card, Card], float] = {}
 
-    for i, (hand_key, freq, _) in enumerate(equities):
+    for i, (combo, freq, _) in enumerate(equities):
         bucket = buckets[i]
         if bucket == "raise":
-            raising_range[hand_key] = freq
-            calling_range[hand_key] = freq * DAMPENING_FACTOR
-            folding_range[hand_key] = freq * DAMPENING_FACTOR
+            raising_range[combo] = freq
+            calling_range[combo] = freq * DAMPENING_FACTOR
+            folding_range[combo] = freq * DAMPENING_FACTOR
         elif bucket == "call":
-            raising_range[hand_key] = freq * DAMPENING_FACTOR
-            calling_range[hand_key] = freq
-            folding_range[hand_key] = freq * DAMPENING_FACTOR
+            raising_range[combo] = freq * DAMPENING_FACTOR
+            calling_range[combo] = freq
+            folding_range[combo] = freq * DAMPENING_FACTOR
         else:
-            raising_range[hand_key] = freq * DAMPENING_FACTOR
-            calling_range[hand_key] = freq * DAMPENING_FACTOR
-            folding_range[hand_key] = freq
+            raising_range[combo] = freq * DAMPENING_FACTOR
+            calling_range[combo] = freq * DAMPENING_FACTOR
+            folding_range[combo] = freq
 
     return raising_range, calling_range, folding_range
