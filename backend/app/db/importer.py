@@ -126,6 +126,7 @@ _SPOT_COLS = (
     "hand_id", "node_key", "next_action",
     "hero_ip", "hero_pfr", "pot_type", "board_type",
     "turn_runout", "river_runout", "played_on", "is_pool",
+    "hero_hand", "villain_hand",
 )
 
 
@@ -318,6 +319,8 @@ def _spot_row(s) -> tuple:
         _enum_val(s.river_runout),
         str(s.played_on),
         int(s.is_pool),
+        _hole_cards_str(s.hero_hand),
+        _hole_cards_str(s.villain_hand),
     )
 
 

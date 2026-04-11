@@ -211,3 +211,5 @@ class ObservedSpot:
 	river_runout: Runout | None
 	played_on: date
 	is_pool: bool
+	hero_hand: HoleCards | None = None
+	villain_hand: HoleCards | None = None

@@ -686,16 +686,25 @@ def analyze_line(ctx: HandContext) -> LineEvent | None:
 def emit_observed_spots(ctx: HandContext, is_pool: bool = False) -> list[ObservedSpot]:
 	"""Walk AST streets and emit one ObservedSpot per action + terminal at showdown."""
 	spots: list[ObservedSpot] = []
+	ast = ctx.ast
+	player = ctx.perspective_player
+
+	hero_hand = ast.shown_cards.get(player) if player != "Hero" else (ast.hero_hole_cards or ast.shown_cards.get("Hero"))
+	villain_name = next((p for p in _get_flop_players(ast) if p != player), None)
+	villain_hand = ast.shown_cards.get(villain_name) if villain_name else None
+
 	shared = dict(
-		hand_id=ctx.ast.hand_id,
+		hand_id=ast.hand_id,
 		hero_ip=ctx.hero_in_position,
 		hero_pfr=ctx.hero_preflop_raiser,
 		pot_type=ctx.pot_type,
 		board_type=ctx.board_type,
 		turn_runout=None,
 		river_runout=None,
-		played_on=ctx.ast.played_on,
+		played_on=ast.played_on,
 		is_pool=is_pool,
+		hero_hand=hero_hand,
+		villain_hand=villain_hand,
 	)
 
 	def walk_street(actions: list[PlayerAction], prefix: str) -> str:
@@ -709,18 +718,18 @@ def emit_observed_spots(ctx: HandContext, is_pool: bool = False) -> list[Observe
 			node_key = f"{node_key}_{action.type.value}"
 		return node_key
 
-	if ctx.ast.flop:
-		flop_end_key = walk_street(ctx.ast.flop.actions, "FLOP")
+	if ast.flop:
+		flop_end_key = walk_street(ast.flop.actions, "FLOP")
 
-		if ctx.ast.turn:
+		if ast.turn:
 			shared["turn_runout"] = ctx.turn_runout
 			turn_prefix = f"{flop_end_key}_TURN"
-			turn_end_key = walk_street(ctx.ast.turn.actions, turn_prefix)
+			turn_end_key = walk_street(ast.turn.actions, turn_prefix)
 
-			if ctx.ast.river:
+			if ast.river:
 				shared["river_runout"] = ctx.river_runout
 				river_prefix = f"{turn_end_key}_RIVER"
-				river_end_key = walk_street(ctx.ast.river.actions, river_prefix)
+				river_end_key = walk_street(ast.river.actions, river_prefix)
 
 				# Terminal spot at showdown
 				spots.append(ObservedSpot(

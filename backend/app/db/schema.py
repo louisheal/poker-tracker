@@ -175,7 +175,9 @@ TABLES = {
             turn_runout  INTEGER,
             river_runout INTEGER,
             played_on    TEXT NOT NULL,
-            is_pool      INTEGER NOT NULL DEFAULT 0
+            is_pool      INTEGER NOT NULL DEFAULT 0,
+            hero_hand    TEXT,
+            villain_hand TEXT
         )
     """,
 }

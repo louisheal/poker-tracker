@@ -442,6 +442,9 @@ def compute_hand_equity(
     return weighted_equity / total_weight if total_weight > 0 else 0.5
 
 
+DAMPENING_FACTOR = 0.3
+
+
 def filter_range_by_equity(
     range_: dict[str, float],
     board: list[Card],
@@ -455,6 +458,10 @@ def filter_range_by_equity(
       - Top raise_pct to raising range
       - Next call_pct to calling range
       - Remainder to folding range
+
+    Uses soft filtering: hands in the matching bucket keep full weight,
+    hands outside retain DAMPENING_FACTOR of their weight. This prevents
+    ranges from collapsing to nothing over multiple streets.
 
     Returns (raising_range, calling_range, folding_range).
     """
@@ -484,22 +491,40 @@ def filter_range_by_equity(
     if total_combos <= 0:
         return {}, {}, {}
 
-    raising_range: dict[str, float] = {}
-    calling_range: dict[str, float] = {}
-    folding_range: dict[str, float] = {}
-
+    # First pass: determine which bucket each hand falls into
+    buckets: list[str] = []  # "raise", "call", or "fold" per hand
     cumulative = 0.0
     raise_threshold = raise_pct / 100.0
     call_threshold = (raise_pct + call_pct) / 100.0
 
-    for hand_key, freq, _ in equities:
+    for _, freq, _ in equities:
         position = cumulative / total_combos
         if position < raise_threshold:
-            raising_range[hand_key] = freq
+            buckets.append("raise")
         elif position < call_threshold:
-            calling_range[hand_key] = freq
+            buckets.append("call")
         else:
-            folding_range[hand_key] = freq
+            buckets.append("fold")
         cumulative += freq
+
+    # Second pass: soft-assign weights with dampening
+    raising_range: dict[str, float] = {}
+    calling_range: dict[str, float] = {}
+    folding_range: dict[str, float] = {}
+
+    for i, (hand_key, freq, _) in enumerate(equities):
+        bucket = buckets[i]
+        if bucket == "raise":
+            raising_range[hand_key] = freq
+            calling_range[hand_key] = freq * DAMPENING_FACTOR
+            folding_range[hand_key] = freq * DAMPENING_FACTOR
+        elif bucket == "call":
+            raising_range[hand_key] = freq * DAMPENING_FACTOR
+            calling_range[hand_key] = freq
+            folding_range[hand_key] = freq * DAMPENING_FACTOR
+        else:
+            raising_range[hand_key] = freq * DAMPENING_FACTOR
+            calling_range[hand_key] = freq * DAMPENING_FACTOR
+            folding_range[hand_key] = freq
 
     return raising_range, calling_range, folding_range
