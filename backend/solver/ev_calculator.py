@@ -424,6 +424,14 @@ def solve_spot(
     # Build strength map once for ALL valid combos
     strength_map = build_strength_map(valid_combos, board) if board else {}
 
+    # Compute equity vs full villain range for each combo (for display)
+    combo_equity: dict[tuple[Card, Card], float] = {}
+    if board and street != "preflop" and strength_map:
+        for combo in valid_combos:
+            combo_equity[combo] = compute_equity_by_strength(
+                combo, villain_range, strength_map
+            )
+
     # Per-combo results: combo -> {action_key -> ev}
     combo_evs: dict[tuple[Card, Card], dict[str, float]] = {c: {} for c in valid_combos}
 
@@ -537,6 +545,7 @@ def solve_spot(
             "bestAction": best_action,
             "ev": evs.get(best_action, 0.0),
             "evs": dict(evs),
+            "equity": round(combo_equity.get(combo, 0.5), 3),
         }
 
         if hand_key not in hands:
@@ -554,6 +563,9 @@ def solve_spot(
             data["evs"][action_key] = round(sum(action_evs) / len(action_evs), 2)
 
         data["bestAction"] = max(data["evs"], key=lambda k: data["evs"][k]) if data["evs"] else ""
+
+        combo_equities = [c["equity"] for c in combos_list]
+        data["equity"] = round(sum(combo_equities) / len(combo_equities), 3)
 
     # Action summaries
     action_summaries: dict[str, dict] = {}

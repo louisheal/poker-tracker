@@ -38,6 +38,7 @@ export const HandGrid = ({
 
         const ev = hand.evs[hand.bestAction] ?? 0;
         const counts = hand.actionCounts;
+        const eqPct = (hand.equity * 100).toFixed(1);
 
         // If we have actionCounts, build gradient stops; otherwise fall back to solid
         if (counts) {
@@ -54,7 +55,7 @@ export const HandGrid = ({
               gradientStops: stops,
               onClick: () => onSelectHand(key),
               isSelected: key === selectedHand,
-              title: `${key}: ${hand.bestAction} (EV ${ev >= 0 ? "+" : ""}${ev.toFixed(1)})`,
+              title: `${key}: ${hand.bestAction} (EV ${ev >= 0 ? "+" : ""}${ev.toFixed(1)}) | Equity ${eqPct}%`,
             };
           }
         }
@@ -65,7 +66,7 @@ export const HandGrid = ({
           colour: opt?.colour ?? "bg-muted text-muted-foreground",
           onClick: () => onSelectHand(key),
           isSelected: key === selectedHand,
-          title: `${key}: ${hand.bestAction} (EV ${ev >= 0 ? "+" : ""}${ev.toFixed(1)})`,
+          title: `${key}: ${hand.bestAction} (EV ${ev >= 0 ? "+" : ""}${ev.toFixed(1)}) | Equity ${eqPct}%`,
         };
       }}
     />
