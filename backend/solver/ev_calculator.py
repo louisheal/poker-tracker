@@ -10,10 +10,7 @@ from __future__ import annotations
 import torch
 
 from playing_cards_lib.core import Card, Rank, Suit
-from playing_cards_lib.poker import HoleCards
 from app.models.enums import Action
-from app.parsers.hand_types import classify_made_hand, classify_flush_draw, classify_straight_draw
-from app.parsers.equity import HandTriple
 
 from solver.model import SolverTransformer
 from solver.models import Token, TokenType
@@ -23,10 +20,11 @@ from solver.dataset import (
 )
 from solver.ranges import (
     get_starting_range,
-    compute_hand_equity_vs_range,
     filter_range_by_equity,
-    build_classify_cache,
-    build_equity_map,
+    build_strength_map,
+    compute_equity_by_strength,
+    compute_equity_exact,
+    _normalize_combo,
     _cards_conflict,
 )
 
@@ -192,14 +190,6 @@ def _tensorize_sequence(tokens: list[Token]) -> dict[str, torch.Tensor]:
     }
 
 
-def _classify_hand(hole: tuple[Card, Card], board: list[Card]) -> HandTriple:
-    hc = HoleCards(hole[0], hole[1])
-    made = classify_made_hand(hc, board)
-    fd = classify_flush_draw(hc, board)
-    sd = classify_straight_draw(hc, board)
-    return (made, fd, sd)
-
-
 def _combo_to_hand_key(combo: tuple[Card, Card]) -> str:
     """Convert a specific combo to its canonical hand key (e.g. AKs, QQ, T9o).
 
@@ -317,9 +307,9 @@ def compute_current_ranges(
         action_street = action_to_street.get(i, 0)
         board_at_action = board[:BOARD_SIZES.get(action_street, len(board))]
 
-        # Build classify cache for this board slice
+        # Build strength map for this board slice
         all_combos_for_board = [c for c in ALL_COMBOS if not _cards_conflict(c, board_at_action)]
-        action_cache = build_classify_cache(all_combos_for_board, board_at_action)
+        strength_map = build_strength_map(all_combos_for_board, board_at_action)
 
         # Build sequence up to this decision point (before this action)
         prior_postflop = [f"{l}:{a}" for l, a in postflop_actions[:i]]
@@ -354,7 +344,7 @@ def compute_current_ranges(
                 range_to_narrow, board_at_action, street_name,
                 raise_pct=bet_pct * 100,
                 call_pct=0,
-                classify_cache=action_cache,
+                strength_map=strength_map,
             )
 
             narrowed = checking_range if action_key == "Check" else betting_range
@@ -372,7 +362,7 @@ def compute_current_ranges(
                 range_to_narrow, board_at_action, street_name,
                 raise_pct=raise_pct * 100,
                 call_pct=call_pct * 100,
-                classify_cache=action_cache,
+                strength_map=strength_map,
             )
 
             if action_key == "Call":
@@ -433,8 +423,13 @@ def solve_spot(
     # Filter combos that don't conflict with the board
     valid_combos = [c for c in ALL_COMBOS if not _cards_conflict(c, board)]
 
-    # Build classification cache once for ALL valid combos
-    classify_cache = build_classify_cache(valid_combos, board) if board else {}
+    # Build strength map once for ALL valid combos
+    strength_map = build_strength_map(valid_combos, board) if board else {}
+
+    # Compute exact equity vs full villain range for each combo (for display)
+    combo_equity: dict[tuple[Card, Card], float] = {}
+    if board and street != "preflop":
+        combo_equity = compute_equity_exact(valid_combos, villain_range, board)
 
     # Per-combo results: combo -> {action_key -> ev}
     combo_evs: dict[tuple[Card, Card], dict[str, float]] = {c: {} for c in valid_combos}
@@ -501,37 +496,21 @@ def solve_spot(
                 villain_range, board, street,
                 raise_pct=raise_pct * 100,
                 call_pct=call_pct * 100,
-                classify_cache=classify_cache,
+                strength_map=strength_map,
             )
             equity_range = calling_range
         else:
             # Check/Call/Fold: equity vs villain's full (narrowed) range
             equity_range = villain_range
 
-        # Build equity map for this action's equity_range
-        if equity_range and board and street != "preflop":
-            action_equity_map = build_equity_map(
-                equity_range, board, street, classify_cache
-            )
-        else:
-            action_equity_map = None
-
         # Compute EV per combo
         for combo in valid_combos:
             if street == "preflop" or not board:
                 eq_vs_callers = 0.5
             else:
-                hero_triple = classify_cache.get(combo) or _classify_hand(combo, board)
-                # Check/Call: equity_range = villain_range (full, unfiltered)
-                # Aggressive: equity_range = calling_range (filtered sub-range)
-                # equity map is rebuilt per equity_range, so this handles both correctly
-                if action_equity_map and hero_triple in action_equity_map:
-                    eq_vs_callers = action_equity_map[hero_triple]
-                else:
-                    eq_vs_callers = compute_hand_equity_vs_range(
-                        hero_triple, equity_range, board, street,
-                        classify_cache=classify_cache,
-                    ) if equity_range else 0.5
+                eq_vs_callers = compute_equity_by_strength(
+                    combo, equity_range, strength_map
+                ) if equity_range else 0.5
 
             if action_key == "Fold":
                 ev = 0.0
@@ -565,6 +544,7 @@ def solve_spot(
             "bestAction": best_action,
             "ev": evs.get(best_action, 0.0),
             "evs": dict(evs),
+            "equity": round(combo_equity.get(_normalize_combo(combo), 0.5), 3),
         }
 
         if hand_key not in hands:
@@ -582,6 +562,9 @@ def solve_spot(
             data["evs"][action_key] = round(sum(action_evs) / len(action_evs), 2)
 
         data["bestAction"] = max(data["evs"], key=lambda k: data["evs"][k]) if data["evs"] else ""
+
+        combo_equities = [c["equity"] for c in combos_list]
+        data["equity"] = round(sum(combo_equities) / len(combo_equities), 3)
 
     # Action summaries
     action_summaries: dict[str, dict] = {}

@@ -8,6 +8,17 @@ function extractHex(colour: string): string {
   return m ? m[0] : "#888888";
 }
 
+/** Build tooltip string with per-combo equity breakdown */
+function buildTooltip(key: string, hand: { bestAction: string; evs: Record<string, number>; equity: number; combos: { combo: string; equity: number }[] }): string {
+  const ev = hand.evs[hand.bestAction] ?? 0;
+  const eqPct = (hand.equity * 100).toFixed(1);
+  const header = `${key}: ${hand.bestAction} (EV ${ev >= 0 ? "+" : ""}${ev.toFixed(1)}) | Equity ${eqPct}%`;
+  const comboLines = hand.combos
+    .map((c) => `${c.combo}: ${(c.equity * 100).toFixed(1)}%`)
+    .join("  ");
+  return `${header}\n${comboLines}`;
+}
+
 interface Props {
   result: SolverResult;
   selectedHand: string | null;
@@ -54,7 +65,7 @@ export const HandGrid = ({
               gradientStops: stops,
               onClick: () => onSelectHand(key),
               isSelected: key === selectedHand,
-              title: `${key}: ${hand.bestAction} (EV ${ev >= 0 ? "+" : ""}${ev.toFixed(1)})`,
+              title: buildTooltip(key, hand),
             };
           }
         }
@@ -65,7 +76,7 @@ export const HandGrid = ({
           colour: opt?.colour ?? "bg-muted text-muted-foreground",
           onClick: () => onSelectHand(key),
           isSelected: key === selectedHand,
-          title: `${key}: ${hand.bestAction} (EV ${ev >= 0 ? "+" : ""}${ev.toFixed(1)})`,
+          title: buildTooltip(key, hand),
         };
       }}
     />

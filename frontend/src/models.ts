@@ -205,6 +205,7 @@ export interface SolverComboResult {
   bestAction: string;
   ev: number;
   evs: Record<string, number>;
+  equity: number;
 }
 
 export interface SolverHandResult {
@@ -212,6 +213,7 @@ export interface SolverHandResult {
   evs: Record<string, number>;
   combos: SolverComboResult[];
   actionCounts?: Record<string, number>;
+  equity: number;
 }
 
 export interface SolverActionSummary {
