@@ -416,11 +416,12 @@ def _classify_hand(
     return (made, fd, sd)
 
 
-def compute_hand_equity(
+def compute_hand_equity_vs_range(
     hero_triple: HandTriple,
     villain_range: dict[str, float],
     board: list[Card],
     street: str,
+    classify_cache: dict[tuple[Card, Card], HandTriple] | None = None,
 ) -> float:
     """Weighted average equity of a hero hand triple vs a villain range."""
     total_weight = 0.0
@@ -430,16 +431,55 @@ def compute_hand_equity(
         if freq <= 0:
             continue
         combos = _hand_key_to_combos(hand_key)
+        combo_equities = []
         for combo in combos:
             if _cards_conflict(combo, board):
                 continue
-            villain_triple = _classify_hand(combo, board)
+            if classify_cache and combo in classify_cache:
+                villain_triple = classify_cache[combo]
+            else:
+                villain_triple = _classify_hand(combo, board)
             eq = get_equity(hero_triple, villain_triple, street)
-            weighted_equity += eq * freq
+            combo_equities.append(eq)
+        if combo_equities:
+            avg_eq = sum(combo_equities) / len(combo_equities)
+            weighted_equity += avg_eq * freq
             total_weight += freq
-            break  # Use first valid combo as representative
 
     return weighted_equity / total_weight if total_weight > 0 else 0.5
+
+
+def build_classify_cache(
+    combos: list[tuple[Card, Card]],
+    board: list[Card],
+) -> dict[tuple[Card, Card], HandTriple]:
+    """Pre-classify all combos against a board. O(n) where n = len(combos)."""
+    cache: dict[tuple[Card, Card], HandTriple] = {}
+    for combo in combos:
+        if not _cards_conflict(combo, board):
+            cache[combo] = _classify_hand(combo, board)
+    return cache
+
+
+def build_equity_map(
+    villain_range: dict[str, float],
+    board: list[Card],
+    street: str,
+    classify_cache: dict[tuple[Card, Card], HandTriple],
+) -> dict[HandTriple, float]:
+    """Precompute equity for every unique HandTriple vs a villain range.
+
+    Typically ~50-100 unique triples exist for a given board,
+    so this runs compute_hand_equity_vs_range ~50-100 times instead of ~1176.
+    """
+    unique_triples = set(classify_cache.values())
+
+    equity_map: dict[HandTriple, float] = {}
+    for triple in unique_triples:
+        equity_map[triple] = compute_hand_equity_vs_range(
+            triple, villain_range, board, street, classify_cache
+        )
+    return equity_map
 
 
 DAMPENING_FACTOR = 0.3
@@ -451,6 +491,7 @@ def filter_range_by_equity(
     street: str,
     raise_pct: float,
     call_pct: float,
+    classify_cache: dict[tuple[Card, Card], HandTriple] | None = None,
 ) -> tuple[dict[str, float], dict[str, float], dict[str, float]]:
     """Split a range into raise/call/fold sub-ranges by equity ranking.
 
@@ -465,6 +506,12 @@ def filter_range_by_equity(
 
     Returns (raising_range, calling_range, folding_range).
     """
+    # Build equity map once for this range
+    if classify_cache:
+        equity_map = build_equity_map(range_, board, street, classify_cache)
+    else:
+        equity_map = None
+
     # Compute equity for each hand in range
     equities: list[tuple[str, float, float]] = []  # (hand_key, freq, equity)
 
@@ -472,16 +519,27 @@ def filter_range_by_equity(
         if freq <= 0:
             continue
         combos = _hand_key_to_combos(hand_key)
-        valid_combo = None
-        for combo in combos:
-            if not _cards_conflict(combo, board):
-                valid_combo = combo
-                break
-        if valid_combo is None:
-            continue
 
-        triple = _classify_hand(valid_combo, board)
-        eq = compute_hand_equity(triple, range_, board, street)
+        # Average equity across all valid combos for this hand key
+        combo_eqs: list[float] = []
+        for combo in combos:
+            if _cards_conflict(combo, board):
+                continue
+            if classify_cache and combo in classify_cache:
+                triple = classify_cache[combo]
+            else:
+                triple = _classify_hand(combo, board)
+
+            if equity_map and triple in equity_map:
+                combo_eqs.append(equity_map[triple])
+            else:
+                combo_eqs.append(
+                    compute_hand_equity_vs_range(triple, range_, board, street, classify_cache)
+                )
+
+        if not combo_eqs:
+            continue
+        eq = sum(combo_eqs) / len(combo_eqs)
         equities.append((hand_key, freq, eq))
 
     # Sort by equity descending (strongest hands first)

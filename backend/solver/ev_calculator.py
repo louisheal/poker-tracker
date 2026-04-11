@@ -23,8 +23,10 @@ from solver.dataset import (
 )
 from solver.ranges import (
     get_starting_range,
-    compute_hand_equity,
+    compute_hand_equity_vs_range,
     filter_range_by_equity,
+    build_classify_cache,
+    build_equity_map,
     _cards_conflict,
 )
 
@@ -315,6 +317,10 @@ def compute_current_ranges(
         action_street = action_to_street.get(i, 0)
         board_at_action = board[:BOARD_SIZES.get(action_street, len(board))]
 
+        # Build classify cache for this board slice
+        all_combos_for_board = [c for c in ALL_COMBOS if not _cards_conflict(c, board_at_action)]
+        action_cache = build_classify_cache(all_combos_for_board, board_at_action)
+
         # Build sequence up to this decision point (before this action)
         prior_postflop = [f"{l}:{a}" for l, a in postflop_actions[:i]]
         tokens = _build_sequence_tokens(board_at_action, preflop_actions + prior_postflop)
@@ -348,6 +354,7 @@ def compute_current_ranges(
                 range_to_narrow, board_at_action, street_name,
                 raise_pct=bet_pct * 100,
                 call_pct=0,
+                classify_cache=action_cache,
             )
 
             narrowed = checking_range if action_key == "Check" else betting_range
@@ -365,6 +372,7 @@ def compute_current_ranges(
                 range_to_narrow, board_at_action, street_name,
                 raise_pct=raise_pct * 100,
                 call_pct=call_pct * 100,
+                classify_cache=action_cache,
             )
 
             if action_key == "Call":
@@ -414,10 +422,23 @@ def solve_spot(
     # Filter combos that don't conflict with the board
     valid_combos = [c for c in ALL_COMBOS if not _cards_conflict(c, board)]
 
+    # Build classification cache once for ALL valid combos
+    classify_cache = build_classify_cache(valid_combos, board) if board else {}
+
     # Per-combo results: combo -> {action_key -> ev}
     combo_evs: dict[tuple[Card, Card], dict[str, float]] = {c: {} for c in valid_combos}
 
     debug_model_output: dict[str, dict[str, float]] = {}
+
+    # Compute call cost from the last villain action (needed for Call EV).
+    # When "Call" is in hero_actions, the last action is always a villain bet/raise.
+    call_amount_bb = 0.0
+    if action_prefix:
+        last_action_key = action_prefix[-1].split(":")[-1]
+        last_bet_pct = ACTION_TO_BET_PCT.get(last_action_key, 0.0)
+        if last_bet_pct > 0:
+            pot_before_villain = pot_bb / (1.0 + last_bet_pct / 100.0)
+            call_amount_bb = pot_before_villain * last_bet_pct / 100.0
 
     for action_key in hero_actions:
         bet_pct = ACTION_TO_BET_PCT.get(action_key, 0.0)
@@ -436,7 +457,13 @@ def solve_spot(
             probs = torch.softmax(logits, dim=-1).cpu()[0]
 
         fold_pct = probs[0].item()
-        call_pct = probs[2].item() + probs[1].item()
+        # When hero bets/raises, villain can fold/call/raise (CHECK+CALL = continue).
+        # When hero checks/calls, villain responds to that — only CALL is "continue."
+        is_aggressive = action_key not in ("Fold", "Check", "Call")
+        if is_aggressive:
+            call_pct = probs[2].item() + probs[1].item()
+        else:
+            call_pct = probs[2].item()
         raise_pct = probs[3].item() + probs[4].item()
 
         total = fold_pct + call_pct + raise_pct
@@ -457,36 +484,50 @@ def solve_spot(
         }
 
         # Determine equity range based on action type
-        is_aggressive = action_key not in ("Fold", "Check", "Call")
-
         if is_aggressive and street != "preflop" and board:
             # Villain responds to hero's bet/raise: filter into fold/call/raise
             raising_range, calling_range, folding_range = filter_range_by_equity(
                 villain_range, board, street,
                 raise_pct=raise_pct * 100,
                 call_pct=call_pct * 100,
+                classify_cache=classify_cache,
             )
             equity_range = calling_range
         else:
             # Check/Call/Fold: equity vs villain's full (narrowed) range
             equity_range = villain_range
 
+        # Build equity map for this action's equity_range
+        if equity_range and board and street != "preflop":
+            action_equity_map = build_equity_map(
+                equity_range, board, street, classify_cache
+            )
+        else:
+            action_equity_map = None
+
         # Compute EV per combo
         for combo in valid_combos:
             if street == "preflop" or not board:
                 eq_vs_callers = 0.5
             else:
-                hero_triple = _classify_hand(combo, board)
-                eq_vs_callers = compute_hand_equity(
-                    hero_triple, equity_range, board, street,
-                ) if equity_range else 0.5
+                hero_triple = classify_cache.get(combo) or _classify_hand(combo, board)
+                # Check/Call: equity_range = villain_range (full, unfiltered)
+                # Aggressive: equity_range = calling_range (filtered sub-range)
+                # equity map is rebuilt per equity_range, so this handles both correctly
+                if action_equity_map and hero_triple in action_equity_map:
+                    eq_vs_callers = action_equity_map[hero_triple]
+                else:
+                    eq_vs_callers = compute_hand_equity_vs_range(
+                        hero_triple, equity_range, board, street,
+                        classify_cache=classify_cache,
+                    ) if equity_range else 0.5
 
             if action_key == "Fold":
                 ev = 0.0
             elif action_key == "Check":
                 ev = eq_vs_callers * pot_bb
             elif action_key == "Call":
-                ev = eq_vs_callers * pot_bb - bet_bb * (1 - eq_vs_callers)
+                ev = eq_vs_callers * (pot_bb + call_amount_bb) - call_amount_bb
             else:
                 ev = (
                     fold_pct * pot_bb

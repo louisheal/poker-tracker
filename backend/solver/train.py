@@ -195,7 +195,12 @@ def train(max_files: int | None = None, use_cache: bool = True) -> None:
                 f"Batch size: {BATCH_SIZE}")
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE)
-    criterion = nn.CrossEntropyLoss()
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=NUM_EPOCHS)
+
+    label_counts = torch.bincount(train_data["labels"].long(), minlength=5).float().clamp(min=1)
+    class_weights = (1.0 / label_counts).to(device)
+    class_weights /= class_weights.sum()
+    criterion = nn.CrossEntropyLoss(weight=class_weights)
 
     best_val_loss = float("inf")
 
@@ -217,6 +222,7 @@ def train(max_files: int | None = None, use_cache: bool = True) -> None:
 
             optimizer.zero_grad()
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
 
             train_loss_sum += loss.detach() * labels.size(0)
@@ -269,6 +275,8 @@ def train(max_files: int | None = None, use_cache: bool = True) -> None:
         # Save epoch checkpoint
         epoch_path = os.path.join(CHECKPOINT_DIR, f"epoch_{epoch + 1}.pt")
         torch.save(model.state_dict(), epoch_path)
+
+        scheduler.step()
 
     # If no validation was run, save final as best
     if not has_val:

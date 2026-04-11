@@ -105,6 +105,11 @@ class SolverTransformer(nn.Module):
 
         token_emb = card_emb * is_card + action_emb * is_action + street_emb * is_street
 
+        # Zero out embeddings at padding positions to prevent padding (token_type=0)
+        # from receiving real card embeddings and corrupting rank=0 gradients
+        pad_mask = batch["padding_mask"].unsqueeze(-1).float()
+        token_emb = token_emb * (1.0 - pad_mask)
+
         # Add type + positional embeddings
         x = token_emb + self.type_embed(batch["token_types"]) + self.pos_embed(positions)
 

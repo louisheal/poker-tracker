@@ -225,14 +225,30 @@ def _solve_real(
 
     villain_position = ip_pos if hero_position == oop_pos else oop_pos
 
-    # Estimate pot size from the action prefix
-    pot_bb = 2.5  # default SRP pot
+    # Estimate pot size from the action prefix.
+    # Preflop amounts are in BB (not pot-relative); postflop uses pot %.
+    pot_bb = 1.5  # SB + BB
+    in_preflop = True
+    prev_raise_total = 0.0
     for a in actions:
         parts = a.split(":")
+        label = parts[0] if len(parts) > 1 else ""
         act = parts[-1] if len(parts) > 1 else parts[0]
-        pct = _ACTION_BET_PCT.get(act, 0)
-        if pct > 0:
-            pot_bb += (pct / 100.0) * pot_bb
+
+        if label in ("OOP", "IP"):
+            in_preflop = False
+
+        if in_preflop:
+            if act == "Raise":
+                # Standard open: ~2.5BB total, 3bet: ~3x last raise
+                pot_bb += max(2.5, prev_raise_total * 3) - prev_raise_total
+                prev_raise_total = max(2.5, prev_raise_total * 3)
+            elif act == "Call":
+                pot_bb += max(prev_raise_total - 1.0, 1.0)
+        else:
+            pct = _ACTION_BET_PCT.get(act, 0)
+            if pct > 0:
+                pot_bb += (pct / 100.0) * pot_bb
 
     return solve_spot(
         model=model,

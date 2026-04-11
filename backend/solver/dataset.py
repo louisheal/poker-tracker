@@ -105,32 +105,53 @@ def compute_running_pot(ast: HandAST) -> tuple[list[float], float]:
     """Compute pot size in BB before each action (preflop + postflop).
 
     Returns (list of pot-before-each-action, bb_amount).
+
+    For raises, raise_to is the total bet (including the call portion).
+    We track round_invested per player to compute only the incremental
+    amount added to the pot, matching how analyzers.py handles this.
     """
     bb = _big_blind_amount(ast)
     pot = sum(b.amount for b in ast.blinds) / bb
 
     pots: list[float] = []
 
+    # Track each player's investment in the current betting round
+    round_invested: dict[str, float] = {}
+    for blind in ast.blinds:
+        round_invested[blind.player] = round_invested.get(blind.player, 0.0) + blind.amount
+
     # Preflop actions
     for action in ast.preflop:
         pots.append(pot)
+        player = action.player
         if action.type == Action.CALL and action.amount is not None:
             pot += action.amount / bb
+            round_invested[player] = round_invested.get(player, 0.0) + action.amount
         elif action.type == Action.BET and action.amount is not None:
             pot += action.amount / bb
+            round_invested[player] = round_invested.get(player, 0.0) + action.amount
         elif action.type == Action.RAISE and action.raise_to is not None:
-            pot += action.raise_to / bb
+            prev = round_invested.get(player, 0.0)
+            new_money = action.raise_to - prev
+            pot += new_money / bb
+            round_invested[player] = action.raise_to
 
     # Postflop streets
     for street in [ast.flop, ast.turn, ast.river]:
         if street is None:
             break
+        round_invested = {}
         for action in street.actions:
             pots.append(pot)
+            player = action.player
             if action.type in (Action.BET, Action.CALL) and action.amount is not None:
                 pot += action.amount / bb
+                round_invested[player] = round_invested.get(player, 0.0) + action.amount
             elif action.type == Action.RAISE and action.raise_to is not None:
-                pot += action.raise_to / bb
+                prev = round_invested.get(player, 0.0)
+                new_money = action.raise_to - prev
+                pot += new_money / bb
+                round_invested[player] = action.raise_to
 
     return pots, bb
 
