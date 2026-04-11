@@ -19,6 +19,9 @@ interface Props {
   /** Solver mode: dynamic N-stop gradient for combo-level action distribution */
   gradientStops?: GradientStop[];
 
+  /** Background opacity (0-1) for dimming cells. Text stays fully visible. */
+  bgOpacity?: number;
+
   onClick?: () => void;
   isSelected?: boolean;
   title?: string;
@@ -31,6 +34,7 @@ export const GridCell = ({
   calls = 0,
   colour,
   gradientStops,
+  bgOpacity,
   onClick,
   isSelected = false,
   title,
@@ -88,6 +92,25 @@ export const GridCell = ({
     "box-border aspect-square flex items-center justify-center rounded-sm";
 
   if (useSolid) {
+    // When bgOpacity is set, render background as a separate layer so text stays fully visible
+    if (bgOpacity !== undefined) {
+      const alpha = Math.max(bgOpacity, 0.2);
+      return (
+        <button
+          onClick={onClick}
+          title={ariaLabel}
+          aria-label={ariaLabel}
+          className={`${baseClass} relative transition-all hover:brightness-125 ${isSelected ? "ring-2 ring-white/80" : ""}`}
+        >
+          <span
+            className={`absolute inset-0 rounded-sm ${colour}`}
+            style={{ opacity: alpha }}
+            aria-hidden
+          />
+          <span className="relative text-xs select-none text-white">{handKey}</span>
+        </button>
+      );
+    }
     return (
       <button
         onClick={onClick}
