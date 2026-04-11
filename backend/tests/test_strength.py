@@ -7,6 +7,7 @@ from solver.ranges import (
     _normalize_combo,
     build_strength_map,
     compute_equity_by_strength,
+    compute_equity_exact,
     filter_range_by_equity,
 )
 
@@ -204,3 +205,77 @@ class TestFilterRangeByEquity:
             strength_map={},
         )
         assert result == ({}, {}, {})
+
+
+# ── compute_equity_exact ────────────────────────────────────────────────────
+
+
+class TestComputeEquityExact:
+    def test_aa_beats_weak_on_river(self):
+        """AA should have very high exact equity vs weak hands on river."""
+        board = [_c('K', 'S'), _c('2', 'H'), _c('9', 'D'), _c('7', 'C'), _c('4', 'H')]
+        aa = (_c('A', 'S'), _c('A', 'H'))
+        weak1 = (_c('8', 'S'), _c('6', 'D'))
+        weak2 = (_c('T', 'C'), _c('3', 'D'))
+        result = compute_equity_exact([aa], {weak1: 1.0, weak2: 1.0}, board)
+        assert result[_normalize_combo(aa)] > 0.9
+
+    def test_flush_draw_on_flop(self):
+        """Flush draw on monotone flop should have meaningful (not 0/1) equity."""
+        board = [_c('K', 'S'), _c('7', 'S'), _c('2', 'S')]
+        flush_draw = (_c('A', 'S'), _c('Q', 'H'))  # has one spade
+        overpair = (_c('A', 'H'), _c('A', 'D'))    # no spade
+        result = compute_equity_exact(
+            [flush_draw, overpair],
+            {flush_draw: 1.0, overpair: 1.0},
+            board,
+        )
+        # Both should have non-trivial equity
+        fd_eq = result[_normalize_combo(flush_draw)]
+        op_eq = result[_normalize_combo(overpair)]
+        assert 0.1 < fd_eq < 0.9
+        assert 0.1 < op_eq < 0.9
+
+    def test_aa_on_monotone_flop_accuracy(self):
+        """AA on 432 monotone spades should be ~77% vs full range (Flopzilla benchmark)."""
+        board = [_c('4', 'S'), _c('3', 'S'), _c('2', 'S')]
+        # All AA combos
+        aa_combos = []
+        for s1 in [Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS, Suit.SPADES]:
+            for s2 in [Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS, Suit.SPADES]:
+                if s1.value < s2.value:
+                    aa_combos.append((Card(Rank.ACE, s1), Card(Rank.ACE, s2)))
+
+        # Build a reasonable villain range (all valid combos)
+        cards = [Card(r, s) for r in Rank for s in Suit]
+        all_combos = [(cards[i], cards[j])
+                      for i in range(len(cards)) for j in range(i+1, len(cards))]
+        valid = [c for c in all_combos
+                 if not any(c1.rank == b.rank and c1.suit == b.suit for c1 in c for b in board)]
+        villain_range = {c: 1.0 for c in valid}
+
+        result = compute_equity_exact(aa_combos, villain_range, board)
+        avg_eq = sum(result[_normalize_combo(c)] for c in aa_combos) / len(aa_combos)
+        # Should be near Flopzilla's 77.15%, allow ±5% margin
+        assert 0.70 < avg_eq < 0.85, f"AA avg equity {avg_eq*100:.1f}% not near 77%"
+
+    def test_empty_board_returns_half(self):
+        """No board should give 0.5 equity for all combos."""
+        hero = (_c('A', 'S'), _c('K', 'S'))
+        villain = {(_c('Q', 'H'), _c('J', 'H')): 1.0}
+        result = compute_equity_exact([hero], villain, [])
+        assert result[hero] == 0.5
+
+    def test_card_exclusion_in_exact(self):
+        """Villain combos sharing cards with hero should be excluded."""
+        board = [_c('K', 'S'), _c('2', 'H'), _c('9', 'D'), _c('7', 'C'), _c('4', 'H')]
+        hero = (_c('A', 'S'), _c('Q', 'S'))
+        conflicting = (_c('A', 'S'), _c('J', 'H'))  # shares As
+        non_conflicting = (_c('3', 'D'), _c('5', 'C'))
+        result = compute_equity_exact(
+            [hero],
+            {conflicting: 1.0, non_conflicting: 1.0},
+            board,
+        )
+        # Should only compare vs non_conflicting, hero should win easily
+        assert result[_normalize_combo(hero)] > 0.9

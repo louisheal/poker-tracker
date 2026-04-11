@@ -23,6 +23,8 @@ from solver.ranges import (
     filter_range_by_equity,
     build_strength_map,
     compute_equity_by_strength,
+    compute_equity_exact,
+    _normalize_combo,
     _cards_conflict,
 )
 
@@ -424,13 +426,10 @@ def solve_spot(
     # Build strength map once for ALL valid combos
     strength_map = build_strength_map(valid_combos, board) if board else {}
 
-    # Compute equity vs full villain range for each combo (for display)
+    # Compute exact equity vs full villain range for each combo (for display)
     combo_equity: dict[tuple[Card, Card], float] = {}
-    if board and street != "preflop" and strength_map:
-        for combo in valid_combos:
-            combo_equity[combo] = compute_equity_by_strength(
-                combo, villain_range, strength_map
-            )
+    if board and street != "preflop":
+        combo_equity = compute_equity_exact(valid_combos, villain_range, board)
 
     # Per-combo results: combo -> {action_key -> ev}
     combo_evs: dict[tuple[Card, Card], dict[str, float]] = {c: {} for c in valid_combos}
@@ -545,7 +544,7 @@ def solve_spot(
             "bestAction": best_action,
             "ev": evs.get(best_action, 0.0),
             "evs": dict(evs),
-            "equity": round(combo_equity.get(combo, 0.5), 3),
+            "equity": round(combo_equity.get(_normalize_combo(combo), 0.5), 3),
         }
 
         if hand_key not in hands:
