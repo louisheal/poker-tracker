@@ -4,6 +4,7 @@ from playing_cards_lib.core import Card, Rank, Suit
 from solver.ranges import (
     _card_to_eval7,
     _combos_conflict,
+    _normalize_combo,
     build_strength_map,
     compute_equity_by_strength,
     filter_range_by_equity,
@@ -71,7 +72,7 @@ class TestBuildStrengthMap:
         aa = (_c('A', 'S'), _c('A', 'H'))
         qq = (_c('Q', 'S'), _c('Q', 'H'))
         smap = build_strength_map([aa, qq], board)
-        assert smap[aa] > smap[qq]
+        assert smap[_normalize_combo(aa)] > smap[_normalize_combo(qq)]
 
     def test_river_flush_beats_pair(self):
         """A flush should beat a single pair on the river."""
@@ -79,23 +80,24 @@ class TestBuildStrengthMap:
         flush = (_c('A', 'H'), _c('K', 'H'))  # Ace-high flush
         pair = (_c('J', 'S'), _c('T', 'S'))   # Pair of jacks
         smap = build_strength_map([flush, pair], board)
-        assert smap[flush] > smap[pair]
+        assert smap[_normalize_combo(flush)] > smap[_normalize_combo(pair)]
 
     def test_combo_conflicting_with_board_excluded(self):
         """Combos sharing a card with the board should not appear in the map."""
         board = [_c('A', 'S'), _c('K', 'H'), _c('Q', 'D'), _c('J', 'C'), _c('T', 'S')]
         conflict = (_c('A', 'S'), _c('2', 'H'))  # shares As with board
         smap = build_strength_map([conflict], board)
-        assert conflict not in smap
+        assert _normalize_combo(conflict) not in smap
 
     def test_turn_produces_valid_strengths(self):
         """Turn evaluation should produce numeric strength values."""
         board = [_c('7', 'S'), _c('2', 'H'), _c('9', 'D'), _c('3', 'C')]
         aa = (_c('A', 'S'), _c('A', 'H'))
         smap = build_strength_map([aa], board)
-        assert aa in smap
-        assert isinstance(smap[aa], float)
-        assert smap[aa] > 0
+        nk = _normalize_combo(aa)
+        assert nk in smap
+        assert isinstance(smap[nk], float)
+        assert smap[nk] > 0
 
     def test_turn_aa_beats_qq(self):
         """AA should have higher average strength than QQ on turn too."""
@@ -103,7 +105,7 @@ class TestBuildStrengthMap:
         aa = (_c('A', 'S'), _c('A', 'H'))
         qq = (_c('Q', 'S'), _c('Q', 'H'))
         smap = build_strength_map([aa, qq], board)
-        assert smap[aa] > smap[qq]
+        assert smap[_normalize_combo(aa)] > smap[_normalize_combo(qq)]
 
 
 # ── compute_equity_by_strength ──────────────────────────────────────────────

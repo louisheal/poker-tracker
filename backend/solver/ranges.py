@@ -44,6 +44,26 @@ def _combos_conflict(a: tuple[Card, Card], b: tuple[Card, Card]) -> bool:
                 return True
     return False
 
+
+# Canonical Rank/Suit ordering for normalizing combo tuples
+_RANK_ORDER = {r: i for i, r in enumerate(Rank)}
+_SUIT_ORDER = {s: i for i, s in enumerate(Suit)}
+
+
+def _normalize_combo(combo: tuple[Card, Card]) -> tuple[Card, Card]:
+    """Normalize combo tuple ordering for consistent dict lookups.
+
+    ALL_COMBOS uses (lower_rank, higher_rank) ordering, but
+    _hand_key_to_combos uses (higher_rank, lower_rank). This ensures
+    both map to the same key.
+    """
+    a, b = combo
+    ka = (_RANK_ORDER[a.rank], _SUIT_ORDER[a.suit])
+    kb = (_RANK_ORDER[b.rank], _SUIT_ORDER[b.suit])
+    if ka > kb:
+        return (b, a)
+    return combo
+
 GTO_WEIGHT = 0.7
 OBSERVED_WEIGHT = 0.3
 
@@ -472,13 +492,17 @@ def build_strength_map(
         if _cards_conflict(combo, board):
             continue
 
+        norm = _normalize_combo(combo)
+        if norm in strength_map:
+            continue
+
         e7_hand = [_card_to_eval7(c) for c in combo]
         hand_keys = {(c.rank.value, c.suit.value) for c in combo}
         excluded = board_keys | hand_keys
 
         if n_board == 5:
             # River: single evaluation
-            strength_map[combo] = float(eval7.evaluate(e7_hand + e7_board))
+            strength_map[norm] = float(eval7.evaluate(e7_hand + e7_board))
         else:
             # Turn/Flop: average over possible runouts
             remaining = [c for c in _EVAL7_DECK
@@ -489,7 +513,7 @@ def build_strength_map(
             for runout in itertools.combinations(remaining, cards_needed):
                 total += eval7.evaluate(e7_hand + e7_board + list(runout))
                 count += 1
-            strength_map[combo] = total / count if count > 0 else 0.0
+            strength_map[norm] = total / count if count > 0 else 0.0
 
     return strength_map
 
@@ -505,7 +529,7 @@ def compute_equity_by_strength(
     that conflict with hero's cards (card exclusion).
     Higher strength score = stronger hand (eval7 convention).
     """
-    hero_strength = strength_map.get(hero_combo)
+    hero_strength = strength_map.get(_normalize_combo(hero_combo))
     if hero_strength is None:
         return 0.5
 
@@ -515,7 +539,7 @@ def compute_equity_by_strength(
     for v_combo, freq in villain_range.items():
         if freq <= 0 or _combos_conflict(hero_combo, v_combo):
             continue
-        v_strength = strength_map.get(v_combo)
+        v_strength = strength_map.get(_normalize_combo(v_combo))
         if v_strength is None:
             continue
         total_weight += freq
