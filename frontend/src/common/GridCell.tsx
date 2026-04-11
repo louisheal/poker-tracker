@@ -1,5 +1,10 @@
 import "./gridCell.css";
 
+interface GradientStop {
+  color: string;
+  percent: number;
+}
+
 interface Props {
   handKey: string;
 
@@ -10,6 +15,9 @@ interface Props {
 
   /** Solver mode: solid background colour (Tailwind classes) */
   colour?: string;
+
+  /** Solver mode: dynamic N-stop gradient for combo-level action distribution */
+  gradientStops?: GradientStop[];
 
   onClick?: () => void;
   isSelected?: boolean;
@@ -22,23 +30,51 @@ export const GridCell = ({
   raises = 0,
   calls = 0,
   colour,
+  gradientStops,
   onClick,
   isSelected = false,
   title,
 }: Props) => {
   const total = folds + raises + calls;
-  const useSolid = colour !== undefined;
+  const useSolid = colour !== undefined && !gradientStops;
+  const useGradientStops = gradientStops !== undefined && gradientStops.length > 0;
 
   const raisePercent = total === 0 ? 0 : (raises / total) * 100;
   const callPercent = total === 0 ? 0 : (calls / total) * 100;
 
   const ariaLabel =
     title ??
-    (useSolid
+    (useSolid || useGradientStops
       ? handKey
       : `${handKey}: ${raises} raises, ${calls} calls, ${folds} folds`);
 
-  const isEmpty = !useSolid && total === 0;
+  const isEmpty = !useSolid && !useGradientStops && total === 0;
+
+  // Build inline gradient for solver action distribution
+  if (useGradientStops) {
+    const stops: string[] = [];
+    let cumulative = 0;
+    for (const { color, percent } of gradientStops) {
+      stops.push(`${color} ${cumulative}%`);
+      cumulative += percent;
+      stops.push(`${color} ${cumulative}%`);
+    }
+    const bg = stops.length > 0
+      ? `linear-gradient(to right, ${stops.join(", ")})`
+      : undefined;
+
+    return (
+      <button
+        onClick={onClick}
+        title={ariaLabel}
+        aria-label={ariaLabel}
+        style={{ background: bg }}
+        className={`box-border aspect-square flex items-center justify-center rounded-sm transition-all hover:brightness-125 ${isSelected ? "ring-2 ring-white/80" : ""}`}
+      >
+        <span className="text-xs select-none text-white">{handKey}</span>
+      </button>
+    );
+  }
 
   const gradientStyle: Record<string, string> =
     isEmpty || useSolid

@@ -258,7 +258,7 @@ def compute_current_ranges(
     hero_position: str,
     villain_position: str,
     pot_type: str,
-) -> tuple[dict[str, float], dict[str, float]]:
+) -> tuple[dict[tuple[Card, Card], float], dict[tuple[Card, Card], float]]:
     """Compute current ranges for hero and villain, narrowed by prior postflop actions.
 
     Walks through each postflop action in the prefix. For each action,
@@ -388,6 +388,17 @@ def compute_current_ranges(
             villain_range = narrowed
 
     return hero_range, villain_range
+
+
+def _aggregate_to_hand_keys(
+    combo_range: dict[tuple[Card, Card], float],
+) -> dict[str, float]:
+    """Aggregate a combo-keyed range to hand keys for debug display."""
+    key_freqs: dict[str, list[float]] = {}
+    for combo, freq in combo_range.items():
+        hk = _combo_to_hand_key(combo)
+        key_freqs.setdefault(hk, []).append(freq)
+    return {k: round(sum(vs) / len(vs), 2) for k, vs in key_freqs.items() if sum(vs) > 0}
 
 
 def solve_spot(
@@ -586,17 +597,26 @@ def solve_spot(
         if best in action_summaries:
             action_summaries[best]["bestActionCount"] += 1
 
+    # Add actionCounts per hand key (combo-level action distribution)
+    for hand_key, data in hands.items():
+        counts: dict[str, int] = {}
+        for c in data["combos"]:
+            ba = c["bestAction"]
+            counts[ba] = counts.get(ba, 0) + 1
+        data["actionCounts"] = counts
+
     oop_pos, ip_pos = _determine_oop_ip(hero_position, villain_position)
+
+    oop_range = hero_range if hero_position == oop_pos else villain_range
+    ip_range = hero_range if hero_position == ip_pos else villain_range
 
     return {
         "hands": hands,
         "actions": action_summaries,
         "totalHands": len(hands),
         "debug": {
-            "oopRange": {k: round(v, 2) for k, v in
-                         (hero_range if hero_position == oop_pos else villain_range).items() if v > 0},
-            "ipRange": {k: round(v, 2) for k, v in
-                        (hero_range if hero_position == ip_pos else villain_range).items() if v > 0},
+            "oopRange": _aggregate_to_hand_keys(oop_range),
+            "ipRange": _aggregate_to_hand_keys(ip_range),
             "oopPosition": oop_pos,
             "ipPosition": ip_pos,
             "modelOutput": debug_model_output,

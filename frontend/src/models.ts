@@ -211,6 +211,7 @@ export interface SolverHandResult {
   bestAction: string;
   evs: Record<string, number>;
   combos: SolverComboResult[];
+  actionCounts?: Record<string, number>;
 }
 
 export interface SolverActionSummary {

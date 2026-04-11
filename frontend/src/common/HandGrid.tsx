@@ -10,6 +10,7 @@ interface Props {
     raises?: number;
     calls?: number;
     colour?: string;
+    gradientStops?: { color: string; percent: number }[];
     onClick?: () => void;
     isSelected?: boolean;
     title?: string;
