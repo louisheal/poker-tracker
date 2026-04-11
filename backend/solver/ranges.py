@@ -13,13 +13,36 @@ Range types:
 
 from __future__ import annotations
 
+import itertools
+
+import eval7
+
 from playing_cards_lib.core import Card, Rank, Suit
-from playing_cards_lib.poker import HoleCards
-from app.models.enums import MadeHandType, FlushDrawType, StraightDrawType
-from app.parsers.hand_types import classify_made_hand, classify_flush_draw, classify_straight_draw
-from app.parsers.equity import get_equity, HandTriple
 
 RANKS = list(Rank)
+
+# Pre-built eval7 Card lookup to avoid repeated string construction
+_ALL_EVAL7_CARDS: dict[tuple[str, str], eval7.Card] = {
+    (r.value, s.value): eval7.Card(f"{r.value}{s.value.lower()}")
+    for r in Rank for s in Suit
+}
+
+# Full deck of eval7 cards for runout enumeration
+_EVAL7_DECK: list[eval7.Card] = list(_ALL_EVAL7_CARDS.values())
+
+
+def _card_to_eval7(card: Card) -> eval7.Card:
+    """Convert a playing_cards_lib Card to an eval7 Card."""
+    return _ALL_EVAL7_CARDS[(card.rank.value, card.suit.value)]
+
+
+def _combos_conflict(a: tuple[Card, Card], b: tuple[Card, Card]) -> bool:
+    """Check if two combos share any card."""
+    for ca in a:
+        for cb in b:
+            if ca.rank == cb.rank and ca.suit == cb.suit:
+                return True
+    return False
 
 GTO_WEIGHT = 0.7
 OBSERVED_WEIGHT = 0.3
@@ -423,74 +446,85 @@ def _cards_conflict(combo: tuple[Card, Card], board: list[Card]) -> bool:
     return False
 
 
-def _classify_hand(
-    hole: tuple[Card, Card],
-    board: list[Card],
-) -> HandTriple:
-    """Classify a hand into the (MadeHand, FlushDraw, StraightDraw) triple."""
-    hc = HoleCards(hole[0], hole[1])
-    made = classify_made_hand(hc, board)
-    fd = classify_flush_draw(hc, board)
-    sd = classify_straight_draw(hc, board)
-    return (made, fd, sd)
-
-
-def compute_hand_equity_vs_range(
-    hero_triple: HandTriple,
-    villain_range: dict[tuple[Card, Card], float],
-    board: list[Card],
-    street: str,
-    classify_cache: dict[tuple[Card, Card], HandTriple] | None = None,
-) -> float:
-    """Weighted average equity of a hero hand triple vs a villain range."""
-    total_weight = 0.0
-    weighted_equity = 0.0
-
-    for combo, freq in villain_range.items():
-        if freq <= 0 or _cards_conflict(combo, board):
-            continue
-        if classify_cache and combo in classify_cache:
-            villain_triple = classify_cache[combo]
-        else:
-            villain_triple = _classify_hand(combo, board)
-        eq = get_equity(hero_triple, villain_triple, street)
-        weighted_equity += eq * freq
-        total_weight += freq
-
-    return weighted_equity / total_weight if total_weight > 0 else 0.5
-
-
-def build_classify_cache(
+def build_strength_map(
     combos: list[tuple[Card, Card]],
     board: list[Card],
-) -> dict[tuple[Card, Card], HandTriple]:
-    """Pre-classify all combos against a board. O(n) where n = len(combos)."""
-    cache: dict[tuple[Card, Card], HandTriple] = {}
-    for combo in combos:
-        if not _cards_conflict(combo, board):
-            cache[combo] = _classify_hand(combo, board)
-    return cache
+) -> dict[tuple[Card, Card], float]:
+    """Precompute average hand strength for each combo given a board.
 
+    Uses eval7.evaluate() which returns higher scores for stronger hands.
 
-def build_equity_map(
-    villain_range: dict[tuple[Card, Card], float],
-    board: list[Card],
-    street: str,
-    classify_cache: dict[tuple[Card, Card], HandTriple],
-) -> dict[HandTriple, float]:
-    """Precompute equity for every unique HandTriple vs a villain range.
-
-    Typically ~50-100 unique triples exist for a given board,
-    so this runs compute_hand_equity_vs_range ~50-100 times instead of ~1176.
+    - River (5 board cards): evaluate 7-card hand directly
+    - Turn (4 board cards): average over all remaining river cards
+    - Flop (3 board cards): average over all remaining turn+river runouts
     """
-    unique_triples = set(classify_cache.values())
+    e7_board = [_card_to_eval7(c) for c in board]
+    board_set = set(id(c) for c in e7_board)
 
-    equity_map: dict[HandTriple, float] = {}
-    for triple in unique_triples:
-        equity_map[triple] = compute_hand_equity_vs_range(
-            triple, villain_range, board, street, classify_cache
-        )
-    return equity_map
+    # Map each eval7 card to its (rank_val, suit_val) for conflict checking
+    e7_to_key = {id(ec): (r, s) for (r, s), ec in _ALL_EVAL7_CARDS.items()}
+    board_keys = {e7_to_key[id(c)] for c in e7_board}
+
+    strength_map: dict[tuple[Card, Card], float] = {}
+    n_board = len(board)
+
+    for combo in combos:
+        if _cards_conflict(combo, board):
+            continue
+
+        e7_hand = [_card_to_eval7(c) for c in combo]
+        hand_keys = {(c.rank.value, c.suit.value) for c in combo}
+        excluded = board_keys | hand_keys
+
+        if n_board == 5:
+            # River: single evaluation
+            strength_map[combo] = float(eval7.evaluate(e7_hand + e7_board))
+        else:
+            # Turn/Flop: average over possible runouts
+            remaining = [c for c in _EVAL7_DECK
+                         if e7_to_key[id(c)] not in excluded]
+            cards_needed = 5 - n_board
+            total = 0.0
+            count = 0
+            for runout in itertools.combinations(remaining, cards_needed):
+                total += eval7.evaluate(e7_hand + e7_board + list(runout))
+                count += 1
+            strength_map[combo] = total / count if count > 0 else 0.0
+
+    return strength_map
+
+
+def compute_equity_by_strength(
+    hero_combo: tuple[Card, Card],
+    villain_range: dict[tuple[Card, Card], float],
+    strength_map: dict[tuple[Card, Card], float],
+) -> float:
+    """Weighted fraction of villain range that hero beats.
+
+    Uses precomputed strength scores. Skips villain combos
+    that conflict with hero's cards (card exclusion).
+    Higher strength score = stronger hand (eval7 convention).
+    """
+    hero_strength = strength_map.get(hero_combo)
+    if hero_strength is None:
+        return 0.5
+
+    wins = 0.0
+    total_weight = 0.0
+
+    for v_combo, freq in villain_range.items():
+        if freq <= 0 or _combos_conflict(hero_combo, v_combo):
+            continue
+        v_strength = strength_map.get(v_combo)
+        if v_strength is None:
+            continue
+        total_weight += freq
+        if hero_strength > v_strength:
+            wins += freq
+        elif hero_strength == v_strength:
+            wins += freq * 0.5
+
+    return wins / total_weight if total_weight > 0 else 0.5
 
 
 DAMPENING_FACTOR = 0.3
@@ -502,7 +536,7 @@ def filter_range_by_equity(
     street: str,
     raise_pct: float,
     call_pct: float,
-    classify_cache: dict[tuple[Card, Card], HandTriple] | None = None,
+    strength_map: dict[tuple[Card, Card], float] | None = None,
 ) -> tuple[dict[tuple[Card, Card], float], dict[tuple[Card, Card], float], dict[tuple[Card, Card], float]]:
     """Split a range into raise/call/fold sub-ranges by equity ranking.
 
@@ -517,12 +551,6 @@ def filter_range_by_equity(
 
     Returns (raising_range, calling_range, folding_range).
     """
-    # Build equity map once for this range
-    if classify_cache:
-        equity_map = build_equity_map(range_, board, street, classify_cache)
-    else:
-        equity_map = None
-
     # Compute equity for each combo in range
     equities: list[tuple[tuple[Card, Card], float, float]] = []  # (combo, freq, equity)
 
@@ -530,17 +558,10 @@ def filter_range_by_equity(
         if freq <= 0 or _cards_conflict(combo, board):
             continue
 
-        if classify_cache and combo in classify_cache:
-            triple = classify_cache[combo]
+        if strength_map:
+            eq = compute_equity_by_strength(combo, range_, strength_map)
         else:
-            triple = _classify_hand(combo, board)
-
-        if equity_map and triple in equity_map:
-            eq = equity_map[triple]
-        else:
-            eq = compute_hand_equity_vs_range(
-                triple, range_, board, street, classify_cache
-            )
+            eq = 0.5
         equities.append((combo, freq, eq))
 
     # Sort by equity descending (strongest combos first)
