@@ -38,6 +38,7 @@ const RangePanel = ({ label, range }: RangePanelProps) => {
             return {
               colour: "bg-sky-600 text-white",
               title: `${key}: ${(freq * 100).toFixed(0)}%`,
+              bgOpacity: freq,
             };
           }}
         />

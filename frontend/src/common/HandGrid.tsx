@@ -11,6 +11,7 @@ interface Props {
     calls?: number;
     colour?: string;
     gradientStops?: { color: string; percent: number }[];
+    bgOpacity?: number;
     onClick?: () => void;
     isSelected?: boolean;
     title?: string;
