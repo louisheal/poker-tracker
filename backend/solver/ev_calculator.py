@@ -7,6 +7,8 @@ This version uses the transformer model to predict villain behavior.
 
 from __future__ import annotations
 
+import math
+
 import torch
 
 from playing_cards_lib.core import Card, Rank, Suit
@@ -37,7 +39,11 @@ DEFAULT_EFFECTIVE_STACK_BB = 100.0
 STREETS_REMAINING = {"flop": 2, "turn": 1, "river": 0, "preflop": 3}
 # Base extraction rate: fraction of remaining stack that gets played on
 # future streets.  SPR modulates this (higher SPR → more extraction).
-EXTRACTION_RATE = 0.15
+EXTRACTION_RATE = 0.10
+# SPR reference point for the sqrt curve.  At SPR = SPR_REFERENCE, the
+# SPR factor is 1.0 (full extraction).  Below this, extraction drops
+# steeply — modelling the loss of optionality when pot-committed.
+SPR_REFERENCE = 8.0
 
 
 def compute_future_value(
@@ -70,10 +76,10 @@ def compute_future_value(
         return 0.0
 
     # SPR determines how much room there is for future betting.
-    # High SPR (>10) = lots of room → full extraction.
-    # Low SPR (<3) = almost all-in → minimal future play.
+    # Uses sqrt curve: steeply penalises low SPR (pot-committed),
+    # full value at SPR >= SPR_REFERENCE.
     spr = remaining_stack / pot_after_action
-    spr_factor = min(spr / 10.0, 1.0)
+    spr_factor = min(math.sqrt(spr / SPR_REFERENCE), 1.0)
 
     # Equity advantage: hero profits only when equity > 50%.
     # Floor at 0 — with low equity hero can fold on future streets.
