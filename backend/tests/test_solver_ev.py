@@ -193,3 +193,37 @@ class TestComputeAggressiveEv:
         )
         old_ev = 0.5 * 10.0 + 0.5 * (0.65 * 20.0 - 5.0)
         assert ev == pytest.approx(old_ev)
+
+    def test_raise_over_bet_pot_accounting(self):
+        """When raising over villain's bet, pot_bb includes villain's bet.
+
+        pot_bb = 7.315 (5.5 dead + 1.815 villain bet)
+        hero raises to 9.075 (R5x = 5× villain's 1.815 bet)
+        villain calls: adds 9.075 - 1.815 = 7.26 more
+        Total pot = 5.5 + 9.075 + 9.075 = 23.65 (NOT 25.465)
+        """
+        pot_bb = 7.315
+        bet_bb = 9.075
+        call_amount_bb = 1.815  # villain's prior bet
+
+        ev = compute_aggressive_ev(
+            pot_bb=pot_bb, bet_bb=bet_bb,
+            fold_pct=0.0, call_pct=1.0, raise_pct=0.0,
+            eq_vs_callers=0.5, eq_vs_raising=0.5, v_raise_bb=27.225,
+            call_amount_bb=call_amount_bb,
+        )
+        # pot_if_called = 7.315 + 2*9.075 - 1.815 = 23.65
+        # EV = 0.5 * 23.65 - 9.075 = 11.825 - 9.075 = 2.75
+        assert ev == pytest.approx(2.75)
+
+        # Without call_amount_bb, formula overcounts
+        ev_buggy = compute_aggressive_ev(
+            pot_bb=pot_bb, bet_bb=bet_bb,
+            fold_pct=0.0, call_pct=1.0, raise_pct=0.0,
+            eq_vs_callers=0.5, eq_vs_raising=0.5, v_raise_bb=27.225,
+            call_amount_bb=0.0,
+        )
+        # pot_if_called = 7.315 + 2*9.075 = 25.465
+        # EV = 0.5 * 25.465 - 9.075 = 12.7325 - 9.075 = 3.6575
+        assert ev_buggy == pytest.approx(3.6575)
+        assert ev_buggy > ev  # overcounting inflates EV

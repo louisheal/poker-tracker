@@ -61,20 +61,33 @@ def compute_aggressive_ev(
     eq_vs_callers: float,
     eq_vs_raising: float,
     v_raise_bb: float,
+    call_amount_bb: float = 0.0,
 ) -> float:
     """Compute EV when hero bets/raises with one-level lookahead.
 
     Villain folds, calls, or raises. When villain raises, hero optimally
     calls or folds.
+
+    call_amount_bb: the villain's prior bet that hero is raising over.
+    When > 0, pot_bb already includes this amount, so we subtract it
+    from the total pot to avoid double-counting.
     """
+    # Total pot when villain calls hero's bet/raise
+    # pot_bb includes villain's prior bet (call_amount_bb), and villain
+    # matches hero's bet_bb, so villain adds (bet_bb - call_amount_bb)
+    pot_if_called = pot_bb + 2 * bet_bb - call_amount_bb
+
     hero_call_amount = v_raise_bb - bet_bb
     fold_ev = -bet_bb
-    call_raise_ev = eq_vs_raising * (pot_bb + bet_bb + v_raise_bb + hero_call_amount) - (bet_bb + hero_call_amount)
+    # Pot when villain re-raises and hero calls:
+    # pot_bb + bet_bb + v_raise_bb + hero_call_amount - call_amount_bb
+    pot_if_reraised = pot_bb + bet_bb + v_raise_bb + hero_call_amount - call_amount_bb
+    call_raise_ev = eq_vs_raising * pot_if_reraised - (bet_bb + hero_call_amount)
     raise_branch_ev = max(fold_ev, call_raise_ev)
 
     return (
         fold_pct * pot_bb
-        + call_pct * (eq_vs_callers * (pot_bb + 2 * bet_bb) - bet_bb)
+        + call_pct * (eq_vs_callers * pot_if_called - bet_bb)
         + raise_pct * raise_branch_ev
     )
 
@@ -627,6 +640,7 @@ def solve_spot(
                 ev = compute_aggressive_ev(
                     pot_bb, bet_bb, fold_pct, call_pct, raise_pct,
                     eq_vs_callers, eq_vs_raising, v_raise_bb,
+                    call_amount_bb=call_amount_bb,
                 )
                 combo_evs[combo][action_key] = round(ev, 2)
 
