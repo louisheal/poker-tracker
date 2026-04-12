@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 
 NUM_EPOCHS = 25
 BATCH_SIZE = 2048
-LEARNING_RATE = 2e-4  # scaled proportionally with batch size (1e-4 * 2)
+LEARNING_RATE = 1e-3
 VAL_SPLIT_MOD = 10  # hand_id_hash % VAL_SPLIT_MOD == 0 -> validation
 CHECKPOINT_DIR = os.path.join(os.path.dirname(__file__), "checkpoints")
 HAND_HISTORIES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "hand_histories")
@@ -195,12 +195,7 @@ def train(max_files: int | None = None, use_cache: bool = True) -> None:
                 f"Batch size: {BATCH_SIZE}")
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=NUM_EPOCHS)
-
-    label_counts = torch.bincount(train_data["labels"].long(), minlength=5).float().clamp(min=1)
-    class_weights = (1.0 / label_counts).to(device)
-    class_weights /= class_weights.sum()
-    criterion = nn.CrossEntropyLoss(weight=class_weights)
+    criterion = nn.CrossEntropyLoss()
 
     best_val_loss = float("inf")
 
@@ -275,8 +270,6 @@ def train(max_files: int | None = None, use_cache: bool = True) -> None:
         # Save epoch checkpoint
         epoch_path = os.path.join(CHECKPOINT_DIR, f"epoch_{epoch + 1}.pt")
         torch.save(model.state_dict(), epoch_path)
-
-        scheduler.step()
 
     # If no validation was run, save final as best
     if not has_val:
