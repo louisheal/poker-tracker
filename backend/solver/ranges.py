@@ -518,150 +518,6 @@ def build_strength_map(
     return strength_map
 
 
-def compute_equity_by_strength(
-    hero_combo: tuple[Card, Card],
-    villain_range: dict[tuple[Card, Card], float],
-    strength_map: dict[tuple[Card, Card], float],
-) -> float:
-    """Weighted fraction of villain range that hero beats.
-
-    Uses precomputed strength scores. Skips villain combos
-    that conflict with hero's cards (card exclusion).
-    Higher strength score = stronger hand (eval7 convention).
-    """
-    hero_strength = strength_map.get(_normalize_combo(hero_combo))
-    if hero_strength is None:
-        return 0.5
-
-    wins = 0.0
-    total_weight = 0.0
-
-    for v_combo, freq in villain_range.items():
-        if freq <= 0 or _combos_conflict(hero_combo, v_combo):
-            continue
-        v_strength = strength_map.get(_normalize_combo(v_combo))
-        if v_strength is None:
-            continue
-        total_weight += freq
-        if hero_strength > v_strength:
-            wins += freq
-        elif hero_strength == v_strength:
-            wins += freq * 0.5
-
-    return wins / total_weight if total_weight > 0 else 0.5
-
-
-def compute_equity_exact(
-    hero_combos: list[tuple[Card, Card]],
-    villain_range: dict[tuple[Card, Card], float],
-    board: list[Card],
-) -> dict[tuple[Card, Card], float]:
-    """Compute exact equity for each hero combo vs villain range.
-
-    Enumerates all possible runouts and compares hand strengths per-runout
-    (equivalent to Flopzilla/PokerStove methodology).
-
-    Uses numpy for bulk comparison to keep flop computation under 5s.
-    """
-    import numpy as np
-
-    if not board or not hero_combos or not villain_range:
-        return {c: 0.5 for c in hero_combos}
-
-    e7_board = [_card_to_eval7(c) for c in board]
-    e7_to_key = {id(ec): (r, s) for (r, s), ec in _ALL_EVAL7_CARDS.items()}
-    board_keys = {(c.rank.value, c.suit.value) for c in board}
-
-    # Build combined combo list: heroes first, then villains
-    v_combos = [vc for vc, f in villain_range.items()
-                if f > 0 and not _cards_conflict(vc, board)]
-    v_freqs = np.array([villain_range[vc] for vc in v_combos], dtype=np.float64)
-    h_combos = [hc for hc in hero_combos if not _cards_conflict(hc, board)]
-
-    if not h_combos or not v_combos:
-        return {c: 0.5 for c in hero_combos}
-
-    all_combos = h_combos + v_combos
-    N_h = len(h_combos)
-    N_v = len(v_combos)
-    N = len(all_combos)
-
-    e7_all = [[_card_to_eval7(c) for c in combo] for combo in all_combos]
-    all_keys = [{(c.rank.value, c.suit.value) for c in combo} for combo in all_combos]
-
-    # Precompute hero-villain conflict matrix (N_h, N_v)
-    hv_conflict = np.zeros((N_h, N_v), dtype=bool)
-    for i in range(N_h):
-        for j in range(N_v):
-            if all_keys[i] & all_keys[N_h + j]:
-                hv_conflict[i, j] = True
-
-    remaining = [c for c in _EVAL7_DECK if e7_to_key[id(c)] not in board_keys]
-    cards_needed = 5 - len(board)
-
-    wins_total = np.zeros((N_h, N_v), dtype=np.float64)
-    ties_total = np.zeros((N_h, N_v), dtype=np.float64)
-    valid_total = np.zeros((N_h, N_v), dtype=np.float64)
-
-    if cards_needed == 0:
-        # River: single comparison
-        full_board = e7_board
-        h_scores = np.array([eval7.evaluate(e7_all[i] + full_board) for i in range(N_h)],
-                            dtype=np.float64)
-        v_scores = np.array([eval7.evaluate(e7_all[N_h + j] + full_board) for j in range(N_v)],
-                            dtype=np.float64)
-
-        mask = ~hv_conflict
-        wins_total = ((h_scores[:, None] > v_scores[None, :]) & mask).astype(np.float64)
-        ties_total = ((h_scores[:, None] == v_scores[None, :]) & mask).astype(np.float64)
-        valid_total = mask.astype(np.float64)
-    else:
-        for runout in itertools.combinations(remaining, cards_needed):
-            r_keys = {e7_to_key[id(c)] for c in runout}
-            full_board = e7_board + list(runout)
-
-            # Evaluate all combos that don't conflict with runout
-            scores = np.full(N, np.nan, dtype=np.float64)
-            for i in range(N):
-                if not (all_keys[i] & r_keys):
-                    scores[i] = eval7.evaluate(e7_all[i] + full_board)
-
-            h_scores = scores[:N_h]
-            v_scores = scores[N_h:]
-
-            h_valid = ~np.isnan(h_scores)
-            v_valid = ~np.isnan(v_scores)
-            both_valid = h_valid[:, None] & v_valid[None, :] & ~hv_conflict
-
-            # Use sentinel for invalid scores
-            hs = np.where(h_valid, h_scores, -1e18)
-            vs = np.where(v_valid, v_scores, -1e18)
-
-            wins_total += ((hs[:, None] > vs[None, :]) & both_valid).astype(np.float64)
-            ties_total += ((hs[:, None] == vs[None, :]) & both_valid).astype(np.float64)
-            valid_total += both_valid.astype(np.float64)
-
-    # Weighted equity per hero combo
-    weighted_wins = (wins_total + 0.5 * ties_total) * v_freqs[None, :]
-    weighted_valid = valid_total * v_freqs[None, :]
-
-    total_wins = weighted_wins.sum(axis=1)
-    total_weight = weighted_valid.sum(axis=1)
-
-    equity_arr = np.where(total_weight > 0, total_wins / total_weight, 0.5)
-
-    result: dict[tuple[Card, Card], float] = {}
-    for i, combo in enumerate(h_combos):
-        result[_normalize_combo(combo)] = float(equity_arr[i])
-
-    # Fill in combos that conflicted with board
-    for combo in hero_combos:
-        norm = _normalize_combo(combo)
-        if norm not in result:
-            result[norm] = 0.5
-
-    return result
-
 
 DAMPENING_FACTOR = 0.3
 
@@ -687,17 +543,22 @@ def filter_range_by_equity(
 
     Returns (raising_range, calling_range, folding_range).
     """
-    # Compute equity for each combo in range
-    equities: list[tuple[tuple[Card, Card], float, float]] = []  # (combo, freq, equity)
+    from solver.eq_calculator import all_hands_vs_range
 
+    # Compute equity for each combo in range via eq_calculator
+    valid_combos = [c for c, f in range_.items()
+                    if f > 0 and not _cards_conflict(c, board)]
+
+    if board and valid_combos:
+        eq_map = all_hands_vs_range(valid_combos, range_, board)
+    else:
+        eq_map = {}
+
+    equities: list[tuple[tuple[Card, Card], float, float]] = []
     for combo, freq in range_.items():
         if freq <= 0 or _cards_conflict(combo, board):
             continue
-
-        if strength_map:
-            eq = compute_equity_by_strength(combo, range_, strength_map)
-        else:
-            eq = 0.5
+        eq = eq_map.get(_normalize_combo(combo), 0.5)
         equities.append((combo, freq, eq))
 
     # Sort by equity descending (strongest combos first)

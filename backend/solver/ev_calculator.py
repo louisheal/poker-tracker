@@ -21,12 +21,10 @@ from solver.dataset import (
 from solver.ranges import (
     get_starting_range,
     filter_range_by_equity,
-    build_strength_map,
-    compute_equity_by_strength,
-    compute_equity_exact,
     _normalize_combo,
     _cards_conflict,
 )
+from solver.eq_calculator import all_hands_vs_range
 
 POSTFLOP_POSITION_ORDER = ["SB", "BB", "LJ", "HJ", "CO", "BTN"]
 
@@ -307,10 +305,6 @@ def compute_current_ranges(
         action_street = action_to_street.get(i, 0)
         board_at_action = board[:BOARD_SIZES.get(action_street, len(board))]
 
-        # Build strength map for this board slice
-        all_combos_for_board = [c for c in ALL_COMBOS if not _cards_conflict(c, board_at_action)]
-        strength_map = build_strength_map(all_combos_for_board, board_at_action)
-
         # Build sequence up to this decision point (before this action)
         prior_postflop = [f"{l}:{a}" for l, a in postflop_actions[:i]]
         tokens = _build_sequence_tokens(board_at_action, preflop_actions + prior_postflop)
@@ -344,7 +338,6 @@ def compute_current_ranges(
                 range_to_narrow, board_at_action, street_name,
                 raise_pct=bet_pct * 100,
                 call_pct=0,
-                strength_map=strength_map,
             )
 
             narrowed = checking_range if action_key == "Check" else betting_range
@@ -362,7 +355,6 @@ def compute_current_ranges(
                 range_to_narrow, board_at_action, street_name,
                 raise_pct=raise_pct * 100,
                 call_pct=call_pct * 100,
-                strength_map=strength_map,
             )
 
             if action_key == "Call":
@@ -423,13 +415,10 @@ def solve_spot(
     # Filter combos that don't conflict with the board
     valid_combos = [c for c in ALL_COMBOS if not _cards_conflict(c, board)]
 
-    # Build strength map once for ALL valid combos
-    strength_map = build_strength_map(valid_combos, board) if board else {}
-
-    # Compute exact equity vs full villain range for each combo (for display)
+    # Compute equity vs full villain range for each combo (for display)
     combo_equity: dict[tuple[Card, Card], float] = {}
     if board and street != "preflop":
-        combo_equity = compute_equity_exact(valid_combos, villain_range, board)
+        combo_equity = all_hands_vs_range(valid_combos, villain_range, board)
 
     # Per-combo results: combo -> {action_key -> ev}
     combo_evs: dict[tuple[Card, Card], dict[str, float]] = {c: {} for c in valid_combos}
@@ -496,21 +485,23 @@ def solve_spot(
                 villain_range, board, street,
                 raise_pct=raise_pct * 100,
                 call_pct=call_pct * 100,
-                strength_map=strength_map,
             )
             equity_range = calling_range
         else:
             # Check/Call/Fold: equity vs villain's full (narrowed) range
             equity_range = villain_range
 
+        # Batch-compute equity vs equity_range for all combos
+        if street == "preflop" or not board or not equity_range:
+            eq_map: dict[tuple[Card, Card], float] = {
+                _normalize_combo(c): 0.5 for c in valid_combos
+            }
+        else:
+            eq_map = all_hands_vs_range(valid_combos, equity_range, board)
+
         # Compute EV per combo
         for combo in valid_combos:
-            if street == "preflop" or not board:
-                eq_vs_callers = 0.5
-            else:
-                eq_vs_callers = compute_equity_by_strength(
-                    combo, equity_range, strength_map
-                ) if equity_range else 0.5
+            eq_vs_callers = eq_map.get(_normalize_combo(combo), 0.5)
 
             if action_key == "Fold":
                 ev = 0.0
