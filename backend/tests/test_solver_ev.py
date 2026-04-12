@@ -227,3 +227,129 @@ class TestComputeAggressiveEv:
         # EV = 0.5 * 25.465 - 9.075 = 12.7325 - 9.075 = 3.6575
         assert ev_buggy == pytest.approx(3.6575)
         assert ev_buggy > ev  # overcounting inflates EV
+
+
+class TestComputeFutureValue:
+    """Test that SPR-aware future value makes smaller bets more attractive."""
+
+    def test_no_future_value_on_river(self):
+        """On the river, no future streets → no bonus."""
+        ev = compute_aggressive_ev(
+            pot_bb=10.0, bet_bb=3.3,
+            fold_pct=0.4, call_pct=0.5, raise_pct=0.1,
+            eq_vs_callers=0.7, eq_vs_raising=0.3, v_raise_bb=9.9,
+            effective_stack_bb=100.0, street="river",
+        )
+        # Same as without future value (river has 0 remaining streets)
+        ev_no_future = compute_aggressive_ev(
+            pot_bb=10.0, bet_bb=3.3,
+            fold_pct=0.4, call_pct=0.5, raise_pct=0.1,
+            eq_vs_callers=0.7, eq_vs_raising=0.3, v_raise_bb=9.9,
+        )
+        assert ev == pytest.approx(ev_no_future)
+
+    def test_future_value_boosts_call_branch_on_flop(self):
+        """On the flop with high equity, future value increases EV."""
+        ev_flop = compute_aggressive_ev(
+            pot_bb=10.0, bet_bb=3.3,
+            fold_pct=0.4, call_pct=0.5, raise_pct=0.1,
+            eq_vs_callers=0.7, eq_vs_raising=0.3, v_raise_bb=9.9,
+            effective_stack_bb=100.0, street="flop",
+        )
+        ev_river = compute_aggressive_ev(
+            pot_bb=10.0, bet_bb=3.3,
+            fold_pct=0.4, call_pct=0.5, raise_pct=0.1,
+            eq_vs_callers=0.7, eq_vs_raising=0.3, v_raise_bb=9.9,
+            effective_stack_bb=100.0, street="river",
+        )
+        assert ev_flop > ev_river  # future value adds to flop EV
+
+    def test_low_equity_no_future_bonus(self):
+        """Hands with equity < 50% get zero future value (floored)."""
+        ev_flop = compute_aggressive_ev(
+            pot_bb=10.0, bet_bb=3.3,
+            fold_pct=0.4, call_pct=0.5, raise_pct=0.1,
+            eq_vs_callers=0.2, eq_vs_raising=0.1, v_raise_bb=9.9,
+            effective_stack_bb=100.0, street="flop",
+        )
+        ev_river = compute_aggressive_ev(
+            pot_bb=10.0, bet_bb=3.3,
+            fold_pct=0.4, call_pct=0.5, raise_pct=0.1,
+            eq_vs_callers=0.2, eq_vs_raising=0.1, v_raise_bb=9.9,
+            effective_stack_bb=100.0, street="river",
+        )
+        # With eq < 0.5, future value = 0, so flop and river EVs are equal
+        assert ev_flop == pytest.approx(ev_river)
+
+    def test_small_bet_more_future_value_than_big_bet(self):
+        """Smaller bets preserve more stack → higher SPR → more future value.
+
+        This is the key property: B33 should get more future value boost
+        than R5x because the pot is smaller (higher SPR after call).
+        """
+        # B33: small bet
+        ev_small = compute_aggressive_ev(
+            pot_bb=7.0, bet_bb=2.31,
+            fold_pct=0.44, call_pct=0.50, raise_pct=0.06,
+            eq_vs_callers=0.8, eq_vs_raising=0.8, v_raise_bb=6.93,
+            effective_stack_bb=100.0, street="flop",
+        )
+        ev_small_river = compute_aggressive_ev(
+            pot_bb=7.0, bet_bb=2.31,
+            fold_pct=0.44, call_pct=0.50, raise_pct=0.06,
+            eq_vs_callers=0.8, eq_vs_raising=0.8, v_raise_bb=6.93,
+            effective_stack_bb=100.0, street="river",
+        )
+
+        # R5x: big bet (as raise over villain's bet)
+        ev_big = compute_aggressive_ev(
+            pot_bb=7.0, bet_bb=9.0,
+            fold_pct=0.57, call_pct=0.38, raise_pct=0.05,
+            eq_vs_callers=0.8, eq_vs_raising=0.8, v_raise_bb=27.0,
+            effective_stack_bb=100.0, street="flop",
+        )
+        ev_big_river = compute_aggressive_ev(
+            pot_bb=7.0, bet_bb=9.0,
+            fold_pct=0.57, call_pct=0.38, raise_pct=0.05,
+            eq_vs_callers=0.8, eq_vs_raising=0.8, v_raise_bb=27.0,
+            effective_stack_bb=100.0, street="river",
+        )
+
+        # Future value boost for each
+        small_boost = ev_small - ev_small_river
+        big_boost = ev_big - ev_big_river
+
+        # Small bet should get MORE future value per call
+        assert small_boost > big_boost
+
+    def test_check_ev_future_value_on_flop(self):
+        """Check EV on flop includes future value when hero calls villain bet."""
+        ev_flop = compute_check_ev(
+            pot_bb=7.0, check_back_pct=0.5, villain_bet_pct=0.5,
+            eq_vs_checking=0.8, eq_vs_betting=0.7, v_bet_bb=4.62,
+            effective_stack_bb=100.0, street="flop",
+        )
+        ev_river = compute_check_ev(
+            pot_bb=7.0, check_back_pct=0.5, villain_bet_pct=0.5,
+            eq_vs_checking=0.8, eq_vs_betting=0.7, v_bet_bb=4.62,
+            effective_stack_bb=100.0, street="river",
+        )
+        # Flop has future value in the facing-bet branch
+        assert ev_flop > ev_river
+
+    def test_shallow_stacks_reduce_future_value(self):
+        """With only 20 BB effective, future value is much smaller."""
+        ev_deep = compute_aggressive_ev(
+            pot_bb=7.0, bet_bb=2.31,
+            fold_pct=0.4, call_pct=0.5, raise_pct=0.1,
+            eq_vs_callers=0.7, eq_vs_raising=0.3, v_raise_bb=6.93,
+            effective_stack_bb=100.0, street="flop",
+        )
+        ev_shallow = compute_aggressive_ev(
+            pot_bb=7.0, bet_bb=2.31,
+            fold_pct=0.4, call_pct=0.5, raise_pct=0.1,
+            eq_vs_callers=0.7, eq_vs_raising=0.3, v_raise_bb=6.93,
+            effective_stack_bb=20.0, street="flop",
+        )
+        # Deep stacks should have more future value
+        assert ev_deep > ev_shallow

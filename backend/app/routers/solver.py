@@ -284,6 +284,7 @@ def _solve_real(
         pot_type=pot_type,
         pot_bb=pot_bb,
         hero_actions=action_keys,
+        effective_stack_bb=100.0,
     )
 
 

@@ -32,6 +32,55 @@ POSTFLOP_POSITION_ORDER = ["SB", "BB", "LJ", "HJ", "CO", "BTN"]
 VILLAIN_BET_SIZE_PCT = 66    # Villain bets 66% pot after hero checks
 VILLAIN_RAISE_MULTIPLIER = 3  # Villain raises to 3× hero's bet
 
+# Multi-street future value parameters
+DEFAULT_EFFECTIVE_STACK_BB = 100.0
+STREETS_REMAINING = {"flop": 2, "turn": 1, "river": 0, "preflop": 3}
+# Base extraction rate: fraction of remaining stack that gets played on
+# future streets.  SPR modulates this (higher SPR → more extraction).
+EXTRACTION_RATE = 0.15
+
+
+def compute_future_value(
+    equity: float,
+    pot_after_action: float,
+    hero_invested: float,
+    effective_stack_bb: float,
+    street: str,
+) -> float:
+    """Estimate additional EV from remaining streets when villain continues.
+
+    Applied to branches where villain has committed chips (called a bet,
+    or bet after hero checked and hero calls).  NOT applied to the
+    check-back branch because neither player has shown aggression.
+
+    Key dynamics:
+    - Higher equity → more future extraction (value hands benefit)
+    - Higher SPR after action → more room for future betting
+    - Deeper stacks → more future value
+    - Earlier streets → more future value
+
+    Floored at 0 because hero can always fold on future streets.
+    """
+    remaining = STREETS_REMAINING.get(street, 0)
+    if remaining == 0:
+        return 0.0
+
+    remaining_stack = max(0.0, effective_stack_bb - hero_invested)
+    if remaining_stack <= 0 or pot_after_action <= 0:
+        return 0.0
+
+    # SPR determines how much room there is for future betting.
+    # High SPR (>10) = lots of room → full extraction.
+    # Low SPR (<3) = almost all-in → minimal future play.
+    spr = remaining_stack / pot_after_action
+    spr_factor = min(spr / 10.0, 1.0)
+
+    # Equity advantage: hero profits only when equity > 50%.
+    # Floor at 0 — with low equity hero can fold on future streets.
+    advantage = max(0.0, 2 * equity - 1)
+
+    return advantage * remaining_stack * EXTRACTION_RATE * spr_factor
+
 
 def compute_check_ev(
     pot_bb: float,
@@ -40,15 +89,26 @@ def compute_check_ev(
     eq_vs_checking: float,
     eq_vs_betting: float,
     v_bet_bb: float,
+    effective_stack_bb: float = DEFAULT_EFFECTIVE_STACK_BB,
+    street: str = "river",
 ) -> float:
     """Compute EV when hero checks with one-level lookahead.
 
     Villain either checks back (showdown) or bets, and hero optimally
     calls or folds when facing the bet.
+
+    Future value is added when hero calls villain's bet (pot committed,
+    future streets remain).  Not added to check-back (no aggression).
     """
     check_back_ev = eq_vs_checking * pot_bb
-    call_ev = eq_vs_betting * (pot_bb + 2 * v_bet_bb) - v_bet_bb
-    facing_bet_ev = max(0.0, call_ev)
+
+    pot_after_call = pot_bb + 2 * v_bet_bb
+    call_ev = eq_vs_betting * pot_after_call - v_bet_bb
+    future = compute_future_value(
+        eq_vs_betting, pot_after_call, v_bet_bb, effective_stack_bb, street,
+    )
+    facing_bet_ev = max(0.0, call_ev + future)
+
     return check_back_pct * check_back_ev + villain_bet_pct * facing_bet_ev
 
 
@@ -62,6 +122,8 @@ def compute_aggressive_ev(
     eq_vs_raising: float,
     v_raise_bb: float,
     call_amount_bb: float = 0.0,
+    effective_stack_bb: float = DEFAULT_EFFECTIVE_STACK_BB,
+    street: str = "river",
 ) -> float:
     """Compute EV when hero bets/raises with one-level lookahead.
 
@@ -71,23 +133,34 @@ def compute_aggressive_ev(
     call_amount_bb: the villain's prior bet that hero is raising over.
     When > 0, pot_bb already includes this amount, so we subtract it
     from the total pot to avoid double-counting.
+
+    Future value is added to the call branch (villain committed chips,
+    future streets remain) and the raise-and-hero-calls branch.
     """
     # Total pot when villain calls hero's bet/raise
-    # pot_bb includes villain's prior bet (call_amount_bb), and villain
-    # matches hero's bet_bb, so villain adds (bet_bb - call_amount_bb)
     pot_if_called = pot_bb + 2 * bet_bb - call_amount_bb
+
+    # Future value when villain calls: pot committed, more streets to play
+    call_future = compute_future_value(
+        eq_vs_callers, pot_if_called, bet_bb, effective_stack_bb, street,
+    )
+    call_branch_ev = eq_vs_callers * pot_if_called - bet_bb + call_future
 
     hero_call_amount = v_raise_bb - bet_bb
     fold_ev = -bet_bb
-    # Pot when villain re-raises and hero calls:
-    # pot_bb + bet_bb + v_raise_bb + hero_call_amount - call_amount_bb
+    # Pot when villain re-raises and hero calls
     pot_if_reraised = pot_bb + bet_bb + v_raise_bb + hero_call_amount - call_amount_bb
-    call_raise_ev = eq_vs_raising * pot_if_reraised - (bet_bb + hero_call_amount)
+    # Future value when hero calls the re-raise
+    raise_future = compute_future_value(
+        eq_vs_raising, pot_if_reraised, bet_bb + hero_call_amount,
+        effective_stack_bb, street,
+    )
+    call_raise_ev = eq_vs_raising * pot_if_reraised - (bet_bb + hero_call_amount) + raise_future
     raise_branch_ev = max(fold_ev, call_raise_ev)
 
     return (
         fold_pct * pot_bb
-        + call_pct * (eq_vs_callers * pot_if_called - bet_bb)
+        + call_pct * call_branch_ev
         + raise_pct * raise_branch_ev
     )
 
@@ -463,6 +536,7 @@ def solve_spot(
     pot_type: str,
     pot_bb: float,
     hero_actions: list[str],
+    effective_stack_bb: float = DEFAULT_EFFECTIVE_STACK_BB,
 ) -> dict:
     """Run the solver for a single spot.
 
@@ -599,14 +673,23 @@ def solve_spot(
                 eq_chk = eq_vs_checking.get(nc, 0.5)
                 eq_bet = eq_vs_betting.get(nc, 0.5)
 
-                ev = compute_check_ev(pot_bb, check_back_pct, villain_bet_pct, eq_chk, eq_bet, v_bet_bb)
+                ev = compute_check_ev(
+                    pot_bb, check_back_pct, villain_bet_pct, eq_chk, eq_bet, v_bet_bb,
+                    effective_stack_bb=effective_stack_bb, street=street,
+                )
                 combo_evs[combo][action_key] = round(ev, 2)
 
         elif action_key == "Call":
             eq_map = all_hands_vs_range(valid_combos, villain_range, board) if can_compute_equity and villain_range else default_eq
             for combo in valid_combos:
                 eq_vs_callers = eq_map.get(_normalize_combo(combo), 0.5)
-                ev = eq_vs_callers * (pot_bb + call_amount_bb) - call_amount_bb
+                pot_after_call = pot_bb + call_amount_bb
+                call_ev = eq_vs_callers * pot_after_call - call_amount_bb
+                future = compute_future_value(
+                    eq_vs_callers, pot_after_call, call_amount_bb,
+                    effective_stack_bb, street,
+                )
+                ev = call_ev + future
                 combo_evs[combo][action_key] = round(ev, 2)
 
         else:
@@ -641,6 +724,8 @@ def solve_spot(
                     pot_bb, bet_bb, fold_pct, call_pct, raise_pct,
                     eq_vs_callers, eq_vs_raising, v_raise_bb,
                     call_amount_bb=call_amount_bb,
+                    effective_stack_bb=effective_stack_bb,
+                    street=street,
                 )
                 combo_evs[combo][action_key] = round(ev, 2)
 
@@ -722,5 +807,6 @@ def solve_spot(
             "modelOutput": debug_model_output,
             "potBB": round(pot_bb, 2),
             "callAmountBB": round(call_amount_bb, 2),
+            "effectiveStackBB": round(effective_stack_bb, 2),
         },
     }

@@ -245,6 +245,7 @@ export interface SolverDebug {
   modelOutput: Record<string, SolverModelOutput>;
   potBB: number;
   callAmountBB: number;
+  effectiveStackBB: number;
 }
 
 export interface SolverResult {

@@ -66,6 +66,12 @@ export const DebugPanels = ({ debug, actionOptions }: Props) => {
               <div className="text-foreground font-mono">{debug.callAmountBB.toFixed(2)} BB</div>
             </>
           )}
+          <div className="text-muted-foreground">Eff. stack</div>
+          <div className="text-foreground font-mono">{debug.effectiveStackBB?.toFixed(0) ?? "—"} BB</div>
+          <div className="text-muted-foreground">SPR</div>
+          <div className="text-foreground font-mono">
+            {debug.potBB > 0 ? (debug.effectiveStackBB / debug.potBB).toFixed(1) : "—"}
+          </div>
         </div>
       </div>
 
