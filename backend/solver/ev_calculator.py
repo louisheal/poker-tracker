@@ -28,6 +28,56 @@ from solver.eq_calculator import all_hands_vs_range
 
 POSTFLOP_POSITION_ORDER = ["SB", "BB", "LJ", "HJ", "CO", "BTN"]
 
+# Assumed villain sizing for one-level lookahead EV estimation
+VILLAIN_BET_SIZE_PCT = 66    # Villain bets 66% pot after hero checks
+VILLAIN_RAISE_MULTIPLIER = 3  # Villain raises to 3× hero's bet
+
+
+def compute_check_ev(
+    pot_bb: float,
+    check_back_pct: float,
+    villain_bet_pct: float,
+    eq_vs_checking: float,
+    eq_vs_betting: float,
+    v_bet_bb: float,
+) -> float:
+    """Compute EV when hero checks with one-level lookahead.
+
+    Villain either checks back (showdown) or bets, and hero optimally
+    calls or folds when facing the bet.
+    """
+    check_back_ev = eq_vs_checking * pot_bb
+    call_ev = eq_vs_betting * (pot_bb + 2 * v_bet_bb) - v_bet_bb
+    facing_bet_ev = max(0.0, call_ev)
+    return check_back_pct * check_back_ev + villain_bet_pct * facing_bet_ev
+
+
+def compute_aggressive_ev(
+    pot_bb: float,
+    bet_bb: float,
+    fold_pct: float,
+    call_pct: float,
+    raise_pct: float,
+    eq_vs_callers: float,
+    eq_vs_raising: float,
+    v_raise_bb: float,
+) -> float:
+    """Compute EV when hero bets/raises with one-level lookahead.
+
+    Villain folds, calls, or raises. When villain raises, hero optimally
+    calls or folds.
+    """
+    hero_call_amount = v_raise_bb - bet_bb
+    fold_ev = -bet_bb
+    call_raise_ev = eq_vs_raising * (pot_bb + bet_bb + v_raise_bb + hero_call_amount) - (bet_bb + hero_call_amount)
+    raise_branch_ev = max(fold_ev, call_raise_ev)
+
+    return (
+        fold_pct * pot_bb
+        + call_pct * (eq_vs_callers * (pot_bb + 2 * bet_bb) - bet_bb)
+        + raise_pct * raise_branch_ev
+    )
+
 
 # Hero action set matching frontend types.ts
 HERO_ACTIONS_PREFLOP = ["Fold", "Call", "Raise"]
@@ -478,45 +528,92 @@ def solve_spot(
             "villain_raise_pct": round(raise_pct * 100, 1),
         }
 
-        # Determine equity range based on action type
-        if is_aggressive and street != "preflop" and board:
-            # Villain responds to hero's bet/raise: filter into fold/call/raise
-            raising_range, calling_range, folding_range = filter_range_by_equity(
-                villain_range, board, street,
-                raise_pct=raise_pct * 100,
-                call_pct=call_pct * 100,
-            )
-            equity_range = calling_range
-        else:
-            # Check/Call/Fold: equity vs villain's full (narrowed) range
-            equity_range = villain_range
+        # Determine equity ranges and compute EV per combo
+        can_compute_equity = street != "preflop" and bool(board)
+        default_eq: dict[tuple[Card, Card], float] = {
+            _normalize_combo(c): 0.5 for c in valid_combos
+        }
 
-        # Batch-compute equity vs equity_range for all combos
-        if street == "preflop" or not board or not equity_range:
-            eq_map: dict[tuple[Card, Card], float] = {
-                _normalize_combo(c): 0.5 for c in valid_combos
-            }
-        else:
-            eq_map = all_hands_vs_range(valid_combos, equity_range, board)
+        if action_key == "Fold":
+            for combo in valid_combos:
+                combo_evs[combo][action_key] = 0.0
 
-        # Compute EV per combo
-        for combo in valid_combos:
-            eq_vs_callers = eq_map.get(_normalize_combo(combo), 0.5)
+        elif action_key == "Check":
+            # One-level lookahead: villain checks back or bets after hero check
+            raw_check = probs[1].item()
+            raw_call = probs[2].item()
+            raw_bet = probs[3].item()
+            raw_raise = probs[4].item()
+            check_back_pct = raw_check + raw_call
+            villain_bet_pct = raw_bet + raw_raise
+            total_check = check_back_pct + villain_bet_pct
+            if total_check > 0:
+                check_back_pct /= total_check
+                villain_bet_pct /= total_check
 
-            if action_key == "Fold":
-                ev = 0.0
-            elif action_key == "Check":
-                ev = eq_vs_callers * pot_bb
-            elif action_key == "Call":
-                ev = eq_vs_callers * (pot_bb + call_amount_bb) - call_amount_bb
-            else:
-                ev = (
-                    fold_pct * pot_bb
-                    + call_pct * (eq_vs_callers * (pot_bb + 2 * bet_bb) - bet_bb)
-                    + raise_pct * (-bet_bb)
+            v_bet_bb = (VILLAIN_BET_SIZE_PCT / 100.0) * pot_bb
+
+            if can_compute_equity and villain_range:
+                # Split villain into betting vs checking sub-ranges
+                betting_range, checking_range, _ = filter_range_by_equity(
+                    villain_range, board, street,
+                    raise_pct=villain_bet_pct * 100,
+                    call_pct=check_back_pct * 100,
                 )
+                eq_vs_checking = all_hands_vs_range(valid_combos, checking_range, board) if checking_range else default_eq
+                eq_vs_betting = all_hands_vs_range(valid_combos, betting_range, board) if betting_range else default_eq
+            else:
+                eq_vs_checking = default_eq
+                eq_vs_betting = default_eq
 
-            combo_evs[combo][action_key] = round(ev, 2)
+            for combo in valid_combos:
+                nc = _normalize_combo(combo)
+                eq_chk = eq_vs_checking.get(nc, 0.5)
+                eq_bet = eq_vs_betting.get(nc, 0.5)
+
+                ev = compute_check_ev(pot_bb, check_back_pct, villain_bet_pct, eq_chk, eq_bet, v_bet_bb)
+                combo_evs[combo][action_key] = round(ev, 2)
+
+        elif action_key == "Call":
+            eq_map = all_hands_vs_range(valid_combos, villain_range, board) if can_compute_equity and villain_range else default_eq
+            for combo in valid_combos:
+                eq_vs_callers = eq_map.get(_normalize_combo(combo), 0.5)
+                ev = eq_vs_callers * (pot_bb + call_amount_bb) - call_amount_bb
+                combo_evs[combo][action_key] = round(ev, 2)
+
+        else:
+            # Aggressive action (bet/raise): villain folds/calls/raises
+            if can_compute_equity and villain_range:
+                raising_range, calling_range, folding_range = filter_range_by_equity(
+                    villain_range, board, street,
+                    raise_pct=raise_pct * 100,
+                    call_pct=call_pct * 100,
+                )
+                eq_vs_callers_map = all_hands_vs_range(valid_combos, calling_range, board) if calling_range else default_eq
+
+                # One-level lookahead for raise branch: hero can call or fold
+                v_raise_bb = VILLAIN_RAISE_MULTIPLIER * bet_bb
+                hero_call_amount = v_raise_bb - bet_bb
+                if raising_range and raise_pct > 0:
+                    eq_vs_raising_map = all_hands_vs_range(valid_combos, raising_range, board)
+                else:
+                    eq_vs_raising_map = default_eq
+            else:
+                eq_vs_callers_map = default_eq
+                eq_vs_raising_map = default_eq
+                v_raise_bb = VILLAIN_RAISE_MULTIPLIER * bet_bb
+                hero_call_amount = v_raise_bb - bet_bb
+
+            for combo in valid_combos:
+                nc = _normalize_combo(combo)
+                eq_vs_callers = eq_vs_callers_map.get(nc, 0.5)
+                eq_vs_raising = eq_vs_raising_map.get(nc, 0.5)
+
+                ev = compute_aggressive_ev(
+                    pot_bb, bet_bb, fold_pct, call_pct, raise_pct,
+                    eq_vs_callers, eq_vs_raising, v_raise_bb,
+                )
+                combo_evs[combo][action_key] = round(ev, 2)
 
     # Group combos into hand keys
     hands: dict[str, dict] = {}
