@@ -100,6 +100,13 @@ ACTION_TO_BET_PCT: dict[str, float] = {
     "R5x": 500.0,
 }
 
+# When facing a postflop bet, R3x/R4x/R5x are N× the villain's bet (not N× pot)
+RAISE_MULTIPLIER: dict[str, float] = {
+    "R3x": 3.0,
+    "R4x": 4.0,
+    "R5x": 5.0,
+}
+
 
 def _action_key_to_model_action(action_key: str) -> int:
     """Map a hero action key to the model's action index."""
@@ -486,8 +493,14 @@ def solve_spot(
             call_amount_bb = pot_before_villain * last_bet_pct / 100.0
 
     for action_key in hero_actions:
-        bet_pct = ACTION_TO_BET_PCT.get(action_key, 0.0)
-        bet_bb = (bet_pct / 100.0) * pot_bb
+        # For raises facing a bet, compute size as multiplier of villain's bet
+        if action_key in RAISE_MULTIPLIER and call_amount_bb > 0:
+            multiplier = RAISE_MULTIPLIER[action_key]
+            bet_bb = multiplier * call_amount_bb
+            bet_pct = (bet_bb / pot_bb) * 100 if pot_bb > 0 else 0.0
+        else:
+            bet_pct = ACTION_TO_BET_PCT.get(action_key, 0.0)
+            bet_bb = (bet_pct / 100.0) * pot_bb
 
         # Build sequence (no hole cards)
         base_tokens = _build_sequence_tokens(board, action_prefix)
