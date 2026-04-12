@@ -1,0 +1,355 @@
+"""Tests for solver EV formula helpers (one-level lookahead)."""
+
+import pytest
+
+from solver.ev_calculator import compute_check_ev, compute_aggressive_ev
+
+
+class TestComputeCheckEv:
+    """Test the Check EV formula with villain continuation."""
+
+    def test_pure_showdown_when_villain_always_checks_back(self):
+        """If villain never bets, Check EV = equity × pot (classic formula)."""
+        ev = compute_check_ev(
+            pot_bb=10.0,
+            check_back_pct=1.0,
+            villain_bet_pct=0.0,
+            eq_vs_checking=0.6,
+            eq_vs_betting=0.0,
+            v_bet_bb=6.6,
+        )
+        assert ev == pytest.approx(6.0)
+
+    def test_strong_hand_calls_villain_bet(self):
+        """Strong hand (high equity vs betting range) should call profitably."""
+        ev = compute_check_ev(
+            pot_bb=10.0,
+            check_back_pct=0.8,
+            villain_bet_pct=0.2,
+            eq_vs_checking=0.9,
+            eq_vs_betting=0.85,
+            v_bet_bb=6.6,
+        )
+        # check_back: 0.8 * 0.9 * 10 = 7.2
+        # call_ev: 0.85 * (10 + 13.2) - 6.6 = 0.85 * 23.2 - 6.6 = 19.72 - 6.6 = 13.12
+        # facing_bet: max(0, 13.12) = 13.12
+        # total: 7.2 + 0.2 * 13.12 = 7.2 + 2.624 = 9.824
+        assert ev == pytest.approx(9.824)
+        # Higher than old formula: 0.9 * 10 = 9.0 (because hero profits from calling)
+        assert ev > 0.9 * 10.0
+
+    def test_weak_hand_folds_to_villain_bet(self):
+        """Weak hand (low equity vs betting range) folds when villain bets."""
+        ev = compute_check_ev(
+            pot_bb=10.0,
+            check_back_pct=0.8,
+            villain_bet_pct=0.2,
+            eq_vs_checking=0.4,
+            eq_vs_betting=0.15,
+            v_bet_bb=6.6,
+        )
+        # check_back: 0.8 * 0.4 * 10 = 3.2
+        # call_ev: 0.15 * 23.2 - 6.6 = 3.48 - 6.6 = -3.12
+        # facing_bet: max(0, -3.12) = 0 (hero folds)
+        # total: 3.2 + 0 = 3.2
+        assert ev == pytest.approx(3.2)
+        # Lower than old formula: 0.4 * 10 = 4.0 (because hero sometimes faces a bet and folds)
+
+    def test_medium_hand_marginal_call(self):
+        """Hand that barely breaks even calling villain's bet."""
+        # Call EV = eq * (pot + 2*v_bet) - v_bet
+        # Break even: eq * (10 + 13.2) - 6.6 = 0 → eq = 6.6/23.2 ≈ 0.2845
+        ev_fold = compute_check_ev(
+            pot_bb=10.0, check_back_pct=0.8, villain_bet_pct=0.2,
+            eq_vs_checking=0.5, eq_vs_betting=0.28,  # just below break-even
+            v_bet_bb=6.6,
+        )
+        ev_call = compute_check_ev(
+            pot_bb=10.0, check_back_pct=0.8, villain_bet_pct=0.2,
+            eq_vs_checking=0.5, eq_vs_betting=0.30,  # just above break-even
+            v_bet_bb=6.6,
+        )
+        # Both should have same check-back component (0.8 * 0.5 * 10 = 4.0)
+        # But the one above break-even should have slightly higher EV
+        assert ev_call > ev_fold
+
+    def test_villain_always_bets_hero_always_folds(self):
+        """If villain always bets and hero can't call, EV = 0."""
+        ev = compute_check_ev(
+            pot_bb=10.0,
+            check_back_pct=0.0,
+            villain_bet_pct=1.0,
+            eq_vs_checking=0.5,
+            eq_vs_betting=0.0,
+            v_bet_bb=6.6,
+        )
+        assert ev == pytest.approx(0.0)
+
+    def test_zero_pot(self):
+        ev = compute_check_ev(
+            pot_bb=0.0, check_back_pct=0.5, villain_bet_pct=0.5,
+            eq_vs_checking=0.5, eq_vs_betting=0.5, v_bet_bb=0.0,
+        )
+        assert ev == pytest.approx(0.0)
+
+
+class TestComputeAggressiveEv:
+    """Test the Bet/Raise EV formula with raise branch lookahead."""
+
+    def test_villain_always_folds(self):
+        """If villain always folds, EV = pot."""
+        ev = compute_aggressive_ev(
+            pot_bb=10.0, bet_bb=3.3,
+            fold_pct=1.0, call_pct=0.0, raise_pct=0.0,
+            eq_vs_callers=0.5, eq_vs_raising=0.5, v_raise_bb=9.9,
+        )
+        assert ev == pytest.approx(10.0)
+
+    def test_villain_always_calls(self):
+        """If villain always calls, EV = eq*(pot+2*bet) - bet."""
+        ev = compute_aggressive_ev(
+            pot_bb=10.0, bet_bb=3.3,
+            fold_pct=0.0, call_pct=1.0, raise_pct=0.0,
+            eq_vs_callers=0.7, eq_vs_raising=0.5, v_raise_bb=9.9,
+        )
+        expected = 0.7 * (10.0 + 6.6) - 3.3
+        assert ev == pytest.approx(expected)
+
+    def test_raise_branch_strong_hand_calls(self):
+        """Strong hand should call the raise, not fold."""
+        ev = compute_aggressive_ev(
+            pot_bb=10.0, bet_bb=3.3,
+            fold_pct=0.0, call_pct=0.0, raise_pct=1.0,
+            eq_vs_callers=0.5, eq_vs_raising=0.9,
+            v_raise_bb=9.9,
+        )
+        # hero_call = 9.9 - 3.3 = 6.6
+        # call_raise_ev = 0.9 * (10 + 3.3 + 9.9 + 6.6) - (3.3 + 6.6)
+        #               = 0.9 * 29.8 - 9.9 = 26.82 - 9.9 = 16.92
+        # fold_ev = -3.3
+        # raise_branch = max(-3.3, 16.92) = 16.92
+        assert ev == pytest.approx(16.92)
+        # Old formula would give -3.3 (always fold to raise)
+        assert ev > -3.3
+
+    def test_raise_branch_weak_hand_folds(self):
+        """Weak hand should fold to raise (raise_ev = -bet)."""
+        ev = compute_aggressive_ev(
+            pot_bb=10.0, bet_bb=3.3,
+            fold_pct=0.0, call_pct=0.0, raise_pct=1.0,
+            eq_vs_callers=0.5, eq_vs_raising=0.1,
+            v_raise_bb=9.9,
+        )
+        # hero_call = 6.6
+        # call_raise_ev = 0.1 * 29.8 - 9.9 = 2.98 - 9.9 = -6.92
+        # fold_ev = -3.3
+        # raise_branch = max(-3.3, -6.92) = -3.3 (folds)
+        assert ev == pytest.approx(-3.3)
+
+    def test_mixed_villain_response(self):
+        """Realistic mix: villain folds 40%, calls 50%, raises 10%."""
+        ev = compute_aggressive_ev(
+            pot_bb=10.0, bet_bb=3.3,
+            fold_pct=0.4, call_pct=0.5, raise_pct=0.1,
+            eq_vs_callers=0.6, eq_vs_raising=0.3,
+            v_raise_bb=9.9,
+        )
+        # fold component: 0.4 * 10 = 4.0
+        # call component: 0.5 * (0.6 * 16.6 - 3.3) = 0.5 * (9.96 - 3.3) = 0.5 * 6.66 = 3.33
+        # raise: hero_call=6.6, call_ev=0.3*29.8-9.9=8.94-9.9=-0.96, fold_ev=-3.3
+        #   raise_branch = max(-3.3, -0.96) = -0.96
+        # raise component: 0.1 * (-0.96) = -0.096
+        # total: 4.0 + 3.33 - 0.096 = 7.234
+        assert ev == pytest.approx(7.234)
+
+    def test_old_formula_comparison_weak_hand(self):
+        """For weak hands, new formula should be >= old formula (raise branch)."""
+        # Old: fold% * pot + call% * (eq*(pot+2bet)-bet) + raise% * (-bet)
+        # New: same but raise% * max(-bet, call_raise_ev)
+        # Since max(-bet, x) >= -bet, new EV >= old EV for any hand
+        for eq_raising in [0.0, 0.1, 0.3, 0.5, 0.7, 0.9, 1.0]:
+            new_ev = compute_aggressive_ev(
+                pot_bb=10.0, bet_bb=3.3,
+                fold_pct=0.4, call_pct=0.5, raise_pct=0.1,
+                eq_vs_callers=0.5, eq_vs_raising=eq_raising,
+                v_raise_bb=9.9,
+            )
+            old_ev = (
+                0.4 * 10.0
+                + 0.5 * (0.5 * 16.6 - 3.3)
+                + 0.1 * (-3.3)
+            )
+            assert new_ev >= old_ev - 1e-9, (
+                f"New EV {new_ev} should be >= old EV {old_ev} "
+                f"(eq_vs_raising={eq_raising})"
+            )
+
+    def test_zero_raise_pct_matches_old_formula(self):
+        """With no raise, new formula exactly matches old formula."""
+        ev = compute_aggressive_ev(
+            pot_bb=10.0, bet_bb=5.0,
+            fold_pct=0.5, call_pct=0.5, raise_pct=0.0,
+            eq_vs_callers=0.65, eq_vs_raising=0.5, v_raise_bb=15.0,
+        )
+        old_ev = 0.5 * 10.0 + 0.5 * (0.65 * 20.0 - 5.0)
+        assert ev == pytest.approx(old_ev)
+
+    def test_raise_over_bet_pot_accounting(self):
+        """When raising over villain's bet, pot_bb includes villain's bet.
+
+        pot_bb = 7.315 (5.5 dead + 1.815 villain bet)
+        hero raises to 9.075 (R5x = 5× villain's 1.815 bet)
+        villain calls: adds 9.075 - 1.815 = 7.26 more
+        Total pot = 5.5 + 9.075 + 9.075 = 23.65 (NOT 25.465)
+        """
+        pot_bb = 7.315
+        bet_bb = 9.075
+        call_amount_bb = 1.815  # villain's prior bet
+
+        ev = compute_aggressive_ev(
+            pot_bb=pot_bb, bet_bb=bet_bb,
+            fold_pct=0.0, call_pct=1.0, raise_pct=0.0,
+            eq_vs_callers=0.5, eq_vs_raising=0.5, v_raise_bb=27.225,
+            call_amount_bb=call_amount_bb,
+        )
+        # pot_if_called = 7.315 + 2*9.075 - 1.815 = 23.65
+        # EV = 0.5 * 23.65 - 9.075 = 11.825 - 9.075 = 2.75
+        assert ev == pytest.approx(2.75)
+
+        # Without call_amount_bb, formula overcounts
+        ev_buggy = compute_aggressive_ev(
+            pot_bb=pot_bb, bet_bb=bet_bb,
+            fold_pct=0.0, call_pct=1.0, raise_pct=0.0,
+            eq_vs_callers=0.5, eq_vs_raising=0.5, v_raise_bb=27.225,
+            call_amount_bb=0.0,
+        )
+        # pot_if_called = 7.315 + 2*9.075 = 25.465
+        # EV = 0.5 * 25.465 - 9.075 = 12.7325 - 9.075 = 3.6575
+        assert ev_buggy == pytest.approx(3.6575)
+        assert ev_buggy > ev  # overcounting inflates EV
+
+
+class TestComputeFutureValue:
+    """Test that SPR-aware future value makes smaller bets more attractive."""
+
+    def test_no_future_value_on_river(self):
+        """On the river, no future streets → no bonus."""
+        ev = compute_aggressive_ev(
+            pot_bb=10.0, bet_bb=3.3,
+            fold_pct=0.4, call_pct=0.5, raise_pct=0.1,
+            eq_vs_callers=0.7, eq_vs_raising=0.3, v_raise_bb=9.9,
+            effective_stack_bb=100.0, street="river",
+        )
+        # Same as without future value (river has 0 remaining streets)
+        ev_no_future = compute_aggressive_ev(
+            pot_bb=10.0, bet_bb=3.3,
+            fold_pct=0.4, call_pct=0.5, raise_pct=0.1,
+            eq_vs_callers=0.7, eq_vs_raising=0.3, v_raise_bb=9.9,
+        )
+        assert ev == pytest.approx(ev_no_future)
+
+    def test_future_value_boosts_call_branch_on_flop(self):
+        """On the flop with high equity, future value increases EV."""
+        ev_flop = compute_aggressive_ev(
+            pot_bb=10.0, bet_bb=3.3,
+            fold_pct=0.4, call_pct=0.5, raise_pct=0.1,
+            eq_vs_callers=0.7, eq_vs_raising=0.3, v_raise_bb=9.9,
+            effective_stack_bb=100.0, street="flop",
+        )
+        ev_river = compute_aggressive_ev(
+            pot_bb=10.0, bet_bb=3.3,
+            fold_pct=0.4, call_pct=0.5, raise_pct=0.1,
+            eq_vs_callers=0.7, eq_vs_raising=0.3, v_raise_bb=9.9,
+            effective_stack_bb=100.0, street="river",
+        )
+        assert ev_flop > ev_river  # future value adds to flop EV
+
+    def test_low_equity_no_future_bonus(self):
+        """Hands with equity < 50% get zero future value (floored)."""
+        ev_flop = compute_aggressive_ev(
+            pot_bb=10.0, bet_bb=3.3,
+            fold_pct=0.4, call_pct=0.5, raise_pct=0.1,
+            eq_vs_callers=0.2, eq_vs_raising=0.1, v_raise_bb=9.9,
+            effective_stack_bb=100.0, street="flop",
+        )
+        ev_river = compute_aggressive_ev(
+            pot_bb=10.0, bet_bb=3.3,
+            fold_pct=0.4, call_pct=0.5, raise_pct=0.1,
+            eq_vs_callers=0.2, eq_vs_raising=0.1, v_raise_bb=9.9,
+            effective_stack_bb=100.0, street="river",
+        )
+        # With eq < 0.5, future value = 0, so flop and river EVs are equal
+        assert ev_flop == pytest.approx(ev_river)
+
+    def test_small_bet_more_future_value_than_big_bet(self):
+        """Smaller bets preserve more stack → higher SPR → more future value.
+
+        This is the key property: B33 should get more future value boost
+        than R5x because the pot is smaller (higher SPR after call).
+        """
+        # B33: small bet
+        ev_small = compute_aggressive_ev(
+            pot_bb=7.0, bet_bb=2.31,
+            fold_pct=0.44, call_pct=0.50, raise_pct=0.06,
+            eq_vs_callers=0.8, eq_vs_raising=0.8, v_raise_bb=6.93,
+            effective_stack_bb=100.0, street="flop",
+        )
+        ev_small_river = compute_aggressive_ev(
+            pot_bb=7.0, bet_bb=2.31,
+            fold_pct=0.44, call_pct=0.50, raise_pct=0.06,
+            eq_vs_callers=0.8, eq_vs_raising=0.8, v_raise_bb=6.93,
+            effective_stack_bb=100.0, street="river",
+        )
+
+        # R5x: big bet (as raise over villain's bet)
+        ev_big = compute_aggressive_ev(
+            pot_bb=7.0, bet_bb=9.0,
+            fold_pct=0.57, call_pct=0.38, raise_pct=0.05,
+            eq_vs_callers=0.8, eq_vs_raising=0.8, v_raise_bb=27.0,
+            effective_stack_bb=100.0, street="flop",
+        )
+        ev_big_river = compute_aggressive_ev(
+            pot_bb=7.0, bet_bb=9.0,
+            fold_pct=0.57, call_pct=0.38, raise_pct=0.05,
+            eq_vs_callers=0.8, eq_vs_raising=0.8, v_raise_bb=27.0,
+            effective_stack_bb=100.0, street="river",
+        )
+
+        # Future value boost for each
+        small_boost = ev_small - ev_small_river
+        big_boost = ev_big - ev_big_river
+
+        # Small bet should get MORE future value per call
+        assert small_boost > big_boost
+
+    def test_check_ev_future_value_on_flop(self):
+        """Check EV on flop includes future value when hero calls villain bet."""
+        ev_flop = compute_check_ev(
+            pot_bb=7.0, check_back_pct=0.5, villain_bet_pct=0.5,
+            eq_vs_checking=0.8, eq_vs_betting=0.7, v_bet_bb=4.62,
+            effective_stack_bb=100.0, street="flop",
+        )
+        ev_river = compute_check_ev(
+            pot_bb=7.0, check_back_pct=0.5, villain_bet_pct=0.5,
+            eq_vs_checking=0.8, eq_vs_betting=0.7, v_bet_bb=4.62,
+            effective_stack_bb=100.0, street="river",
+        )
+        # Flop has future value in the facing-bet branch
+        assert ev_flop > ev_river
+
+    def test_shallow_stacks_reduce_future_value(self):
+        """With only 20 BB effective, future value is much smaller."""
+        ev_deep = compute_aggressive_ev(
+            pot_bb=7.0, bet_bb=2.31,
+            fold_pct=0.4, call_pct=0.5, raise_pct=0.1,
+            eq_vs_callers=0.7, eq_vs_raising=0.3, v_raise_bb=6.93,
+            effective_stack_bb=100.0, street="flop",
+        )
+        ev_shallow = compute_aggressive_ev(
+            pot_bb=7.0, bet_bb=2.31,
+            fold_pct=0.4, call_pct=0.5, raise_pct=0.1,
+            eq_vs_callers=0.7, eq_vs_raising=0.3, v_raise_bb=6.93,
+            effective_stack_bb=20.0, street="flop",
+        )
+        # Deep stacks should have more future value
+        assert ev_deep > ev_shallow

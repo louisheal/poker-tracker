@@ -233,6 +233,8 @@ export interface SolverModelOutput {
   villain_fold_pct: number;
   villain_call_pct: number;
   villain_raise_pct: number;
+  bet_size_bb: number;
+  bet_size_pct_pot: number;
 }
 
 export interface SolverDebug {
@@ -241,6 +243,9 @@ export interface SolverDebug {
   oopPosition: string;
   ipPosition: string;
   modelOutput: Record<string, SolverModelOutput>;
+  potBB: number;
+  callAmountBB: number;
+  effectiveStackBB: number;
 }
 
 export interface SolverResult {

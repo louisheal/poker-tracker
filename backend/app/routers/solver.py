@@ -15,7 +15,11 @@ SUITS = ["h", "d", "s", "c"]
 _ACTION_BET_PCT: dict[str, float] = {
     "Fold": 0, "Check": 0, "Call": 0, "Raise": 300,
     "B33": 33, "B50": 50, "B66": 66, "B100": 100, "B133": 133, "B200": 200,
-    "R3x": 300, "R4x": 400, "R5x": 500,
+}
+
+# Postflop raises: N× the previous bet (not pot %)
+_RAISE_MULTIPLIER: dict[str, float] = {
+    "R3x": 3.0, "R4x": 4.0, "R5x": 5.0,
 }
 
 
@@ -238,6 +242,7 @@ def _solve_real(
     pot_bb = 1.5  # SB + BB
     in_preflop = True
     prev_raise_total = 0.0
+    last_postflop_bet = 0.0
     for a in actions:
         parts = a.split(":")
         label = parts[0] if len(parts) > 1 else ""
@@ -255,8 +260,19 @@ def _solve_real(
                 pot_bb += max(prev_raise_total - 1.0, 1.0)
         else:
             pct = _ACTION_BET_PCT.get(act, 0)
-            if pct > 0:
-                pot_bb += (pct / 100.0) * pot_bb
+            mult = _RAISE_MULTIPLIER.get(act, 0)
+            if mult > 0 and last_postflop_bet > 0:
+                # Raise = N× the previous bet
+                raise_amount = mult * last_postflop_bet
+                pot_bb += raise_amount
+                last_postflop_bet = raise_amount
+            elif pct > 0:
+                bet_amount = (pct / 100.0) * pot_bb
+                pot_bb += bet_amount
+                last_postflop_bet = bet_amount
+            elif act == "Call" and last_postflop_bet > 0:
+                pot_bb += last_postflop_bet
+                last_postflop_bet = 0
 
     return solve_spot(
         model=model,
@@ -268,6 +284,7 @@ def _solve_real(
         pot_type=pot_type,
         pot_bb=pot_bb,
         hero_actions=action_keys,
+        effective_stack_bb=100.0,
     )
 
 

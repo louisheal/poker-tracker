@@ -52,6 +52,29 @@ export const DebugPanels = ({ debug, actionOptions }: Props) => {
 
   return (
     <div className="space-y-4">
+      {/* Pot & Sizing Info */}
+      <div className="p-3 rounded-lg border border-border bg-card space-y-1">
+        <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          Pot & Sizing
+        </h4>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs">
+          <div className="text-muted-foreground">Pot</div>
+          <div className="text-foreground font-mono">{debug.potBB?.toFixed(2) ?? "—"} BB</div>
+          {debug.callAmountBB > 0 && (
+            <>
+              <div className="text-muted-foreground">Call amount</div>
+              <div className="text-foreground font-mono">{debug.callAmountBB.toFixed(2)} BB</div>
+            </>
+          )}
+          <div className="text-muted-foreground">Eff. stack</div>
+          <div className="text-foreground font-mono">{debug.effectiveStackBB?.toFixed(0) ?? "—"} BB</div>
+          <div className="text-muted-foreground">SPR</div>
+          <div className="text-foreground font-mono">
+            {debug.potBB > 0 ? (debug.effectiveStackBB / debug.potBB).toFixed(1) : "—"}
+          </div>
+        </div>
+      </div>
+
       {/* OOP Range */}
       <RangePanel
         label={debug.oopPosition}
@@ -85,6 +108,11 @@ export const DebugPanels = ({ debug, actionOptions }: Props) => {
               <div key={opt.key} className="space-y-1">
                 <span className="text-xs font-medium text-foreground">
                   {opt.label}
+                  {data.bet_size_bb > 0 && (
+                    <span className="text-muted-foreground font-mono ml-2">
+                      {data.bet_size_bb.toFixed(1)} BB ({data.bet_size_pct_pot.toFixed(0)}% pot)
+                    </span>
+                  )}
                 </span>
                 <div className="grid grid-cols-3 gap-x-3 gap-y-0.5 text-xs">
                   <div className="text-muted-foreground">Opp folds</div>
