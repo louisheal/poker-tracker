@@ -539,6 +539,8 @@ def solve_spot(
             "villain_fold_pct": round(fold_pct * 100, 1),
             "villain_call_pct": round(call_pct * 100, 1),
             "villain_raise_pct": round(raise_pct * 100, 1),
+            "bet_size_bb": round(bet_bb, 2),
+            "bet_size_pct_pot": round(bet_pct, 1),
         }
 
         # Determine equity ranges and compute EV per combo
@@ -704,5 +706,7 @@ def solve_spot(
             "oopPosition": oop_pos,
             "ipPosition": ip_pos,
             "modelOutput": debug_model_output,
+            "potBB": round(pot_bb, 2),
+            "callAmountBB": round(call_amount_bb, 2),
         },
     }
