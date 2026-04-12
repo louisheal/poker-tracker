@@ -529,6 +529,7 @@ def filter_range_by_equity(
     raise_pct: float,
     call_pct: float,
     strength_map: dict[tuple[Card, Card], float] | None = None,
+    hard_split: bool = False,
 ) -> tuple[dict[tuple[Card, Card], float], dict[tuple[Card, Card], float], dict[tuple[Card, Card], float]]:
     """Split a range into raise/call/fold sub-ranges by equity ranking.
 
@@ -537,9 +538,14 @@ def filter_range_by_equity(
       - Next call_pct to calling range
       - Remainder to folding range
 
-    Uses soft filtering: combos in the matching bucket keep full weight,
-    combos outside retain DAMPENING_FACTOR of their weight. This prevents
-    ranges from collapsing to nothing over multiple streets.
+    When hard_split=False (default), uses soft filtering: combos in the
+    matching bucket keep full weight, combos outside retain
+    DAMPENING_FACTOR of their weight.  This prevents ranges from
+    collapsing over multiple streets of narrowing.
+
+    When hard_split=True, combos only appear in their assigned bucket.
+    Use this for equity sub-range calculations where eval7 ignores
+    weights and you need meaningful equity-vs-callers values.
 
     Returns (raising_range, calling_range, folding_range).
     """
@@ -584,24 +590,34 @@ def filter_range_by_equity(
             buckets.append("fold")
         cumulative += freq
 
-    # Second pass: soft-assign weights with dampening
+    # Second pass: assign weights based on split mode
     raising_range: dict[tuple[Card, Card], float] = {}
     calling_range: dict[tuple[Card, Card], float] = {}
     folding_range: dict[tuple[Card, Card], float] = {}
 
     for i, (combo, freq, _) in enumerate(equities):
         bucket = buckets[i]
-        if bucket == "raise":
-            raising_range[combo] = freq
-            calling_range[combo] = freq * DAMPENING_FACTOR
-            folding_range[combo] = freq * DAMPENING_FACTOR
-        elif bucket == "call":
-            raising_range[combo] = freq * DAMPENING_FACTOR
-            calling_range[combo] = freq
-            folding_range[combo] = freq * DAMPENING_FACTOR
+        if hard_split:
+            # Hard split: combos only in their bucket (for equity calc)
+            if bucket == "raise":
+                raising_range[combo] = freq
+            elif bucket == "call":
+                calling_range[combo] = freq
+            else:
+                folding_range[combo] = freq
         else:
-            raising_range[combo] = freq * DAMPENING_FACTOR
-            calling_range[combo] = freq * DAMPENING_FACTOR
-            folding_range[combo] = freq
+            # Soft split: dampened presence in other buckets (for narrowing)
+            if bucket == "raise":
+                raising_range[combo] = freq
+                calling_range[combo] = freq * DAMPENING_FACTOR
+                folding_range[combo] = freq * DAMPENING_FACTOR
+            elif bucket == "call":
+                raising_range[combo] = freq * DAMPENING_FACTOR
+                calling_range[combo] = freq
+                folding_range[combo] = freq * DAMPENING_FACTOR
+            else:
+                raising_range[combo] = freq * DAMPENING_FACTOR
+                calling_range[combo] = freq * DAMPENING_FACTOR
+                folding_range[combo] = freq
 
     return raising_range, calling_range, folding_range

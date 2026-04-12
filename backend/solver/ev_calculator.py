@@ -667,6 +667,7 @@ def solve_spot(
                     villain_range, board, street,
                     raise_pct=villain_bet_pct * 100,
                     call_pct=check_back_pct * 100,
+                    hard_split=True,
                 )
                 eq_vs_checking = all_hands_vs_range(valid_combos, checking_range, board) if checking_range else default_eq
                 eq_vs_betting = all_hands_vs_range(valid_combos, betting_range, board) if betting_range else default_eq
@@ -705,6 +706,7 @@ def solve_spot(
                     villain_range, board, street,
                     raise_pct=raise_pct * 100,
                     call_pct=call_pct * 100,
+                    hard_split=True,
                 )
                 eq_vs_callers_map = all_hands_vs_range(valid_combos, calling_range, board) if calling_range else default_eq
 
