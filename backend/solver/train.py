@@ -42,7 +42,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger(__name__)
 
 NUM_EPOCHS = 25
-BATCH_SIZE = 2048
+BATCH_SIZE = 1024
 LEARNING_RATE = 1e-3
 VAL_SPLIT_MOD = 10  # hand_id_hash % VAL_SPLIT_MOD == 0 -> validation
 CHECKPOINT_DIR = os.path.join(os.path.dirname(__file__), "checkpoints")
