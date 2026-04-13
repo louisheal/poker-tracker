@@ -56,6 +56,9 @@ class SolverTransformer(nn.Module):
         # Positional encoding
         self.pos_embed = nn.Embedding(MAX_SEQ_LEN, MODEL_DIM)
 
+        # Hand-level context: effective stack (normalized by /100)
+        self.stack_proj = nn.Linear(1, MODEL_DIM)
+
         # Transformer encoder
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=MODEL_DIM,
@@ -112,6 +115,11 @@ class SolverTransformer(nn.Module):
 
         # Add type + positional embeddings
         x = token_emb + self.type_embed(batch["token_types"]) + self.pos_embed(positions)
+
+        # Add hand-level stack context (broadcast to all positions)
+        if "stack_sizes" in batch:
+            stack_emb = self.stack_proj(batch["stack_sizes"].unsqueeze(-1))  # (B, dim)
+            x = x + stack_emb.unsqueeze(1)  # (B, 1, dim) broadcast to (B, S, dim)
 
         # Transformer encoder
         x = self.transformer(x, src_key_padding_mask=batch["padding_mask"])

@@ -304,7 +304,7 @@ def _build_sequence_tokens(
     return tokens
 
 
-def _tensorize_sequence(tokens: list[Token]) -> dict[str, torch.Tensor]:
+def _tensorize_sequence(tokens: list[Token], effective_stack_bb: float = 100.0) -> dict[str, torch.Tensor]:
     """Convert a token list to a batch-of-1 tensor dict for the model."""
     seq = tokens[:MAX_SEQ_LEN]
     length = len(seq)
@@ -334,6 +334,7 @@ def _tensorize_sequence(tokens: list[Token]) -> dict[str, torch.Tensor]:
         "bet_sizes": bet_sizes,
         "street_ids": street_ids,
         "padding_mask": padding_mask,
+        "stack_sizes": torch.tensor([effective_stack_bb / 100.0], dtype=torch.float),
     }
 
 
@@ -395,6 +396,7 @@ def compute_current_ranges(
     hero_position: str,
     villain_position: str,
     pot_type: str,
+    effective_stack_bb: float = 100.0,
 ) -> tuple[dict[tuple[Card, Card], float], dict[tuple[Card, Card], float]]:
     """Compute current ranges for hero and villain, narrowed by prior postflop actions.
 
@@ -459,7 +461,7 @@ def compute_current_ranges(
         tokens = _build_sequence_tokens(board_at_action, preflop_actions + prior_postflop)
 
         with torch.no_grad():
-            batch = _tensorize_sequence(tokens)
+            batch = _tensorize_sequence(tokens, effective_stack_bb)
             logits = model(batch)
             probs = torch.softmax(logits, dim=-1).cpu()[0]
 
@@ -560,6 +562,7 @@ def solve_spot(
     hero_range, villain_range = compute_current_ranges(
         model, board, street, action_prefix,
         hero_position, villain_position, pot_type,
+        effective_stack_bb,
     )
 
     # Filter combos that don't conflict with the board
@@ -603,7 +606,7 @@ def solve_spot(
 
         # Run model once per action (same for all combos -- no hole cards in input)
         with torch.no_grad():
-            batch = _tensorize_sequence(full_tokens)
+            batch = _tensorize_sequence(full_tokens, effective_stack_bb)
             logits = model(batch)
             probs = torch.softmax(logits, dim=-1).cpu()[0]
 

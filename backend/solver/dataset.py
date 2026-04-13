@@ -47,6 +47,7 @@ class TrainingExample:
     sequence: list[Token]
     label: int  # next action index (0-4)
     hand_id: str = ""  # for train/val splitting by hand
+    effective_stack_bb: float = 100.0  # min of both players' starting stacks in BB
 
 
 def _card_token(card: Card) -> Token:
@@ -173,6 +174,13 @@ def extract_training_examples(ast: HandAST) -> list[TrainingExample]:
     sequence: list[Token] = []
     examples: list[TrainingExample] = []
 
+    # Effective stack: min of both players' starting chips, in BB
+    if len(ast.players) >= 2:
+        chips = [chips for _, _, chips in ast.players]
+        eff_stack_bb = min(chips) / bb if bb > 0 else 100.0
+    else:
+        eff_stack_bb = 100.0
+
     # Preflop actions -- encode pot type (SRP/3bet/4bet) and position context
     for action in ast.preflop:
         pot_before = pots[pot_idx] if pot_idx < len(pots) else 1.0
@@ -203,6 +211,7 @@ def extract_training_examples(ast: HandAST) -> list[TrainingExample]:
                         sequence=list(sequence),
                         label=ACTION_TO_INDEX[action.type],
                         hand_id=ast.hand_id,
+                        effective_stack_bb=eff_stack_bb,
                     ))
             else:
                 # Both players are targets -- predict every action
@@ -210,6 +219,7 @@ def extract_training_examples(ast: HandAST) -> list[TrainingExample]:
                     sequence=list(sequence),
                     label=ACTION_TO_INDEX[action.type],
                     hand_id=ast.hand_id,
+                    effective_stack_bb=eff_stack_bb,
                 ))
 
             pot_before = pots[pot_idx] if pot_idx < len(pots) else 1.0
@@ -231,6 +241,7 @@ from solver.augmentation import (
 )
 
 TENSOR_FIELDS = ("token_types", "ranks", "suits", "actions", "bet_sizes", "street_ids", "padding_mask")
+SCALAR_FIELDS = ("stack_sizes",)  # per-example scalars (not per-token)
 
 
 def tensorize_all(examples: list[TrainingExample]) -> dict[str, torch.Tensor]:
@@ -254,6 +265,7 @@ def tensorize_all(examples: list[TrainingExample]) -> dict[str, torch.Tensor]:
     all_street_ids: list[list[int]] = []
     all_padding: list[list[bool]] = []
     all_labels: list[int] = []
+    all_stack_sizes: list[float] = []
 
     street_marker_type = int(TokenType.STREET_MARKER)
 
@@ -273,6 +285,7 @@ def tensorize_all(examples: list[TrainingExample]) -> dict[str, torch.Tensor]:
         )
         all_padding.append([False] * length + [True] * pad_len)
         all_labels.append(ex.label)
+        all_stack_sizes.append(ex.effective_stack_bb / 100.0)  # normalize to ~0-3
 
     return {
         "token_types": torch.tensor(all_token_types, dtype=torch.int8),
@@ -283,6 +296,7 @@ def tensorize_all(examples: list[TrainingExample]) -> dict[str, torch.Tensor]:
         "street_ids": torch.tensor(all_street_ids, dtype=torch.int8),
         "padding_mask": torch.tensor(all_padding, dtype=torch.bool),
         "labels": torch.tensor(all_labels, dtype=torch.int8),
+        "stack_sizes": torch.tensor(all_stack_sizes, dtype=torch.float16),
     }
 
 
@@ -396,6 +410,9 @@ def batch_iterator(
         for key in TENSOR_FIELDS:
             val = data[key][idx]
             batch[key] = val.long() if key in _LONG_FIELDS else val
+        for key in SCALAR_FIELDS:
+            if key in data:
+                batch[key] = data[key][idx].float()
         batch["labels"] = data["labels"][idx].long()
         batch["bet_sizes"] = batch["bet_sizes"].float()
         if device is not None:
@@ -413,6 +430,9 @@ def _prepare_batch(
     for key in TENSOR_FIELDS:
         val = data[key][idx]
         batch[key] = val.long() if key in _LONG_FIELDS else val
+    for key in SCALAR_FIELDS:
+        if key in data:
+            batch[key] = data[key][idx].float()
     batch["labels"] = data["labels"][idx].long()
     batch["bet_sizes"] = batch["bet_sizes"].float()
     if device is not None:
