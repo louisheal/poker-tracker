@@ -58,11 +58,12 @@ def _card_token(card: Card) -> Token:
     )
 
 
-def _action_token(action: Action, bet_size_pct: float) -> Token:
+def _action_token(action: Action, bet_size_pct: float, bet_size_bb: float = 0.0) -> Token:
     return Token(
         token_type=TokenType.ACTION,
         action=ACTION_TO_INDEX[action],
         bet_size_pct=bet_size_pct,
+        bet_size_bb=bet_size_bb,
     )
 
 
@@ -88,6 +89,17 @@ def _compute_bet_size_pct(action: PlayerAction, pot: float) -> float:
         return (action.amount / pot) * 100.0
     if action.type == Action.RAISE and action.raise_to is not None:
         return (action.raise_to / pot) * 100.0
+    return 0.0
+
+
+def _compute_bet_size_bb(action: PlayerAction, bb: float) -> float:
+    """Compute action size in big blinds."""
+    if bb <= 0:
+        return 0.0
+    if action.type == Action.BET and action.amount is not None:
+        return action.amount / bb
+    if action.type == Action.RAISE and action.raise_to is not None:
+        return action.raise_to / bb
     return 0.0
 
 
@@ -185,7 +197,8 @@ def extract_training_examples(ast: HandAST) -> list[TrainingExample]:
     for action in ast.preflop:
         pot_before = pots[pot_idx] if pot_idx < len(pots) else 1.0
         size_pct = _compute_bet_size_pct(action, pot_before * bb)
-        sequence.append(_action_token(action.type, size_pct))
+        size_bb = _compute_bet_size_bb(action, bb)
+        sequence.append(_action_token(action.type, size_pct, size_bb))
         pot_idx += 1
 
     # Postflop streets
@@ -224,7 +237,8 @@ def extract_training_examples(ast: HandAST) -> list[TrainingExample]:
 
             pot_before = pots[pot_idx] if pot_idx < len(pots) else 1.0
             size_pct = _compute_bet_size_pct(action, pot_before * bb)
-            sequence.append(_action_token(action.type, size_pct))
+            size_bb = _compute_bet_size_bb(action, bb)
+            sequence.append(_action_token(action.type, size_pct, size_bb))
             pot_idx += 1
 
     return examples
@@ -240,7 +254,7 @@ from solver.augmentation import (
     FLOP_ORDERINGS,
 )
 
-TENSOR_FIELDS = ("token_types", "ranks", "suits", "actions", "bet_sizes", "street_ids", "padding_mask")
+TENSOR_FIELDS = ("token_types", "ranks", "suits", "actions", "bet_sizes", "bet_sizes_bb", "street_ids", "padding_mask")
 SCALAR_FIELDS = ("stack_sizes",)  # per-example scalars (not per-token)
 
 
@@ -262,6 +276,7 @@ def tensorize_all(examples: list[TrainingExample]) -> dict[str, torch.Tensor]:
     all_suits: list[list[int]] = []
     all_actions: list[list[int]] = []
     all_bet_sizes: list[list[float]] = []
+    all_bet_sizes_bb: list[list[float]] = []
     all_street_ids: list[list[int]] = []
     all_padding: list[list[bool]] = []
     all_labels: list[int] = []
@@ -279,6 +294,7 @@ def tensorize_all(examples: list[TrainingExample]) -> dict[str, torch.Tensor]:
         all_suits.append([t.suit for t in seq] + [0] * pad_len)
         all_actions.append([t.action for t in seq] + [0] * pad_len)
         all_bet_sizes.append([t.bet_size_pct for t in seq] + [0.0] * pad_len)
+        all_bet_sizes_bb.append([t.bet_size_bb for t in seq] + [0.0] * pad_len)
         all_street_ids.append(
             [t.action if int(t.token_type) == street_marker_type else 0 for t in seq]
             + [0] * pad_len
@@ -293,6 +309,7 @@ def tensorize_all(examples: list[TrainingExample]) -> dict[str, torch.Tensor]:
         "suits": torch.tensor(all_suits, dtype=torch.int8),
         "actions": torch.tensor(all_actions, dtype=torch.int8),
         "bet_sizes": torch.tensor(all_bet_sizes, dtype=torch.float16),
+        "bet_sizes_bb": torch.tensor(all_bet_sizes_bb, dtype=torch.float16),
         "street_ids": torch.tensor(all_street_ids, dtype=torch.int8),
         "padding_mask": torch.tensor(all_padding, dtype=torch.bool),
         "labels": torch.tensor(all_labels, dtype=torch.int8),
@@ -379,7 +396,7 @@ def compact_data(data: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
     for k, v in data.items():
         if k in compact_int and v.dtype != torch.int8:
             result[k] = v.to(torch.int8)
-        elif k == "bet_sizes" and v.dtype != torch.float16:
+        elif k in ("bet_sizes", "bet_sizes_bb") and v.dtype != torch.float16:
             result[k] = v.to(torch.float16)
         else:
             result[k] = v
@@ -415,6 +432,7 @@ def batch_iterator(
                 batch[key] = data[key][idx].float()
         batch["labels"] = data["labels"][idx].long()
         batch["bet_sizes"] = batch["bet_sizes"].float()
+        batch["bet_sizes_bb"] = batch["bet_sizes_bb"].float()
         if device is not None:
             batch = {k: v.to(device, non_blocking=True) for k, v in batch.items()}
         yield batch
@@ -435,6 +453,7 @@ def _prepare_batch(
             batch[key] = data[key][idx].float()
     batch["labels"] = data["labels"][idx].long()
     batch["bet_sizes"] = batch["bet_sizes"].float()
+    batch["bet_sizes_bb"] = batch["bet_sizes_bb"].float()
     if device is not None:
         batch = {k: v.to(device, non_blocking=True) for k, v in batch.items()}
     return batch

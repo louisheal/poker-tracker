@@ -19,3 +19,4 @@ class Token:
     suit: int = 0       # 0-3 for cards
     action: int = 0     # 0-4 for actions (F/X/C/B/R)
     bet_size_pct: float = 0.0  # pct of pot for bet/raise actions
+    bet_size_bb: float = 0.0   # bet/raise amount in BB

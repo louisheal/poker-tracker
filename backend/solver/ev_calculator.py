@@ -263,6 +263,8 @@ def _build_sequence_tokens(
 
     Correct ordering: preflop actions, then for each street:
     street marker + board cards + street actions.
+
+    Tracks pot in BB to compute bet_size_bb for each action token.
     """
     tokens: list[Token] = []
 
@@ -276,9 +278,32 @@ def _build_sequence_tokens(
         else:
             preflop_actions.append(action_str)
 
+    # Track pot for BB amount computation
+    pot_bb = 1.5  # SB + BB
+    last_bet_bb = 1.0  # BB is the initial "bet"
+
     # Preflop actions
     for action_str in preflop_actions:
-        tokens.append(_action_to_token(action_str))
+        parts = action_str.split(":")
+        action_key = parts[-1] if len(parts) > 1 else parts[0]
+        bet_pct = ACTION_TO_BET_PCT.get(action_key, 0.0)
+        model_action = _action_key_to_model_action(action_key)
+
+        if action_key in ("Fold", "Check"):
+            bet_bb = 0.0
+        elif action_key == "Call":
+            bet_bb = 0.0  # calls are 0 in training data
+            pot_bb += last_bet_bb
+            last_bet_bb = 0
+        elif action_key == "Raise":
+            bet_bb = (bet_pct / 100) * pot_bb
+            pot_bb += bet_bb
+            last_bet_bb = bet_bb
+        else:
+            bet_bb = 0.0
+
+        tokens.append(Token(TokenType.ACTION, action=model_action,
+                            bet_size_pct=bet_pct, bet_size_bb=bet_bb))
 
     # Split postflop actions by street
     street_actions = _split_postflop_by_street(postflop_actions)
@@ -297,9 +322,35 @@ def _build_sequence_tokens(
         tokens.append(Token(TokenType.STREET_MARKER, action=marker))
         for card in cards:
             tokens.append(_card_token(card))
+
+        last_bet_bb = 0  # reset per street
         if i < len(street_actions):
             for action_str in street_actions[i]:
-                tokens.append(_action_to_token(action_str))
+                parts = action_str.split(":")
+                action_key = parts[-1] if len(parts) > 1 else parts[0]
+                bet_pct = ACTION_TO_BET_PCT.get(action_key, 0.0)
+                model_action = _action_key_to_model_action(action_key)
+                mult = RAISE_MULTIPLIER.get(action_key, 0)
+
+                if action_key in ("Check", "Fold"):
+                    bet_bb = 0.0
+                elif action_key == "Call":
+                    bet_bb = 0.0  # calls are 0 in training data
+                    pot_bb += last_bet_bb
+                    last_bet_bb = 0
+                elif mult > 0 and last_bet_bb > 0:
+                    bet_bb = mult * last_bet_bb
+                    pot_bb += bet_bb
+                    last_bet_bb = bet_bb
+                elif bet_pct > 0:
+                    bet_bb = (bet_pct / 100) * pot_bb
+                    pot_bb += bet_bb
+                    last_bet_bb = bet_bb
+                else:
+                    bet_bb = 0.0
+
+                tokens.append(Token(TokenType.ACTION, action=model_action,
+                                    bet_size_pct=bet_pct, bet_size_bb=bet_bb))
 
     return tokens
 
@@ -314,6 +365,7 @@ def _tensorize_sequence(tokens: list[Token], effective_stack_bb: float = 100.0) 
     suits = torch.zeros(1, MAX_SEQ_LEN, dtype=torch.long)
     actions = torch.zeros(1, MAX_SEQ_LEN, dtype=torch.long)
     bet_sizes = torch.zeros(1, MAX_SEQ_LEN, dtype=torch.float)
+    bet_sizes_bb = torch.zeros(1, MAX_SEQ_LEN, dtype=torch.float)
     street_ids = torch.zeros(1, MAX_SEQ_LEN, dtype=torch.long)
     padding_mask = torch.ones(1, MAX_SEQ_LEN, dtype=torch.bool)
 
@@ -323,6 +375,7 @@ def _tensorize_sequence(tokens: list[Token], effective_stack_bb: float = 100.0) 
         suits[0, i] = tok.suit
         actions[0, i] = tok.action
         bet_sizes[0, i] = tok.bet_size_pct
+        bet_sizes_bb[0, i] = tok.bet_size_bb
         street_ids[0, i] = tok.action if tok.token_type == TokenType.STREET_MARKER else 0
         padding_mask[0, i] = False
 
@@ -332,6 +385,7 @@ def _tensorize_sequence(tokens: list[Token], effective_stack_bb: float = 100.0) 
         "suits": suits,
         "actions": actions,
         "bet_sizes": bet_sizes,
+        "bet_sizes_bb": bet_sizes_bb,
         "street_ids": street_ids,
         "padding_mask": padding_mask,
         "stack_sizes": torch.tensor([effective_stack_bb / 100.0], dtype=torch.float),
@@ -601,7 +655,8 @@ def solve_spot(
         # Build sequence (no hole cards)
         base_tokens = _build_sequence_tokens(board, action_prefix)
         model_action = _action_key_to_model_action(action_key)
-        hero_token = Token(TokenType.ACTION, action=model_action, bet_size_pct=bet_pct)
+        hero_token = Token(TokenType.ACTION, action=model_action,
+                          bet_size_pct=bet_pct, bet_size_bb=bet_bb)
         full_tokens = base_tokens + [hero_token]
 
         # Run model once per action (same for all combos -- no hole cards in input)

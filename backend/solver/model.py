@@ -84,7 +84,7 @@ class SolverTransformer(nn.Module):
             ranks:        (B, S) int  -- rank index (valid for cards)
             suits:        (B, S) int  -- suit index (valid for cards)
             actions:      (B, S) int  -- action index (valid for actions)
-            bet_sizes:    (B, S) float -- pct of pot (valid for actions)
+            bet_sizes_bb: (B, S) float -- bet/raise amount in BB
             street_ids:   (B, S) int  -- 0=FLOP,1=TURN,2=RIVER (valid for markers)
             padding_mask: (B, S) bool -- True for padding positions
 
@@ -97,7 +97,7 @@ class SolverTransformer(nn.Module):
         # Build embeddings for each token type
         card_emb = self.rank_embed(batch["ranks"]) + self.suit_embed(batch["suits"])
         action_emb = self.action_embed(batch["actions"]) + self.bet_size_proj(
-            batch["bet_sizes"].unsqueeze(-1)
+            batch["bet_sizes_bb"].unsqueeze(-1)
         )
         street_emb = self.street_embed(batch["street_ids"])
 
