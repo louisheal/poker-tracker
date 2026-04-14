@@ -630,170 +630,30 @@ def solve_spot(
     # Per-combo results: combo -> {action_key -> ev}
     combo_evs: dict[tuple[Card, Card], dict[str, float]] = {c: {} for c in valid_combos}
 
-    debug_model_output: dict[str, dict[str, float]] = {}
+    # Determine hero's position (IP or OOP) for MC solver
+    oop_pos, ip_pos = _determine_oop_ip(hero_position, villain_position)
+    hero_is_ip = hero_position == ip_pos
 
-    # Compute call cost from the last villain action (needed for Call EV).
-    # When "Call" is in hero_actions, the last action is always a villain bet/raise.
-    call_amount_bb = 0.0
-    if action_prefix:
-        last_action_key = action_prefix[-1].split(":")[-1]
-        last_bet_pct = ACTION_TO_BET_PCT.get(last_action_key, 0.0)
-        if last_bet_pct > 0:
-            pot_before_villain = pot_bb / (1.0 + last_bet_pct / 100.0)
-            call_amount_bb = pot_before_villain * last_bet_pct / 100.0
+    # MC tree solver: replaces formula-based one-level lookahead EV
+    from solver.mc_solver import mc_solve_spot
+    mc_evs = mc_solve_spot(
+        model=model,
+        board=board,
+        street=street,
+        action_prefix=action_prefix,
+        hero_actions=hero_actions,
+        villain_range=villain_range,
+        pot_bb=pot_bb,
+        effective_stack_bb=effective_stack_bb,
+        valid_combos=valid_combos,
+        hero_is_ip=hero_is_ip,
+    )
 
+    # Transpose mc_evs (action -> combo -> ev) into combo_evs (combo -> action -> ev)
     for action_key in hero_actions:
-        # For raises facing a bet, compute size as multiplier of villain's bet
-        if action_key in RAISE_MULTIPLIER and call_amount_bb > 0:
-            multiplier = RAISE_MULTIPLIER[action_key]
-            bet_bb = multiplier * call_amount_bb
-            bet_pct = (bet_bb / pot_bb) * 100 if pot_bb > 0 else 0.0
-        else:
-            bet_pct = ACTION_TO_BET_PCT.get(action_key, 0.0)
-            bet_bb = (bet_pct / 100.0) * pot_bb
-
-        # Build sequence (no hole cards)
-        base_tokens = _build_sequence_tokens(board, action_prefix)
-        model_action = _action_key_to_model_action(action_key)
-        hero_token = Token(TokenType.ACTION, action=model_action,
-                          bet_size_pct=bet_pct, bet_size_bb=bet_bb)
-        full_tokens = base_tokens + [hero_token]
-
-        # Run model once per action (same for all combos -- no hole cards in input)
-        with torch.no_grad():
-            batch = _tensorize_sequence(full_tokens, effective_stack_bb)
-            logits = model(batch)
-            probs = torch.softmax(logits, dim=-1).cpu()[0]
-
-        fold_pct = probs[0].item()
-        # When hero bets/raises, villain can fold/call/raise (CHECK+CALL = continue).
-        # When hero checks/calls, villain responds to that — only CALL is "continue."
-        is_aggressive = action_key not in ("Fold", "Check", "Call")
-        if is_aggressive:
-            call_pct = probs[2].item() + probs[1].item()
-        else:
-            call_pct = probs[2].item()
-        raise_pct = probs[3].item() + probs[4].item()
-
-        total = fold_pct + call_pct + raise_pct
-        if total > 0:
-            fold_pct /= total
-            call_pct /= total
-            raise_pct /= total
-
-        debug_model_output[action_key] = {
-            "raw_fold": round(probs[0].item(), 4),
-            "raw_check": round(probs[1].item(), 4),
-            "raw_call": round(probs[2].item(), 4),
-            "raw_bet": round(probs[3].item(), 4),
-            "raw_raise": round(probs[4].item(), 4),
-            "villain_fold_pct": round(fold_pct * 100, 1),
-            "villain_call_pct": round(call_pct * 100, 1),
-            "villain_raise_pct": round(raise_pct * 100, 1),
-            "bet_size_bb": round(bet_bb, 2),
-            "bet_size_pct_pot": round(bet_pct, 1),
-        }
-
-        # Determine equity ranges and compute EV per combo
-        can_compute_equity = street != "preflop" and bool(board)
-        default_eq: dict[tuple[Card, Card], float] = {
-            _normalize_combo(c): 0.5 for c in valid_combos
-        }
-
-        if action_key == "Fold":
-            for combo in valid_combos:
-                combo_evs[combo][action_key] = 0.0
-
-        elif action_key == "Check":
-            # One-level lookahead: villain checks back or bets after hero check
-            raw_check = probs[1].item()
-            raw_call = probs[2].item()
-            raw_bet = probs[3].item()
-            raw_raise = probs[4].item()
-            check_back_pct = raw_check + raw_call
-            villain_bet_pct = raw_bet + raw_raise
-            total_check = check_back_pct + villain_bet_pct
-            if total_check > 0:
-                check_back_pct /= total_check
-                villain_bet_pct /= total_check
-
-            v_bet_bb = (VILLAIN_BET_SIZE_PCT / 100.0) * pot_bb
-
-            if can_compute_equity and villain_range:
-                # Split villain into betting vs checking sub-ranges
-                betting_range, checking_range, _ = filter_range_by_equity(
-                    villain_range, board, street,
-                    raise_pct=villain_bet_pct * 100,
-                    call_pct=check_back_pct * 100,
-                    hard_split=True,
-                )
-                eq_vs_checking = all_hands_vs_range(valid_combos, checking_range, board) if checking_range else default_eq
-                eq_vs_betting = all_hands_vs_range(valid_combos, betting_range, board) if betting_range else default_eq
-            else:
-                eq_vs_checking = default_eq
-                eq_vs_betting = default_eq
-
-            for combo in valid_combos:
-                nc = _normalize_combo(combo)
-                eq_chk = eq_vs_checking.get(nc, 0.5)
-                eq_bet = eq_vs_betting.get(nc, 0.5)
-
-                ev = compute_check_ev(
-                    pot_bb, check_back_pct, villain_bet_pct, eq_chk, eq_bet, v_bet_bb,
-                    effective_stack_bb=effective_stack_bb, street=street,
-                )
-                combo_evs[combo][action_key] = round(ev, 2)
-
-        elif action_key == "Call":
-            eq_map = all_hands_vs_range(valid_combos, villain_range, board) if can_compute_equity and villain_range else default_eq
-            for combo in valid_combos:
-                eq_vs_callers = eq_map.get(_normalize_combo(combo), 0.5)
-                pot_after_call = pot_bb + call_amount_bb
-                call_ev = eq_vs_callers * pot_after_call - call_amount_bb
-                future = compute_future_value(
-                    eq_vs_callers, pot_after_call, call_amount_bb,
-                    effective_stack_bb, street,
-                )
-                ev = call_ev + future
-                combo_evs[combo][action_key] = round(ev, 2)
-
-        else:
-            # Aggressive action (bet/raise): villain folds/calls/raises
-            if can_compute_equity and villain_range:
-                raising_range, calling_range, folding_range = filter_range_by_equity(
-                    villain_range, board, street,
-                    raise_pct=raise_pct * 100,
-                    call_pct=call_pct * 100,
-                    hard_split=True,
-                )
-                eq_vs_callers_map = all_hands_vs_range(valid_combos, calling_range, board) if calling_range else default_eq
-
-                # One-level lookahead for raise branch: hero can call or fold
-                v_raise_bb = VILLAIN_RAISE_MULTIPLIER * bet_bb
-                hero_call_amount = v_raise_bb - bet_bb
-                if raising_range and raise_pct > 0:
-                    eq_vs_raising_map = all_hands_vs_range(valid_combos, raising_range, board)
-                else:
-                    eq_vs_raising_map = default_eq
-            else:
-                eq_vs_callers_map = default_eq
-                eq_vs_raising_map = default_eq
-                v_raise_bb = VILLAIN_RAISE_MULTIPLIER * bet_bb
-                hero_call_amount = v_raise_bb - bet_bb
-
-            for combo in valid_combos:
-                nc = _normalize_combo(combo)
-                eq_vs_callers = eq_vs_callers_map.get(nc, 0.5)
-                eq_vs_raising = eq_vs_raising_map.get(nc, 0.5)
-
-                ev = compute_aggressive_ev(
-                    pot_bb, bet_bb, fold_pct, call_pct, raise_pct,
-                    eq_vs_callers, eq_vs_raising, v_raise_bb,
-                    call_amount_bb=call_amount_bb,
-                    effective_stack_bb=effective_stack_bb,
-                    street=street,
-                )
-                combo_evs[combo][action_key] = round(ev, 2)
+        action_combo_evs = mc_evs.get(action_key, {})
+        for combo in valid_combos:
+            combo_evs[combo][action_key] = round(action_combo_evs.get(combo, 0.0), 2)
 
     # Group combos into hand keys
     hands: dict[str, dict] = {}
@@ -856,8 +716,6 @@ def solve_spot(
             counts[ba] = counts.get(ba, 0) + 1
         data["actionCounts"] = counts
 
-    oop_pos, ip_pos = _determine_oop_ip(hero_position, villain_position)
-
     oop_range = hero_range if hero_position == oop_pos else villain_range
     ip_range = hero_range if hero_position == ip_pos else villain_range
 
@@ -870,9 +728,8 @@ def solve_spot(
             "ipRange": _aggregate_to_hand_keys(ip_range),
             "oopPosition": oop_pos,
             "ipPosition": ip_pos,
-            "modelOutput": debug_model_output,
             "potBB": round(pot_bb, 2),
-            "callAmountBB": round(call_amount_bb, 2),
             "effectiveStackBB": round(effective_stack_bb, 2),
+            "solver": "mc_tree",
         },
     }

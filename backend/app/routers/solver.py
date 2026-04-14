@@ -303,3 +303,109 @@ def solve(
         return _solve_real(request, board, street, actions, hero_position)
     else:
         return _solve_mock(board, street, actions)
+
+
+@router.get("/solve-stream")
+async def solve_stream(
+    request: Request,
+    board: list[str] = Query(default=[]),
+    street: str = Query(default="preflop"),
+    actions: list[str] = Query(default=[]),
+    hero_position: str | None = Query(default=None),
+):
+    """SSE endpoint that streams solver results as they compute."""
+    import json
+    from starlette.responses import StreamingResponse
+
+    has_model = hasattr(request.app.state, "solver_model") and request.app.state.solver_model is not None
+
+    if not has_model:
+        result = _solve_mock(board, street, actions)
+
+        async def single():
+            yield f"data: {json.dumps({'type': 'complete', **result})}\n\n"
+
+        return StreamingResponse(single(), media_type="text/event-stream")
+
+    from app.parsers.lexer import to_card
+    from solver.mc_solver import mc_solve_spot_streaming
+    from solver.ev_calculator import (
+        compute_current_ranges, _determine_oop_ip,
+        ACTION_TO_BET_PCT, RAISE_MULTIPLIER,
+    )
+    from solver.ranges import _cards_conflict
+
+    model = request.app.state.solver_model
+    board_cards = [to_card(c) for c in board]
+
+    action_keys = _detect_action_keys(street, actions)
+    ctx = _parse_preflop_context(actions)
+    pot_type = ctx["pot_type"]
+    oop_pos = ctx["oop_position"]
+    ip_pos = ctx["ip_position"]
+
+    if not hero_position:
+        postflop_count = sum(1 for a in actions if a.split(":")[0] in ("OOP", "IP"))
+        hero_position = oop_pos if postflop_count % 2 == 0 else ip_pos
+
+    villain_position = ip_pos if hero_position == oop_pos else oop_pos
+    hero_is_ip = hero_position == ip_pos
+
+    # Estimate pot
+    pot_bb = 1.5
+    in_preflop = True
+    prev_raise_total = 0.0
+    last_postflop_bet = 0.0
+    for a in actions:
+        parts = a.split(":")
+        label = parts[0] if len(parts) > 1 else ""
+        act = parts[-1] if len(parts) > 1 else parts[0]
+        if label in ("OOP", "IP"):
+            in_preflop = False
+        if in_preflop:
+            if act == "Raise":
+                pot_bb += max(2.5, prev_raise_total * 3) - prev_raise_total
+                prev_raise_total = max(2.5, prev_raise_total * 3)
+            elif act == "Call":
+                pot_bb += max(prev_raise_total - 1.0, 1.0)
+        else:
+            pct = _ACTION_BET_PCT.get(act, 0)
+            mult = _RAISE_MULTIPLIER.get(act, 0)
+            if mult > 0 and last_postflop_bet > 0:
+                raise_amount = mult * last_postflop_bet
+                pot_bb += raise_amount
+                last_postflop_bet = raise_amount
+            elif pct > 0:
+                bet_amount = (pct / 100.0) * pot_bb
+                pot_bb += bet_amount
+                last_postflop_bet = bet_amount
+            elif act == "Call" and last_postflop_bet > 0:
+                pot_bb += last_postflop_bet
+                last_postflop_bet = 0
+
+    effective_stack_bb = 100.0
+
+    # Compute ranges
+    from solver.ranges import ALL_COMBOS
+    hero_range, villain_range = compute_current_ranges(
+        model, board_cards, street if board_cards else "preflop", actions,
+        hero_position, villain_position, pot_type, effective_stack_bb,
+    )
+    valid_combos = [c for c in ALL_COMBOS if not _cards_conflict(c, board_cards)]
+
+    async def generate():
+        for update in mc_solve_spot_streaming(
+            model=model,
+            board=board_cards,
+            street=street if board_cards else "preflop",
+            action_prefix=actions,
+            hero_actions=action_keys,
+            villain_range=villain_range,
+            pot_bb=pot_bb,
+            effective_stack_bb=effective_stack_bb,
+            valid_combos=valid_combos,
+            hero_is_ip=hero_is_ip,
+        ):
+            yield f"data: {json.dumps(update)}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")

@@ -47,7 +47,6 @@ export const HandGrid = ({
         const hand = result.hands[key];
         if (!hand) return {};
 
-        const ev = hand.evs[hand.bestAction] ?? 0;
         const counts = hand.actionCounts;
 
         // If we have actionCounts, build gradient stops; otherwise fall back to solid

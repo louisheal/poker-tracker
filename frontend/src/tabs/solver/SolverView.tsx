@@ -1,7 +1,5 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useCallback } from "react";
 import type { CardJson } from "@/api";
-import { getSolverResult } from "@/api";
-import type { SolverResult } from "@/models";
 import type { SolverSpot, ActionTile, BoardTile } from "./types";
 import { INITIAL_SPOT } from "./types";
 import { buildTiles } from "./gameTree";
@@ -9,13 +7,12 @@ import { ActionSequence } from "./components/ActionSequence";
 import { HandGrid } from "./components/HandGrid";
 import { SolverResults } from "./components/SolverResults";
 import { DebugPanels } from "./components/DebugPanels";
+import { useSolverStream } from "./hooks/useSolverStream";
 
 export const SolverView = () => {
   const [spot, setSpot] = useState<SolverSpot>(INITIAL_SPOT);
   const [viewTileId, setViewTileId] = useState<string | null>(null);
   const [selectedHand, setSelectedHand] = useState<string | null>(null);
-  const [solverResult, setSolverResult] = useState<SolverResult | null>(null);
-  const [loading, setLoading] = useState(false);
 
   const tiles = useMemo(() => buildTiles(spot), [spot]);
 
@@ -82,32 +79,10 @@ export const SolverView = () => {
     };
   }, [viewedTile, tiles, spot.flopCards, spot.turnCard, spot.riverCard]);
 
-  useEffect(() => {
-    if (!solverParams) {
-      setSolverResult(null);
-      return;
-    }
+  const { result: solverResult, loading, progress, simsComplete } =
+    useSolverStream(solverParams);
 
-    const controller = new AbortController();
-    setLoading(true);
-
-    const fetchResult = async () => {
-      try {
-        const result = await getSolverResult(solverParams, controller.signal);
-        setSolverResult(result);
-        setSelectedHand(null);
-      } catch {
-        // Aborted or error
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchResult();
-    return () => controller.abort();
-  }, [solverParams]);
-
-  const handleNavigate = useCallback((tileId: string) => {
+  const handleNavigate= useCallback((tileId: string) => {
     setViewTileId(tileId);
     setSelectedHand(null);
   }, []);
@@ -239,8 +214,18 @@ export const SolverView = () => {
       )}
 
       {loading && (
-        <div className="text-sm text-muted-foreground py-6 text-center">
-          Solving...
+        <div className="py-4">
+          <div className="w-full bg-muted rounded h-2 overflow-hidden">
+            <div
+              className="bg-blue-500 h-2 rounded transition-all duration-300"
+              style={{ width: `${Math.max(progress * 100, 2)}%` }}
+            />
+          </div>
+          <span className="text-xs text-muted-foreground mt-1 block">
+            {simsComplete > 0
+              ? `${simsComplete} cards enumerated...`
+              : "Solving..."}
+          </span>
         </div>
       )}
 
