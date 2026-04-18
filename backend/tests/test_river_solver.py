@@ -2,13 +2,15 @@
 
 import pytest
 
-from solver.streets.river import (
+from solver.streets.common import (
     _enumerate_sequences,
     _get_hero_actions,
     _compute_bet_size,
+    VILLAIN_RAISE_MULTIPLIER,
+)
+from solver.streets.river import (
     _eval_action,
     _solve_node,
-    VILLAIN_RAISE_MULTIPLIER,
 )
 
 
