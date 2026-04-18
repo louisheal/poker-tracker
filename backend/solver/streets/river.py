@@ -242,7 +242,7 @@ def full_solve_spot(
 ) -> tuple[dict[str, dict[tuple[Card, Card], float]], dict[tuple[Card, Card], float] | None]:
     """Drop-in replacement for mc_solve_spot.
     Returns (action_evs, combo_equity). combo_equity is None for non-river streets."""
-    if street != "river":
+    if street != "river" and street != "turn":
         return mc_solve_spot(
             model, board, street, action_prefix, hero_actions,
             villain_range, pot_bb, starting_bb, valid_combos, hero_is_ip,
@@ -259,6 +259,21 @@ def full_solve_spot(
 
     matched_pot = pot_bb - facing_bet
     remaining_bb = starting_bb - matched_pot / 2
+
+    if street == "turn":
+        from solver.streets.turn import solve_turn
+        return solve_turn(
+            board=board,
+            pot=matched_pot,
+            facing_bet=facing_bet,
+            remaining_bb=remaining_bb,
+            villain_range=villain_range,
+            model=model,
+            action_prefix=action_prefix,
+            hero_combos=valid_combos,
+            starting_bb=starting_bb,
+            hero_is_ip=hero_is_ip,
+        )
 
     return solve_river(
         board=board,
@@ -288,7 +303,7 @@ def full_solve_spot_streaming(
     facing_bet: float = 0.0,
 ) -> Generator:
     """Drop-in replacement for mc_solve_spot_streaming."""
-    if street != "river":
+    if street != "river" and street != "turn":
         yield from mc_solve_spot_streaming(
             model, board, street, action_prefix, hero_actions,
             villain_range, pot_bb, starting_bb, valid_combos, hero_is_ip,
