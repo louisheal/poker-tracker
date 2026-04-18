@@ -2,9 +2,9 @@
 
 Usage:
     cd backend
-    python -m solver.train                  # full run (all files)
-    python -m solver.train --max-files 20   # quick test with 20 files
-    python -m solver.train --epochs 50      # override epoch count
+    python -m solver.model.train                  # full run (all files)
+    python -m solver.model.train --max-files 20   # quick test with 20 files
+    python -m solver.model.train --epochs 50      # override epoch count
 
 Scans hand_histories/ for all .txt files (GG* and hhd_*), extracts
 training examples from ALL heads-up postflop hands (not just showdowns),
@@ -25,7 +25,7 @@ import torch.nn as nn
 
 from app.parsers.core import group_hands
 from app.parsers.lexer import lex_hand
-from solver.dataset import (
+from solver.model.dataset import (
     TrainingExample,
     augment_batch_gpu,
     batch_iterator,
@@ -36,7 +36,7 @@ from solver.dataset import (
     prefetch_batch_iterator,
     tensorize_all,
 )
-from solver.model import SolverTransformer
+from solver.model.transformer import SolverTransformer
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)

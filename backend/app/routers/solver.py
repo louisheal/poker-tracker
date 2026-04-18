@@ -344,7 +344,7 @@ async def solve_stream(
         return StreamingResponse(single(), media_type="text/event-stream")
 
     from app.parsers.lexer import to_card
-    from solver.ev_full_solve_test import full_solve_spot_streaming
+    from solver.streets.river import full_solve_spot_streaming
     from solver.ev_calculator import (
         compute_current_ranges, _determine_oop_ip,
         ACTION_TO_BET_PCT, RAISE_MULTIPLIER,

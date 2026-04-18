@@ -249,7 +249,7 @@ def hand_id_hash(hand_id: str) -> int:
     return int(hashlib.md5(hand_id.encode()).hexdigest(), 16)
 
 
-from solver.augmentation import (
+from solver.model.augmentation import (
     SUIT_PERMUTATIONS,
     FLOP_ORDERINGS,
 )

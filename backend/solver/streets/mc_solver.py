@@ -22,7 +22,7 @@ import torch
 
 from playing_cards_lib.core import Card, Rank, Suit
 
-from solver.model import SolverTransformer
+from solver.model.transformer import SolverTransformer
 from solver.eq_calculator import all_hands_vs_range
 from solver.ev_calculator import (
     _build_sequence_tokens,

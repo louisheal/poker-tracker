@@ -14,9 +14,9 @@ import torch
 from playing_cards_lib.core import Card, Rank, Suit
 from app.models.enums import Action
 
-from solver.model import SolverTransformer
+from solver.model.transformer import SolverTransformer
 from solver.models import Token, TokenType
-from solver.dataset import (
+from solver.model.dataset import (
     MAX_SEQ_LEN,
     RANK_TO_INDEX, SUIT_TO_INDEX, ACTION_TO_INDEX,
 )
@@ -834,7 +834,7 @@ def solve_spot(
         )
     else:
         # Postflop: MC tree solver with full card enumeration
-        from solver.ev_full_solve_test import full_solve_spot
+        from solver.streets.river import full_solve_spot
         mc_evs, solver_equity = full_solve_spot(
             model=model,
             board=board,

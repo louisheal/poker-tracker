@@ -17,7 +17,7 @@ import torch
 
 from playing_cards_lib.core import Card
 
-from solver.model import SolverTransformer
+from solver.model.transformer import SolverTransformer
 from solver.ev_calculator import (
     _build_sequence_tokens,
     _action_key_to_model_action,
@@ -27,7 +27,7 @@ from solver.eq_calculator import (
     _cards_conflict_with_board,
     _normalize_combo,
 )
-from solver.mc_solver import (
+from solver.streets.mc_solver import (
     _batch_predict,
     _hero_token,
     _compute_facing_bet,

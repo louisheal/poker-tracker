@@ -21,7 +21,7 @@ def _load_solver_model():
 
     try:
         import torch
-        from solver.model import SolverTransformer
+        from solver.model.transformer import SolverTransformer
 
         model = SolverTransformer()
         checkpoint = torch.load(SOLVER_CHECKPOINT, map_location="cpu", weights_only=True)

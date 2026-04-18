@@ -1,8 +1,8 @@
-"""Tests for the recursive river solver (ev_full_solve_test.py)."""
+"""Tests for the recursive river solver (streets/river.py)."""
 
 import pytest
 
-from solver.ev_full_solve_test import (
+from solver.streets.river import (
     _enumerate_sequences,
     _get_hero_actions,
     _compute_bet_size,
@@ -201,8 +201,8 @@ class TestFacingAllIn:
 
     def test_full_solve_spot_facing_all_in(self):
         """full_solve_spot correctly computes facing_bet when prefix ends with All-in."""
-        from solver.ev_full_solve_test import full_solve_spot
-        from solver.mc_solver import _compute_facing_bet
+        from solver.streets.river import full_solve_spot
+        from solver.streets.mc_solver import _compute_facing_bet
 
         action_prefix = [
             "LJ:Raise", "HJ:Fold", "CO:Fold", "BTN:Fold", "SB:Fold", "BB:Call",

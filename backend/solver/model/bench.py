@@ -2,13 +2,13 @@
 
 Usage:
     cd backend
-    python -m solver.bench --sweep model_size    # model dim/depth sweep
-    python -m solver.bench --sweep batch_size    # batch size sweep
-    python -m solver.bench --sweep dropout       # dropout sweep
-    python -m solver.bench --sweep epochs        # epoch count sweep
-    python -m solver.bench --sweep bet_mode      # % pot vs BB bet sizes
-    python -m solver.bench --max-files 50        # override file count (default 50)
-    python -m solver.bench --epochs 15           # override epoch count (default 15)
+    python -m solver.model.bench --sweep model_size    # model dim/depth sweep
+    python -m solver.model.bench --sweep batch_size    # batch size sweep
+    python -m solver.model.bench --sweep dropout       # dropout sweep
+    python -m solver.model.bench --sweep epochs        # epoch count sweep
+    python -m solver.model.bench --sweep bet_mode      # % pot vs BB bet sizes
+    python -m solver.model.bench --max-files 50        # override file count (default 50)
+    python -m solver.model.bench --epochs 15           # override epoch count (default 15)
 
 TODO: Stack feature sweep (--sweep stack_feature)
     Currently the model receives starting_bb (starting stack, normalized
@@ -56,8 +56,8 @@ import time
 import torch
 import torch.nn as nn
 
-from solver.dataset import augment_batch_gpu, batch_iterator
-from solver.model import (
+from solver.model.dataset import augment_batch_gpu, batch_iterator
+from solver.model.transformer import (
     MAX_SEQ_LEN,
     NUM_ACTIONS,
     NUM_RANKS,
@@ -65,7 +65,7 @@ from solver.model import (
     NUM_STREET_MARKERS,
     NUM_TOKEN_TYPES,
 )
-from solver.train import load_or_extract, scan_hand_files
+from solver.model.train import load_or_extract, scan_hand_files
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -307,7 +307,7 @@ def main():
         torch.set_num_threads(1)
         logger.info(f"GPU: {torch.cuda.get_device_name(0)}")
 
-    from solver.dataset import compact_data
+    from solver.model.dataset import compact_data
     train_data = compact_data(train_data)
     val_data = compact_data(val_data)
     train_data = {k: v.to(device) for k, v in train_data.items()}
