@@ -138,11 +138,6 @@ def _all_in_token(
         bet_size_pct=pct, bet_size_bb=remaining_bb,
     )
 
-
-# ---------------------------------------------------------------------------
-# Phase 1: Prediction cache
-# ---------------------------------------------------------------------------
-
 def _enumerate_sequences(
     pot: float,
     facing_bet: float,
@@ -241,11 +236,6 @@ def _build_prediction_cache(
         cache[cache_key] = _villain_response(raw_probs[i], is_facing_aggression, is_all_in)
 
     return cache
-
-
-# ---------------------------------------------------------------------------
-# Phase 2: EV computation with hand ranking cache
-# ---------------------------------------------------------------------------
 
 def _build_ranking_cache(
     board: list[Card],
@@ -547,11 +537,6 @@ def solve_river(
         for combo, eq in equity_engine.compute_equity(villain_range).items()
     }
     return results, combo_equity
-
-
-# ---------------------------------------------------------------------------
-# Entry points (mc_solver-compatible interface)
-# ---------------------------------------------------------------------------
 
 def full_solve_spot(
     model: SolverTransformer,

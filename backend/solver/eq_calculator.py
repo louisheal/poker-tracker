@@ -39,11 +39,11 @@ def _card_to_eval7(card: Card) -> eval7.Card:
 
 def _normalize_combo(combo: tuple[Card, Card]) -> tuple[Card, Card]:
     """Normalize combo tuple ordering for consistent dict lookups."""
-    a, b = combo
-    ka = (_RANK_ORDER[a.rank], _SUIT_ORDER[a.suit])
-    kb = (_RANK_ORDER[b.rank], _SUIT_ORDER[b.suit])
-    if ka > kb:
-        return (b, a)
+    card_a, card_b = combo
+    key_a = (_RANK_ORDER[card_a.rank], _SUIT_ORDER[card_a.suit])
+    key_b = (_RANK_ORDER[card_b.rank], _SUIT_ORDER[card_b.suit])
+    if key_a > key_b:
+        return (card_b, card_a)
     return combo
 
 

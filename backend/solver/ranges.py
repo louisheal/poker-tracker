@@ -57,21 +57,17 @@ def _normalize_combo(combo: tuple[Card, Card]) -> tuple[Card, Card]:
     _hand_key_to_combos uses (higher_rank, lower_rank). This ensures
     both map to the same key.
     """
-    a, b = combo
-    ka = (_RANK_ORDER[a.rank], _SUIT_ORDER[a.suit])
-    kb = (_RANK_ORDER[b.rank], _SUIT_ORDER[b.suit])
-    if ka > kb:
-        return (b, a)
+    card_a, card_b = combo
+    key_a = (_RANK_ORDER[card_a.rank], _SUIT_ORDER[card_a.suit])
+    key_b = (_RANK_ORDER[card_b.rank], _SUIT_ORDER[card_b.suit])
+    if key_a > key_b:
+        return (card_b, card_a)
     return combo
 
 GTO_WEIGHT = 0.7
 OBSERVED_WEIGHT = 0.3
 
-# ---------------------------------------------------------------------------
-# Opening ranges (RFI) per position
-# ---------------------------------------------------------------------------
-
-_LJ_OPEN = {
+_LJ_OPEN= {
     "AA": 1.0, "KK": 1.0, "QQ": 1.0, "JJ": 1.0, "TT": 1.0, "99": 1.0, "88": 1.0,
     "77": 1.0, "66": 1.0,
     "AKs": 1.0, "AQs": 1.0, "AJs": 1.0, "ATs": 1.0, "A9s": 1.0, "A5s": 1.0, "A4s": 1.0,
@@ -141,12 +137,7 @@ OPEN_RANGES: dict[str, dict[str, float]] = {
     "BTN": _BTN_OPEN, "SB": _SB_OPEN,
 }
 
-# ---------------------------------------------------------------------------
-# BB 3-bet ranges vs each opener (premiums + polarised bluffs)
-# Wider vs later positions, tighter vs early positions
-# ---------------------------------------------------------------------------
-
-_BB_3BET_VS_LJ = {
+_BB_3BET_VS_LJ= {
     "AA": 1.0, "KK": 1.0, "QQ": 1.0, "JJ": 1.0,
     "AKs": 1.0, "AQs": 1.0, "A5s": 1.0, "A4s": 1.0,
     "AKo": 1.0,
@@ -194,12 +185,7 @@ BB_3BET_RANGES: dict[str, dict[str, float]] = {
     "BTN": _BB_3BET_VS_BTN, "SB": _BB_3BET_VS_SB,
 }
 
-# ---------------------------------------------------------------------------
-# BB flat call vs each opener (NO premiums -- those go in the 3-bet range)
-# Suited connectors, suited broadways, medium/small pairs, some offsuit
-# ---------------------------------------------------------------------------
-
-_BB_CALL_VS_LJ = {
+_BB_CALL_VS_LJ= {
     "TT": 1.0, "99": 1.0, "88": 1.0, "77": 1.0, "66": 1.0, "55": 1.0, "44": 1.0,
     "AJs": 1.0, "ATs": 1.0, "A9s": 1.0, "A8s": 1.0, "A7s": 1.0, "A6s": 1.0,
     "A5s": 1.0, "A4s": 1.0, "A3s": 1.0, "A2s": 1.0,
@@ -279,12 +265,7 @@ BB_CALL_RANGES: dict[str, dict[str, float]] = {
     "BTN": _BB_CALL_VS_BTN, "SB": _BB_CALL_VS_SB,
 }
 
-# ---------------------------------------------------------------------------
-# Non-BB 3-bet ranges (any position 3-betting vs an open)
-# Used when e.g. BTN 3-bets vs CO open
-# ---------------------------------------------------------------------------
-
-_IP_3BET_VS_EP = {
+_IP_3BET_VS_EP= {
     "AA": 1.0, "KK": 1.0, "QQ": 1.0, "JJ": 1.0,
     "AKs": 1.0, "AQs": 1.0, "A5s": 1.0, "A4s": 1.0,
     "AKo": 1.0, "AQo": 1.0,
@@ -312,11 +293,7 @@ IP_3BET_RANGES: dict[str, dict[str, float]] = {
     "BTN": _IP_3BET_VS_LP, "SB": _IP_3BET_VS_LP,
 }
 
-# ---------------------------------------------------------------------------
-# 4-bet ranges per position (vs a 3-bet)
-# ---------------------------------------------------------------------------
-
-_FOUR_BET_EP = {
+_FOUR_BET_EP= {
     "AA": 1.0, "KK": 1.0, "QQ": 1.0,
     "AKs": 1.0, "A5s": 1.0,
     "AKo": 1.0,
@@ -339,11 +316,7 @@ FOUR_BET_RANGES: dict[str, dict[str, float]] = {
     "BTN": _FOUR_BET_LP, "SB": _FOUR_BET_LP, "BB": _FOUR_BET_LP,
 }
 
-# ---------------------------------------------------------------------------
-# Position classification helpers
-# ---------------------------------------------------------------------------
-
-_EP_POSITIONS = {"LJ", "HJ"}
+_EP_POSITIONS= {"LJ", "HJ"}
 _MP_POSITIONS = {"CO"}
 _LP_POSITIONS = {"BTN", "SB"}
 
@@ -407,9 +380,9 @@ def get_starting_range(
     blended: dict[str, float] = {}
     all_keys = set(gto) | set(observed_freqs)
     for key in all_keys:
-        g = gto.get(key, 0.0)
-        o = observed_freqs.get(key, 0.0)
-        blended[key] = GTO_WEIGHT * g + OBSERVED_WEIGHT * o
+        gto_freq = gto.get(key, 0.0)
+        observed_freq = observed_freqs.get(key, 0.0)
+        blended[key] = GTO_WEIGHT * gto_freq + OBSERVED_WEIGHT * observed_freq
     return _expand_range_to_combos(blended)
 
 

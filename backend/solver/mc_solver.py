@@ -42,11 +42,6 @@ _ALL_CARDS = [Card(r, s) for r in Rank for s in Suit]
 
 VILLAIN_BET_SIZE = 0.66  # villain bets 66% pot when hero checks
 
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
 def _remaining_deck(board: list[Card]) -> list[Card]:
     board_set = {(c.rank, c.suit) for c in board}
     return [c for c in _ALL_CARDS if (c.rank, c.suit) not in board_set]
@@ -99,52 +94,47 @@ def _hero_token(action: str, pot: float, facing: float, stack: float) -> Token:
 def _villain_probs(probs: torch.Tensor, facing_bet: bool) -> tuple[float, float, float]:
     """Extract fold/call/raise from model output."""
     if facing_bet:
-        f = probs[0].item()
-        c = probs[1].item() + probs[2].item()
-        r = probs[3].item() + probs[4].item()
+        fold_pct = probs[0].item()
+        passive_pct = probs[1].item() + probs[2].item()
+        aggressive_pct = probs[3].item() + probs[4].item()
     else:
-        f = 0.0
-        c = probs[1].item() + probs[2].item()   # check back
-        r = probs[3].item() + probs[4].item()   # bet
-    t = f + c + r
-    if t > 0:
-        return f / t, c / t, r / t
+        fold_pct = 0.0
+        passive_pct = probs[1].item() + probs[2].item()
+        aggressive_pct = probs[3].item() + probs[4].item()
+    total = fold_pct + passive_pct + aggressive_pct
+    if total > 0:
+        return fold_pct / total, passive_pct / total, aggressive_pct / total
     return 0.0, 0.5, 0.5
-
-
-# ---------------------------------------------------------------------------
-# Mega-batch model inference
-# ---------------------------------------------------------------------------
 
 def _tensorize_many(
     token_lists: list[list[Token]], starting_bb: float,
 ) -> dict[str, torch.Tensor]:
-    n = len(token_lists)
-    tt = torch.zeros(n, MAX_SEQ_LEN, dtype=torch.long)
-    rr = torch.zeros(n, MAX_SEQ_LEN, dtype=torch.long)
-    ss = torch.zeros(n, MAX_SEQ_LEN, dtype=torch.long)
-    aa = torch.zeros(n, MAX_SEQ_LEN, dtype=torch.long)
-    bs = torch.zeros(n, MAX_SEQ_LEN, dtype=torch.float)
-    bb = torch.zeros(n, MAX_SEQ_LEN, dtype=torch.float)
-    si = torch.zeros(n, MAX_SEQ_LEN, dtype=torch.long)
-    pm = torch.ones(n, MAX_SEQ_LEN, dtype=torch.bool)
+    batch_size = len(token_lists)
+    token_types = torch.zeros(batch_size, MAX_SEQ_LEN, dtype=torch.long)
+    ranks = torch.zeros(batch_size, MAX_SEQ_LEN, dtype=torch.long)
+    suits = torch.zeros(batch_size, MAX_SEQ_LEN, dtype=torch.long)
+    actions = torch.zeros(batch_size, MAX_SEQ_LEN, dtype=torch.long)
+    bet_sizes = torch.zeros(batch_size, MAX_SEQ_LEN, dtype=torch.float)
+    bet_sizes_bb = torch.zeros(batch_size, MAX_SEQ_LEN, dtype=torch.float)
+    street_ids = torch.zeros(batch_size, MAX_SEQ_LEN, dtype=torch.long)
+    padding_mask = torch.ones(batch_size, MAX_SEQ_LEN, dtype=torch.bool)
 
     for b, tokens in enumerate(token_lists):
         for i, tok in enumerate(tokens[:MAX_SEQ_LEN]):
-            tt[b, i] = int(tok.token_type)
-            rr[b, i] = tok.rank
-            ss[b, i] = tok.suit
-            aa[b, i] = tok.action
-            bs[b, i] = tok.bet_size_pct
-            bb[b, i] = tok.bet_size_bb
-            si[b, i] = tok.action if tok.token_type == TokenType.STREET_MARKER else 0
-            pm[b, i] = False
+            token_types[b, i] = int(tok.token_type)
+            ranks[b, i] = tok.rank
+            suits[b, i] = tok.suit
+            actions[b, i] = tok.action
+            bet_sizes[b, i] = tok.bet_size_pct
+            bet_sizes_bb[b, i] = tok.bet_size_bb
+            street_ids[b, i] = tok.action if tok.token_type == TokenType.STREET_MARKER else 0
+            padding_mask[b, i] = False
 
     return {
-        "token_types": tt, "ranks": rr, "suits": ss, "actions": aa,
-        "bet_sizes": bs, "bet_sizes_bb": bb, "street_ids": si,
-        "padding_mask": pm,
-        "stack_sizes": torch.full((n,), starting_bb / 100.0, dtype=torch.float),
+        "token_types": token_types, "ranks": ranks, "suits": suits, "actions": actions,
+        "bet_sizes": bet_sizes, "bet_sizes_bb": bet_sizes_bb, "street_ids": street_ids,
+        "padding_mask": padding_mask,
+        "stack_sizes": torch.full((batch_size,), starting_bb / 100.0, dtype=torch.float),
     }
 
 
@@ -165,11 +155,6 @@ def _batch_predict(
             chunks.append(torch.softmax(logits, dim=-1).cpu())
     return torch.cat(chunks, dim=0)
 
-
-# ---------------------------------------------------------------------------
-# Equity helpers
-# ---------------------------------------------------------------------------
-
 def _showdown_ev(
     board: list[Card],
     pot_bb: float,
@@ -188,11 +173,6 @@ def _showdown_ev(
         )
     eq = equity_cache[cache_key]
     return {c: eq.get(_normalize_combo(c), 0.5) * pot_bb for c in valid_combos}
-
-
-# ---------------------------------------------------------------------------
-# Single-street solver (one action → villain response → terminal)
-# ---------------------------------------------------------------------------
 
 def _solve_river(
     board: list[Card],
@@ -296,11 +276,6 @@ def _solve_river(
 
     return results
 
-
-# ---------------------------------------------------------------------------
-# Turn solver: enumerate river cards
-# ---------------------------------------------------------------------------
-
 def _solve_turn_card(
     board_5: list[Card],
     pot_bb: float,
@@ -384,11 +359,6 @@ def _solve_turn_card(
                     best[c] = max(best[c], ev)
 
     return best
-
-
-# ---------------------------------------------------------------------------
-# Top-level entry points
-# ---------------------------------------------------------------------------
 
 def _compute_facing_bet(action_prefix: list[str], pot_bb: float) -> float:
     if not action_prefix:
@@ -696,11 +666,6 @@ def _solve_turn_with_river_enum(
                 turn_best[c] = max(turn_best[c], ev)
 
     return turn_best
-
-
-# ---------------------------------------------------------------------------
-# Streaming entry point
-# ---------------------------------------------------------------------------
 
 def mc_solve_spot_streaming(
     model: SolverTransformer,
