@@ -47,7 +47,7 @@ class TrainingExample:
     sequence: list[Token]
     label: int  # next action index (0-4)
     hand_id: str = ""  # for train/val splitting by hand
-    effective_stack_bb: float = 100.0  # min of both players' starting stacks in BB
+    starting_bb: float = 100.0  # min of both players' starting stacks in BB
 
 
 def _card_token(card: Card) -> Token:
@@ -224,7 +224,7 @@ def extract_training_examples(ast: HandAST) -> list[TrainingExample]:
                         sequence=list(sequence),
                         label=ACTION_TO_INDEX[action.type],
                         hand_id=ast.hand_id,
-                        effective_stack_bb=eff_stack_bb,
+                        starting_bb=eff_stack_bb,
                     ))
             else:
                 # Both players are targets -- predict every action
@@ -232,7 +232,7 @@ def extract_training_examples(ast: HandAST) -> list[TrainingExample]:
                     sequence=list(sequence),
                     label=ACTION_TO_INDEX[action.type],
                     hand_id=ast.hand_id,
-                    effective_stack_bb=eff_stack_bb,
+                    starting_bb=eff_stack_bb,
                 ))
 
             pot_before = pots[pot_idx] if pot_idx < len(pots) else 1.0
@@ -301,7 +301,7 @@ def tensorize_all(examples: list[TrainingExample]) -> dict[str, torch.Tensor]:
         )
         all_padding.append([False] * length + [True] * pad_len)
         all_labels.append(ex.label)
-        all_stack_sizes.append(ex.effective_stack_bb / 100.0)  # normalize to ~0-3
+        all_stack_sizes.append(ex.starting_bb / 100.0)  # normalize to ~0-3
 
     return {
         "token_types": torch.tensor(all_token_types, dtype=torch.int8),

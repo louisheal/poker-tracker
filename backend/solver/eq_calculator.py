@@ -64,17 +64,21 @@ def _to_eval7_range(
 ) -> list[tuple[tuple[eval7.Card, eval7.Card], float]]:
     """Convert our range dict to eval7-compatible iterable.
 
-    Filters out combos with freq <= 0 or that conflict with the board.
-    Weights are passed through (eval7 ignores them but we include for
-    compatibility with its expected format).
+    eval7 ignores frequency weights (treats all combos equally).
+    Strategy: prefer combos with freq > 0.5 to approximate weighted ranges.
+    Falls back to all combos with freq > 0 if thresholding leaves nothing.
     """
-    result = []
+    high = []
+    low = []
     for combo, freq in range_.items():
         if freq <= 0 or _cards_conflict_with_board(combo, board):
             continue
         e7_combo = (_card_to_eval7(combo[0]), _card_to_eval7(combo[1]))
-        result.append((e7_combo, freq))
-    return result
+        if freq > 0.5:
+            high.append((e7_combo, 1.0))
+        else:
+            low.append((e7_combo, 1.0))
+    return high if high else low
 
 
 def _to_eval7_hero(

@@ -67,10 +67,10 @@ export const DebugPanels = ({ debug, actionOptions }: Props) => {
             </>
           )}
           <div className="text-muted-foreground">Eff. stack</div>
-          <div className="text-foreground font-mono">{debug.effectiveStackBB?.toFixed(0) ?? "—"} BB</div>
+          <div className="text-foreground font-mono">{debug.startingBB?.toFixed(0) ?? "—"} BB</div>
           <div className="text-muted-foreground">SPR</div>
           <div className="text-foreground font-mono">
-            {debug.potBB > 0 ? (debug.effectiveStackBB / debug.potBB).toFixed(1) : "—"}
+            {debug.potBB > 0 ? (debug.startingBB / debug.potBB).toFixed(1) : "—"}
           </div>
         </div>
       </div>
@@ -101,7 +101,7 @@ export const DebugPanels = ({ debug, actionOptions }: Props) => {
           </h4>
         </button>
         {modelOpen &&
-          actionOptions.map((opt) => {
+          debug.modelOutput && actionOptions.map((opt) => {
             const data = debug.modelOutput[opt.key];
             if (!data) return null;
             return (

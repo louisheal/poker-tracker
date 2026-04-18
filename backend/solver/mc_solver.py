@@ -1,15 +1,15 @@
 """Monte Carlo tree solver for EV computation.
 
-Full-enumeration tree solver that replaces the formula-based EV calculator.
-Recursively enumerates all turn and river cards, using the trained model
-to predict villain responses and eval7 for showdown equity.
+Batched, level-by-level solver that enumerates all turn/river cards.
+Model predictions are mega-batched across all cards before computing EVs.
 
-Key design:
-- Full enumeration (no sampling): 47 turn × 46 river = exact results
-- Batched model inference: all sequences pre-collected and mega-batched
-- Reduced hero action set on future streets: Check/B66/B133/B200 or Fold/Call/R3x
-- Range narrowing at every villain decision node
-- All bets/raises clipped to all-in to prevent infinite recursion
+Architecture (from flop):
+  1. Batch-predict villain responses for each turn card × hero action
+  2. For each turn card: compute hero EV using predictions + equity
+  3. Average across all turn cards for continuation value
+  4. Combine with current-street villain response for final EV
+
+One raise per street (bet → raise OK, raise → reraise not).
 """
 
 from __future__ import annotations
@@ -17,499 +17,392 @@ from __future__ import annotations
 import logging
 import random
 import time
-from dataclasses import dataclass
 
 import torch
 
 from playing_cards_lib.core import Card, Rank, Suit
 
 from solver.model import SolverTransformer
-from solver.eq_calculator import all_hands_vs_range, _normalize_combo as _eq_normalize_combo
+from solver.eq_calculator import all_hands_vs_range
 from solver.ev_calculator import (
     _build_sequence_tokens,
-    _tensorize_sequence,
     _action_key_to_model_action,
     ACTION_TO_BET_PCT,
     RAISE_MULTIPLIER,
+    MAX_SEQ_LEN,
 )
 from solver.ranges import filter_range_by_equity, _normalize_combo, _cards_conflict
 from solver.models import Token, TokenType
 
 logger = logging.getLogger(__name__)
 
-# Future-street action sets (reduced from current solver UI)
-HERO_OPEN_ACTIONS = ["Check", "B66", "B133", "B200"]
-HERO_FACING_BET_ACTIONS = ["Fold", "Call", "R3x"]
-
+HERO_OPEN_ACTIONS = ["Check", "B33", "B66", "B133", "B200"]
 NEXT_STREET = {"flop": "turn", "turn": "river"}
-
-# All 52 cards for deck enumeration
 _ALL_CARDS = [Card(r, s) for r in Rank for s in Suit]
 
+VILLAIN_BET_SIZE = 0.66  # villain bets 66% pot when hero checks
 
-@dataclass
-class TreeNode:
-    """A node in the solve tree representing a decision point."""
-    street: str
-    board: list[Card]
-    pot_bb: float
-    hero_committed: float       # hero's chips committed this street
-    villain_committed: float    # villain's chips committed this street
-    stack_left: float           # remaining effective stack for either player
-    is_hero_turn: bool
-    hero_is_ip: bool
-    villain_range: dict[tuple[Card, Card], float]
 
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 def _remaining_deck(board: list[Card]) -> list[Card]:
-    """Cards not on the board."""
     board_set = {(c.rank, c.suit) for c in board}
     return [c for c in _ALL_CARDS if (c.rank, c.suit) not in board_set]
 
 
 def _card_in_combo(card: Card, combo: tuple[Card, Card]) -> bool:
-    """Check if a card is one of the combo's hole cards."""
     return ((card.rank == combo[0].rank and card.suit == combo[0].suit) or
             (card.rank == combo[1].rank and card.suit == combo[1].suit))
 
 
 def _remove_card_from_range(
-    range_: dict[tuple[Card, Card], float],
-    card: Card,
+    range_: dict[tuple[Card, Card], float], card: Card,
 ) -> dict[tuple[Card, Card], float]:
-    """Remove combos conflicting with a dealt card."""
-    return {
-        combo: freq for combo, freq in range_.items()
-        if not _card_in_combo(card, combo)
-    }
+    return {c: f for c, f in range_.items() if not _card_in_combo(card, c)}
 
 
-def _clip_to_all_in(amount: float, stack_left: float) -> float:
-    """Clip a bet/raise to remaining stack."""
-    return min(amount, max(stack_left, 0.0))
+def _clip(amount: float, stack: float) -> float:
+    return min(amount, max(stack, 0.0))
 
 
-def _compute_bet_bb(action_key: str, pot_bb: float, facing_bet: float) -> float:
-    """Compute bet/raise amount in BB (before all-in clipping).
-
-    For bets (B66/B133/B200): percentage of pot.
-    For raises (R3x): 3× the bet being faced.
-    """
-    if action_key == "B66":
-        return 0.66 * pot_bb
-    elif action_key == "B133":
-        return 1.33 * pot_bb
-    elif action_key == "B200":
-        return 2.0 * pot_bb
-    elif action_key == "R3x":
-        return 3.0 * facing_bet
+def _bet_bb(action: str, pot: float, facing: float) -> float:
+    if action == "B33":
+        return 0.33 * pot
+    elif action == "B66":
+        return 0.66 * pot
+    elif action == "B133":
+        return 1.33 * pot
+    elif action == "B200":
+        return 2.0 * pot
+    elif action == "R3x":
+        return 3.0 * facing
     return 0.0
 
 
-def _is_opening(hero_committed: float, villain_committed: float) -> bool:
-    """Whether this is an opening action (no bet to face)."""
-    return villain_committed <= hero_committed
-
-
-def _extract_villain_probs(
-    probs: torch.Tensor,
-    is_facing_hero_bet: bool,
-) -> tuple[float, float, float]:
-    """Extract fold/call/raise probabilities from model output.
-
-    When villain faces a hero bet: fold / (check+call) / (bet+raise)
-    When villain opens (hero checked): split into check_back / bet
-    """
-    if is_facing_hero_bet:
-        fold = probs[0].item()
-        call = probs[1].item() + probs[2].item()
-        raise_ = probs[3].item() + probs[4].item()
+def _hero_token(action: str, pot: float, facing: float, stack: float) -> Token:
+    bet_pct = ACTION_TO_BET_PCT.get(action, 0.0)
+    model_action = _action_key_to_model_action(action)
+    if action in ("Check", "Fold"):
+        bb = 0.0
+    elif action == "Call":
+        bb = 0.0
+    elif action in RAISE_MULTIPLIER:
+        bb = _clip(RAISE_MULTIPLIER[action] * facing, stack)
     else:
-        # Villain is opening (hero checked). Model outputs:
-        # check+call = check back, bet+raise = bet
-        fold = 0.0
-        call = probs[1].item() + probs[2].item()  # check back
-        raise_ = probs[3].item() + probs[4].item()  # bet
-    total = fold + call + raise_
-    if total > 0:
-        return fold / total, call / total, raise_ / total
+        bb = _clip(_bet_bb(action, pot, facing), stack)
+    return Token(TokenType.ACTION, action=model_action,
+                 bet_size_pct=bet_pct, bet_size_bb=bb)
+
+
+def _villain_probs(probs: torch.Tensor, facing_bet: bool) -> tuple[float, float, float]:
+    """Extract fold/call/raise from model output."""
+    if facing_bet:
+        f = probs[0].item()
+        c = probs[1].item() + probs[2].item()
+        r = probs[3].item() + probs[4].item()
+    else:
+        f = 0.0
+        c = probs[1].item() + probs[2].item()   # check back
+        r = probs[3].item() + probs[4].item()   # bet
+    t = f + c + r
+    if t > 0:
+        return f / t, c / t, r / t
     return 0.0, 0.5, 0.5
 
 
 # ---------------------------------------------------------------------------
-# Model prediction batching
+# Mega-batch model inference
 # ---------------------------------------------------------------------------
 
-def _build_hero_action_token(
-    action_key: str,
-    pot_bb: float,
-    facing_bet: float,
-    stack_left: float,
-) -> Token:
-    """Build a Token for a hero action in the tree."""
-    bet_pct = ACTION_TO_BET_PCT.get(action_key, 0.0)
-    model_action = _action_key_to_model_action(action_key)
+def _tensorize_many(
+    token_lists: list[list[Token]], starting_bb: float,
+) -> dict[str, torch.Tensor]:
+    n = len(token_lists)
+    tt = torch.zeros(n, MAX_SEQ_LEN, dtype=torch.long)
+    rr = torch.zeros(n, MAX_SEQ_LEN, dtype=torch.long)
+    ss = torch.zeros(n, MAX_SEQ_LEN, dtype=torch.long)
+    aa = torch.zeros(n, MAX_SEQ_LEN, dtype=torch.long)
+    bs = torch.zeros(n, MAX_SEQ_LEN, dtype=torch.float)
+    bb = torch.zeros(n, MAX_SEQ_LEN, dtype=torch.float)
+    si = torch.zeros(n, MAX_SEQ_LEN, dtype=torch.long)
+    pm = torch.ones(n, MAX_SEQ_LEN, dtype=torch.bool)
 
-    if action_key in ("Check", "Fold"):
-        bet_bb = 0.0
-    elif action_key == "Call":
-        bet_bb = 0.0  # calls are 0 in training data
-    elif action_key in RAISE_MULTIPLIER:
-        bet_bb = _clip_to_all_in(RAISE_MULTIPLIER[action_key] * facing_bet, stack_left)
-    else:
-        bet_bb = _clip_to_all_in(_compute_bet_bb(action_key, pot_bb, facing_bet), stack_left)
+    for b, tokens in enumerate(token_lists):
+        for i, tok in enumerate(tokens[:MAX_SEQ_LEN]):
+            tt[b, i] = int(tok.token_type)
+            rr[b, i] = tok.rank
+            ss[b, i] = tok.suit
+            aa[b, i] = tok.action
+            bs[b, i] = tok.bet_size_pct
+            bb[b, i] = tok.bet_size_bb
+            si[b, i] = tok.action if tok.token_type == TokenType.STREET_MARKER else 0
+            pm[b, i] = False
 
-    return Token(TokenType.ACTION, action=model_action,
-                 bet_size_pct=bet_pct, bet_size_bb=bet_bb)
+    return {
+        "token_types": tt, "ranks": rr, "suits": ss, "actions": aa,
+        "bet_sizes": bs, "bet_sizes_bb": bb, "street_ids": si,
+        "padding_mask": pm,
+        "stack_sizes": torch.full((n,), starting_bb / 100.0, dtype=torch.float),
+    }
 
 
-def _predict_single(
+def _batch_predict(
     model: SolverTransformer,
-    board: list[Card],
-    action_prefix: list[str],
-    hero_action_token: Token,
-    effective_stack_bb: float,
+    token_lists: list[list[Token]],
+    stack_bb: float,
+    batch_size: int = 1024,
 ) -> torch.Tensor:
-    """Run a single model prediction. Returns softmax probabilities."""
-    base_tokens = _build_sequence_tokens(board, action_prefix)
-    full_tokens = base_tokens + [hero_action_token]
+    """Run model on N sequences, return (N, 5) softmax probs."""
+    if not token_lists:
+        return torch.empty(0, 5)
+    chunks = []
     with torch.no_grad():
-        batch = _tensorize_sequence(full_tokens, effective_stack_bb)
-        logits = model(batch)
-        return torch.softmax(logits, dim=-1).cpu()[0]
+        for i in range(0, len(token_lists), batch_size):
+            batch = _tensorize_many(token_lists[i:i + batch_size], stack_bb)
+            logits = model(batch)
+            chunks.append(torch.softmax(logits, dim=-1).cpu())
+    return torch.cat(chunks, dim=0)
 
 
 # ---------------------------------------------------------------------------
-# Core recursive solver
+# Equity helpers
 # ---------------------------------------------------------------------------
 
-def _showdown_equity(
-    node: TreeNode,
-    equity_cache: dict[tuple, dict],
+def _showdown_ev(
+    board: list[Card],
+    pot_bb: float,
+    villain_range: dict[tuple[Card, Card], float],
     valid_combos: list[tuple[Card, Card]],
+    equity_cache: dict[tuple, dict],
 ) -> dict[tuple[Card, Card], float]:
-    """Compute showdown EV at a river leaf. Returns combo -> EV (= equity × pot)."""
-    if len(node.board) != 5:
-        # Shouldn't happen, but fallback
-        return {c: 0.5 * node.pot_bb for c in valid_combos}
-
-    board_key = tuple(sorted((c.rank.value, c.suit.value) for c in node.board))
-    if board_key not in equity_cache:
-        equity_cache[board_key] = all_hands_vs_range(
-            valid_combos, node.villain_range, node.board
+    """equity × pot for a 5-card board."""
+    board_key = tuple(sorted((c.rank.value, c.suit.value) for c in board))
+    # Include villain range identity in cache key (different sub-ranges need separate equity)
+    range_id = id(villain_range)
+    cache_key = (board_key, range_id)
+    if cache_key not in equity_cache:
+        equity_cache[cache_key] = all_hands_vs_range(
+            valid_combos, villain_range, board,
         )
-    equities = equity_cache[board_key]
-    return {
-        c: equities.get(_normalize_combo(c), 0.5) * node.pot_bb
-        for c in valid_combos
-    }
+    eq = equity_cache[cache_key]
+    return {c: eq.get(_normalize_combo(c), 0.5) * pot_bb for c in valid_combos}
 
 
-def _enumerate_next_street(
-    node: TreeNode,
+# ---------------------------------------------------------------------------
+# Single-street solver (one action → villain response → terminal)
+# ---------------------------------------------------------------------------
+
+def _solve_river(
+    board: list[Card],
+    pot_bb: float,
+    stack: float,
+    hero_actions: list[str],
+    villain_range: dict[tuple[Card, Card], float],
     model: SolverTransformer,
     action_prefix: list[str],
-    effective_stack_bb: float,
-    equity_cache: dict[tuple, dict],
+    stack_bb: float,
     valid_combos: list[tuple[Card, Card]],
-) -> dict[tuple[Card, Card], float]:
-    """Enumerate all next-street cards and average EVs.
-
-    Flop → enumerate ~47 turn cards.
-    Turn → enumerate ~46 river cards.
-    """
-    next_street = NEXT_STREET.get(node.street)
-    if not next_street:
-        return _showdown_equity(node, equity_cache, valid_combos)
-
-    deck = _remaining_deck(node.board)
-    ev_sums: dict[tuple[Card, Card], float] = {c: 0.0 for c in valid_combos}
-    combo_counts: dict[tuple[Card, Card], int] = {c: 0 for c in valid_combos}
-
-    for card in deck:
-        new_board = node.board + [card]
-        child = TreeNode(
-            street=next_street,
-            board=new_board,
-            pot_bb=node.pot_bb,
-            hero_committed=0.0,
-            villain_committed=0.0,
-            stack_left=node.stack_left,
-            is_hero_turn=not node.hero_is_ip,  # OOP acts first on new street
-            hero_is_ip=node.hero_is_ip,
-            villain_range=_remove_card_from_range(node.villain_range, card),
-        )
-        child_evs = _solve_node(
-            child, model, action_prefix, effective_stack_bb,
-            equity_cache, valid_combos,
-        )
-        for c in valid_combos:
-            if not _card_in_combo(card, c):
-                ev_sums[c] += child_evs.get(c, 0.0)
-                combo_counts[c] += 1
-
-    return {
-        c: ev_sums[c] / max(combo_counts[c], 1) for c in valid_combos
-    }
-
-
-def _solve_hero_node(
-    node: TreeNode,
-    model: SolverTransformer,
-    action_prefix: list[str],
-    effective_stack_bb: float,
     equity_cache: dict[tuple, dict],
-    valid_combos: list[tuple[Card, Card]],
-) -> dict[tuple[Card, Card], float]:
-    """Hero picks the action with highest EV per combo."""
-    opening = _is_opening(node.hero_committed, node.villain_committed)
-    actions = HERO_OPEN_ACTIONS if opening else HERO_FACING_BET_ACTIONS
+    facing_bet: float = 0.0,
+) -> dict[str, dict[tuple[Card, Card], float]]:
+    """Solve a river spot: hero acts, villain responds, showdown."""
+    base = _build_sequence_tokens(board, action_prefix)
+    seqs: list[list[Token]] = []
+    keys: list[str] = []
 
-    best_evs: dict[tuple[Card, Card], float] = {c: float('-inf') for c in valid_combos}
+    for a in hero_actions:
+        if a == "Fold":
+            continue
+        seqs.append(base + [_hero_token(a, pot_bb, facing_bet, stack)])
+        keys.append(a)
 
-    for action_key in actions:
-        action_evs = _solve_hero_action(
-            node, action_key, model, action_prefix,
-            effective_stack_bb, equity_cache, valid_combos,
-        )
-        for c in valid_combos:
-            ev = action_evs.get(c, 0.0)
-            if ev > best_evs[c]:
-                best_evs[c] = ev
+    all_probs = _batch_predict(model, seqs, stack_bb)
+    results: dict[str, dict[tuple[Card, Card], float]] = {}
 
-    # Floor at 0 — hero can always fold if all actions are negative
-    return {c: max(0.0, ev) for c, ev in best_evs.items()}
+    for idx, action in enumerate(keys):
+        probs = all_probs[idx]
+        is_agg = action not in ("Check", "Call")
+        fp, cp, rp = _villain_probs(probs, is_agg)
 
-
-def _solve_hero_action(
-    node: TreeNode,
-    action_key: str,
-    model: SolverTransformer,
-    action_prefix: list[str],
-    effective_stack_bb: float,
-    equity_cache: dict[tuple, dict],
-    valid_combos: list[tuple[Card, Card]],
-) -> dict[tuple[Card, Card], float]:
-    """Compute EV for a single hero action."""
-
-    if action_key == "Fold":
-        return {c: 0.0 for c in valid_combos}
-
-    if action_key == "Call":
-        call_cost = node.villain_committed - node.hero_committed
-        if node.street == "river":
-            # River call → showdown
-            show_node = TreeNode(
-                street="river", board=node.board,
-                pot_bb=node.pot_bb + call_cost,
-                hero_committed=0.0, villain_committed=0.0,
-                stack_left=node.stack_left - call_cost,
-                is_hero_turn=True, hero_is_ip=node.hero_is_ip,
-                villain_range=node.villain_range,
+        # Range narrowing
+        if villain_range and board:
+            raise_r, call_r, _ = filter_range_by_equity(
+                villain_range, board, "river",
+                raise_pct=rp * 100, call_pct=cp * 100, hard_split=True,
             )
-            show_evs = _showdown_equity(show_node, equity_cache, valid_combos)
-            return {c: ev - call_cost for c, ev in show_evs.items()}
         else:
-            # Call closes street → enumerate next street
-            next_node = TreeNode(
-                street=node.street, board=node.board,
-                pot_bb=node.pot_bb + call_cost,
-                hero_committed=0.0, villain_committed=0.0,
-                stack_left=node.stack_left - call_cost,
-                is_hero_turn=True, hero_is_ip=node.hero_is_ip,
-                villain_range=node.villain_range,
-            )
-            next_evs = _enumerate_next_street(
-                next_node, model, action_prefix,
-                effective_stack_bb, equity_cache, valid_combos,
-            )
-            return {c: ev - call_cost for c, ev in next_evs.items()}
+            raise_r = call_r = villain_range
 
-    if action_key == "Check":
-        if node.hero_is_ip and _is_opening(node.hero_committed, node.villain_committed):
-            # IP check closes the street (both checked or hero checked back)
-            if node.street == "river":
-                return _showdown_equity(node, equity_cache, valid_combos)
-            else:
-                return _enumerate_next_street(
-                    node, model, action_prefix,
-                    effective_stack_bb, equity_cache, valid_combos,
+        if action == "Check":
+            # check back → showdown
+            check_ev = _showdown_ev(board, pot_bb, call_r, valid_combos, equity_cache)
+            # villain bets → hero fold(0) or call
+            vb = _clip(VILLAIN_BET_SIZE * pot_bb, stack)
+            if vb > 0:
+                call_cost = vb
+                sd = _showdown_ev(
+                    board, pot_bb + vb + call_cost, raise_r,
+                    valid_combos, equity_cache,
                 )
-        else:
-            # OOP check (or IP check facing no action) → villain acts
-            child = TreeNode(
-                street=node.street, board=node.board,
-                pot_bb=node.pot_bb,
-                hero_committed=node.hero_committed,
-                villain_committed=node.villain_committed,
-                stack_left=node.stack_left,
-                is_hero_turn=False,
-                hero_is_ip=node.hero_is_ip,
-                villain_range=node.villain_range,
-            )
-            return _solve_villain_node(
-                child, model, action_prefix, "Check",
-                effective_stack_bb, equity_cache, valid_combos,
-            )
-
-    # Bet or Raise
-    facing_bet = node.villain_committed - node.hero_committed
-    raw_bet = _compute_bet_bb(action_key, node.pot_bb, facing_bet)
-    bet_bb = _clip_to_all_in(raw_bet, node.stack_left)
-    if bet_bb <= 0:
-        return {c: 0.0 for c in valid_combos}
-
-    child = TreeNode(
-        street=node.street, board=node.board,
-        pot_bb=node.pot_bb + bet_bb,
-        hero_committed=node.hero_committed + bet_bb,
-        villain_committed=node.villain_committed,
-        stack_left=node.stack_left - bet_bb,
-        is_hero_turn=False,
-        hero_is_ip=node.hero_is_ip,
-        villain_range=node.villain_range,
-    )
-    villain_evs = _solve_villain_node(
-        child, model, action_prefix, action_key,
-        effective_stack_bb, equity_cache, valid_combos,
-    )
-    return {c: ev - bet_bb for c, ev in villain_evs.items()}
-
-
-def _solve_villain_node(
-    node: TreeNode,
-    model: SolverTransformer,
-    action_prefix: list[str],
-    hero_action_key: str,
-    effective_stack_bb: float,
-    equity_cache: dict[tuple, dict],
-    valid_combos: list[tuple[Card, Card]],
-) -> dict[tuple[Card, Card], float]:
-    """Villain responds to hero's action. Weights branches by model predictions.
-
-    Range narrowing happens here: villain's range is split into fold/call/raise
-    sub-ranges, and each branch continues with its narrowed sub-range.
-    """
-    # Get model prediction for villain's response
-    facing_bet = node.hero_committed - node.villain_committed
-    hero_token = _build_hero_action_token(
-        hero_action_key, node.pot_bb - facing_bet,  # pot before hero's bet
-        max(node.villain_committed - (node.hero_committed - facing_bet), 0),  # bet hero was facing
-        node.stack_left + facing_bet,  # stack before hero's bet
-    )
-    probs = _predict_single(
-        model, node.board, action_prefix, hero_token, effective_stack_bb,
-    )
-    is_facing_hero_bet = facing_bet > 0
-    fold_pct, call_pct, raise_pct = _extract_villain_probs(probs, is_facing_hero_bet)
-
-    # Range narrowing: split villain range into sub-ranges
-    if node.villain_range and node.board:
-        raising_range, calling_range, folding_range = filter_range_by_equity(
-            node.villain_range, node.board, node.street,
-            raise_pct=raise_pct * 100, call_pct=call_pct * 100,
-            hard_split=True,
-        )
-    else:
-        raising_range = calling_range = folding_range = node.villain_range
-
-    # FOLD branch: hero wins entire pot
-    fold_evs = {c: node.pot_bb for c in valid_combos}
-
-    # CALL branch
-    call_amount = node.hero_committed - node.villain_committed
-    call_child = TreeNode(
-        street=node.street, board=node.board,
-        pot_bb=node.pot_bb + call_amount,
-        hero_committed=0.0, villain_committed=0.0,
-        stack_left=node.stack_left - call_amount,
-        is_hero_turn=True,
-        hero_is_ip=node.hero_is_ip,
-        villain_range=calling_range,
-    )
-    if node.street == "river":
-        call_evs = _showdown_equity(call_child, equity_cache, valid_combos)
-    elif is_facing_hero_bet:
-        # Villain called a bet → street over, enumerate next street
-        call_evs = _enumerate_next_street(
-            call_child, model, action_prefix,
-            effective_stack_bb, equity_cache, valid_combos,
-        )
-    else:
-        # Villain "called" = checked back → street over, enumerate next
-        if node.street == "river":
-            call_evs = _showdown_equity(call_child, equity_cache, valid_combos)
-        else:
-            call_evs = _enumerate_next_street(
-                call_child, model, action_prefix,
-                effective_stack_bb, equity_cache, valid_combos,
-            )
-
-    # RAISE/BET branch: villain raises, hero decides fold(0) or call
-    if raise_pct > 0.001 and node.stack_left > 0:
-        hero_bet = node.hero_committed - node.villain_committed
-        v_raise_to = _clip_to_all_in(3.0 * hero_bet if hero_bet > 0 else 0.66 * node.pot_bb,
-                                      node.stack_left)
-        if v_raise_to > 0:
-            hero_call_cost = v_raise_to  # hero must match villain's total raise
-            hero_call_cost = _clip_to_all_in(hero_call_cost, node.stack_left)
-
-            raise_child = TreeNode(
-                street=node.street, board=node.board,
-                pot_bb=node.pot_bb + call_amount + v_raise_to + hero_call_cost,
-                hero_committed=0.0, villain_committed=0.0,
-                stack_left=node.stack_left - call_amount - v_raise_to - hero_call_cost,
-                is_hero_turn=True,
-                hero_is_ip=node.hero_is_ip,
-                villain_range=raising_range,
-            )
-            if node.street == "river":
-                raise_call_evs = _showdown_equity(raise_child, equity_cache, valid_combos)
+                bet_ev = {c: max(0.0, sd[c] - call_cost) for c in valid_combos}
             else:
-                raise_call_evs = _enumerate_next_street(
-                    raise_child, model, action_prefix,
-                    effective_stack_bb, equity_cache, valid_combos,
+                bet_ev = {c: 0.0 for c in valid_combos}
+
+            results[action] = {
+                c: cp * check_ev[c] + rp * bet_ev[c] for c in valid_combos
+            }
+
+        elif action == "Call":
+            cost = facing_bet
+            sd = _showdown_ev(
+                board, pot_bb + cost, villain_range, valid_combos, equity_cache,
+            )
+            results[action] = {c: sd[c] - cost for c in valid_combos}
+
+        else:
+            # bet/raise
+            bet = _clip(_bet_bb(action, pot_bb, facing_bet), stack)
+            if bet <= 0:
+                results[action] = {c: 0.0 for c in valid_combos}
+                continue
+
+            # fold: hero wins pot + gets bet back
+            fold_ev = pot_bb + bet
+            # call: showdown
+            sd_call = _showdown_ev(
+                board, pot_bb + bet + bet, call_r, valid_combos, equity_cache,
+            )
+            # raise: villain raises 3×, hero fold(0) or call
+            vr = _clip(3.0 * bet, stack - bet)
+            if vr > 0 and rp > 0.001:
+                hc = vr - bet  # hero's additional call cost
+                sd_raise = _showdown_ev(
+                    board, pot_bb + 2 * vr, raise_r,
+                    valid_combos, equity_cache,
                 )
-            # Hero picks max(fold=0, call_ev - cost)
-            raise_evs = {
-                c: max(0.0, raise_call_evs.get(c, 0.0) - hero_call_cost)
+                raise_ev = {c: max(0.0, sd_raise[c] - hc) for c in valid_combos}
+            else:
+                raise_ev = {c: 0.0 for c in valid_combos}
+
+            results[action] = {
+                c: fp * fold_ev + cp * sd_call[c] + rp * raise_ev[c] - bet
                 for c in valid_combos
             }
-        else:
-            raise_evs = {c: 0.0 for c in valid_combos}
-    else:
-        raise_evs = {c: 0.0 for c in valid_combos}
 
-    # Weighted sum
-    return {
-        c: fold_pct * fold_evs[c] + call_pct * call_evs.get(c, 0.0) + raise_pct * raise_evs[c]
-        for c in valid_combos
-    }
+    if "Fold" in hero_actions:
+        results["Fold"] = {c: 0.0 for c in valid_combos}
+
+    return results
 
 
-def _solve_node(
-    node: TreeNode,
+# ---------------------------------------------------------------------------
+# Turn solver: enumerate river cards
+# ---------------------------------------------------------------------------
+
+def _solve_turn_card(
+    board_5: list[Card],
+    pot_bb: float,
+    stack: float,
+    villain_range: dict[tuple[Card, Card], float],
     model: SolverTransformer,
     action_prefix: list[str],
-    effective_stack_bb: float,
-    equity_cache: dict[tuple, dict],
+    stack_bb: float,
     valid_combos: list[tuple[Card, Card]],
+    equity_cache: dict[tuple, dict],
+    card_probs: dict[str, torch.Tensor],
+    card: Card,
 ) -> dict[tuple[Card, Card], float]:
-    """Solve a tree node, returning combo -> EV map."""
-    if node.is_hero_turn:
-        return _solve_hero_node(
-            node, model, action_prefix, effective_stack_bb,
-            equity_cache, valid_combos,
-        )
-    else:
-        # Shouldn't reach here — villain nodes are called explicitly
-        # with the hero action that triggered them
-        return {c: 0.0 for c in valid_combos}
+    """Solve a single turn→river card. Returns best hero EV per combo.
+
+    card_probs has pre-computed villain predictions for each hero action.
+    """
+    best = {c: 0.0 for c in valid_combos}
+
+    for action in HERO_OPEN_ACTIONS:
+        if action == "Fold":
+            continue
+        probs = card_probs.get(action)
+        if probs is None:
+            continue
+
+        is_agg = action not in ("Check", "Call")
+        fp, cp, rp = _villain_probs(probs, is_agg)
+
+        bet = _clip(_bet_bb(action, pot_bb, 0.0), stack)
+
+        # Range narrowing for river board
+        if villain_range and board_5:
+            raise_r, call_r, _ = filter_range_by_equity(
+                villain_range, board_5, "river",
+                raise_pct=rp * 100, call_pct=cp * 100, hard_split=True,
+            )
+        else:
+            raise_r = call_r = villain_range
+
+        if action == "Check":
+            check_ev = _showdown_ev(board_5, pot_bb, call_r, valid_combos, equity_cache)
+            vb = _clip(VILLAIN_BET_SIZE * pot_bb, stack)
+            if vb > 0:
+                hc = vb
+                sd = _showdown_ev(
+                    board_5, pot_bb + vb + hc, raise_r,
+                    valid_combos, equity_cache,
+                )
+                bet_ev = {c: max(0.0, sd[c] - hc) for c in valid_combos}
+            else:
+                bet_ev = {c: 0.0 for c in valid_combos}
+
+            for c in valid_combos:
+                if not _card_in_combo(card, c):
+                    ev = cp * check_ev[c] + rp * bet_ev[c]
+                    best[c] = max(best[c], ev)
+
+        else:
+            if bet <= 0:
+                continue
+            fold_ev = pot_bb + bet
+            sd_call = _showdown_ev(
+                board_5, pot_bb + bet + bet, call_r,
+                valid_combos, equity_cache,
+            )
+            vr = _clip(3.0 * bet, stack - bet)
+            if vr > 0 and rp > 0.001:
+                hc = vr - bet  # hero's additional call cost
+                sd_raise = _showdown_ev(
+                    board_5, pot_bb + 2 * vr, raise_r,
+                    valid_combos, equity_cache,
+                )
+                raise_ev = {c: max(0.0, sd_raise[c] - hc) for c in valid_combos}
+            else:
+                raise_ev = {c: 0.0 for c in valid_combos}
+
+            for c in valid_combos:
+                if not _card_in_combo(card, c):
+                    ev = fp * fold_ev + cp * sd_call[c] + rp * raise_ev[c] - bet
+                    best[c] = max(best[c], ev)
+
+    return best
 
 
 # ---------------------------------------------------------------------------
 # Top-level entry points
 # ---------------------------------------------------------------------------
+
+def _compute_facing_bet(action_prefix: list[str], pot_bb: float) -> float:
+    if not action_prefix:
+        return 0.0
+    last = action_prefix[-1].split(":")[-1]
+    pct = ACTION_TO_BET_PCT.get(last, 0.0)
+    mult = RAISE_MULTIPLIER.get(last, 0.0)
+    if mult > 0:
+        return mult * (pot_bb * 0.5)
+    elif pct > 0:
+        pot_before = pot_bb / (1.0 + pct / 100.0)
+        return pot_before * pct / 100.0
+    return 0.0
+
 
 def mc_solve_spot(
     model: SolverTransformer,
@@ -519,62 +412,295 @@ def mc_solve_spot(
     hero_actions: list[str],
     villain_range: dict[tuple[Card, Card], float],
     pot_bb: float,
-    effective_stack_bb: float,
+    starting_bb: float,
     valid_combos: list[tuple[Card, Card]],
     hero_is_ip: bool,
 ) -> dict[str, dict[tuple[Card, Card], float]]:
-    """Solve a spot using the MC tree solver.
-
-    Returns dict mapping action_key -> {combo: ev} for each hero action.
-    """
+    """Solve a spot. Returns {action: {combo: ev}}."""
     equity_cache: dict[tuple, dict] = {}
+    facing = _compute_facing_bet(action_prefix, pot_bb)
+
+    if street == "river":
+        return _solve_river(
+            board, pot_bb, starting_bb, hero_actions,
+            villain_range, model, action_prefix,
+            starting_bb, valid_combos, equity_cache,
+            facing_bet=facing,
+        )
+
+    # Non-river: enumerate next-street cards
+    result = _solve_with_enumeration(
+        model, board, street, action_prefix, hero_actions,
+        villain_range, pot_bb, starting_bb,
+        valid_combos, hero_is_ip, equity_cache, facing,
+    )
+    return result
+
+
+def _combine_continuation(
+    hero_actions: list[str],
+    cur_villain: dict[str, tuple[float, float, float]],
+    continuation: dict[tuple[Card, Card], float],
+    valid_combos: list[tuple[Card, Card]],
+    pot_bb: float,
+    facing_bet: float,
+    stack_bb: float,
+) -> dict[str, dict[tuple[Card, Card], float]]:
+    """Combine continuation EVs with current-street villain response.
+
+    NOTE: continuation was computed at pot_bb with the full villain range.
+    Ideally we'd recompute per-action with narrowed ranges and correct pots,
+    but that's too expensive. The unscaled continuation is a reasonable
+    approximation since relative action ordering is mostly equity-driven.
+    """
     results: dict[str, dict[tuple[Card, Card], float]] = {}
 
-    # Determine if hero is opening or facing a bet
-    last_action = action_prefix[-1].split(":")[-1] if action_prefix else ""
-    is_facing_bet = last_action.startswith("B") or last_action.startswith("R")
-    hero_committed = 0.0
-    villain_committed = 0.0
-
-    # If hero is facing a bet, compute how much villain bet
-    if is_facing_bet:
-        bet_pct = ACTION_TO_BET_PCT.get(last_action, 0.0)
-        mult = RAISE_MULTIPLIER.get(last_action, 0.0)
-        if mult > 0:
-            # Need to figure out the bet amount from context
-            # For now, estimate from pot
-            villain_committed = mult * (pot_bb * 0.5)  # rough estimate
-        elif bet_pct > 0:
-            # pot_bb already includes villain's bet
-            pot_before = pot_bb / (1.0 + bet_pct / 100.0)
-            villain_committed = pot_before * bet_pct / 100.0
-        villain_committed = min(villain_committed, effective_stack_bb)
-
-    stack_left = effective_stack_bb
-
-    for action_key in hero_actions:
-        if action_key == "Fold":
-            results[action_key] = {c: 0.0 for c in valid_combos}
+    for a in hero_actions:
+        if a == "Fold":
+            results[a] = {c: 0.0 for c in valid_combos}
             continue
 
-        node = TreeNode(
-            street=street,
-            board=board,
-            pot_bb=pot_bb,
-            hero_committed=hero_committed,
-            villain_committed=villain_committed,
-            stack_left=stack_left,
-            is_hero_turn=True,
-            hero_is_ip=hero_is_ip,
-            villain_range=villain_range,
-        )
-        results[action_key] = _solve_hero_action(
-            node, action_key, model, action_prefix,
-            effective_stack_bb, equity_cache, valid_combos,
-        )
+        fp, cp_pct, rp = cur_villain.get(a, (0.0, 0.5, 0.5))
+
+        if a == "Call":
+            results[a] = {c: continuation[c] - facing_bet for c in valid_combos}
+        elif a == "Check":
+            vb = _clip(VILLAIN_BET_SIZE * pot_bb, stack_bb)
+            results[a] = {
+                c: cp_pct * continuation[c]
+                   + rp * max(0.0, continuation[c] - vb)
+                for c in valid_combos
+            }
+        else:
+            bet = _clip(_bet_bb(a, pot_bb, facing_bet), stack_bb)
+            vr = _clip(3.0 * bet, stack_bb - bet)
+            hc = (vr - bet) if vr > 0 else 0.0
+            results[a] = {
+                c: fp * (pot_bb + bet) + cp_pct * continuation[c]
+                   + rp * max(0.0, continuation[c] - hc)
+                   - bet
+                for c in valid_combos
+            }
 
     return results
 
+
+def _solve_with_enumeration(
+    model: SolverTransformer,
+    board: list[Card],
+    street: str,
+    action_prefix: list[str],
+    hero_actions: list[str],
+    villain_range: dict[tuple[Card, Card], float],
+    pot_bb: float,
+    stack_bb: float,
+    valid_combos: list[tuple[Card, Card]],
+    hero_is_ip: bool,
+    equity_cache: dict[tuple, dict],
+    facing_bet: float,
+) -> dict[str, dict[tuple[Card, Card], float]]:
+    """Enumerate next-street cards with batched predictions."""
+    next_street = NEXT_STREET.get(street, "river")
+    deck = _remaining_deck(board)
+
+    # 1. Batch model predictions: current street hero actions
+    base = _build_sequence_tokens(board, action_prefix)
+    cur_seqs: list[list[Token]] = []
+    cur_keys: list[str] = []
+    for a in hero_actions:
+        if a == "Fold":
+            continue
+        cur_seqs.append(base + [_hero_token(a, pot_bb, facing_bet, stack_bb)])
+        cur_keys.append(a)
+
+    t0 = time.perf_counter()
+    cur_probs = _batch_predict(model, cur_seqs, stack_bb)
+    logger.info("Current-street batch: %d seqs in %.0fms",
+                len(cur_seqs), (time.perf_counter() - t0) * 1000)
+
+    # Parse current-street villain responses
+    cur_villain: dict[str, tuple[float, float, float]] = {}
+    for idx, a in enumerate(cur_keys):
+        is_agg = a not in ("Check", "Call")
+        cur_villain[a] = _villain_probs(cur_probs[idx], is_agg)
+
+    # 2. Batch model predictions: next-street hero actions for each card
+    future_seqs: list[list[Token]] = []
+    future_keys: list[tuple[int, str]] = []  # (card_idx, action)
+
+    for ci, card in enumerate(deck):
+        new_board = board + [card]
+        fb = _build_sequence_tokens(new_board, action_prefix)
+        for a in HERO_OPEN_ACTIONS:
+            if a == "Fold":
+                continue
+            future_seqs.append(fb + [_hero_token(a, pot_bb, 0.0, stack_bb)])
+            future_keys.append((ci, a))
+
+    t0 = time.perf_counter()
+    future_probs = _batch_predict(model, future_seqs, stack_bb)
+    logger.info("Future-street batch: %d seqs in %.0fms",
+                len(future_seqs), (time.perf_counter() - t0) * 1000)
+
+    # Build index: card_idx → {action: probs}
+    card_prob_map: dict[int, dict[str, torch.Tensor]] = {}
+    for batch_idx, (ci, a) in enumerate(future_keys):
+        card_prob_map.setdefault(ci, {})[a] = future_probs[batch_idx]
+
+    # 3. For each card, solve future street using pre-computed predictions
+    continuation_sums: dict[tuple[Card, Card], float] = {c: 0.0 for c in valid_combos}
+    continuation_counts: dict[tuple[Card, Card], int] = {c: 0 for c in valid_combos}
+
+    for ci, card in enumerate(deck):
+        new_board = board + [card]
+        card_range = _remove_card_from_range(villain_range, card)
+        cp = card_prob_map.get(ci, {})
+
+        if next_street == "river":
+            card_ev = _solve_turn_card(
+                new_board, pot_bb, stack_bb, card_range,
+                model, action_prefix, stack_bb,
+                valid_combos, equity_cache, cp, card,
+            )
+        else:
+            # Turn card on a flop solve — need to enumerate river too
+            card_ev = _solve_turn_with_river_enum(
+                new_board, pot_bb, stack_bb, card_range,
+                model, action_prefix, stack_bb,
+                valid_combos, equity_cache, cp, card, hero_is_ip,
+            )
+
+        for c in valid_combos:
+            if not _card_in_combo(card, c):
+                continuation_sums[c] += card_ev[c]
+                continuation_counts[c] += 1
+
+    # Average continuation values
+    continuation: dict[tuple[Card, Card], float] = {}
+    for c in valid_combos:
+        if continuation_counts[c] > 0:
+            continuation[c] = continuation_sums[c] / continuation_counts[c]
+        else:
+            continuation[c] = 0.0
+
+    # 4. Combine current-street villain response with continuation EVs
+    return _combine_continuation(
+        hero_actions, cur_villain, continuation, valid_combos,
+        pot_bb, facing_bet, stack_bb,
+    )
+
+
+def _solve_turn_with_river_enum(
+    board_4: list[Card],
+    pot_bb: float,
+    stack: float,
+    villain_range: dict[tuple[Card, Card], float],
+    model: SolverTransformer,
+    action_prefix: list[str],
+    stack_bb: float,
+    valid_combos: list[tuple[Card, Card]],
+    equity_cache: dict[tuple, dict],
+    turn_probs: dict[str, torch.Tensor],
+    turn_card: Card,
+    hero_is_ip: bool,
+) -> dict[tuple[Card, Card], float]:
+    """From a turn card during flop solve: enumerate river cards.
+
+    turn_probs has villain predictions for turn hero actions (pre-computed).
+    We need to batch-predict river hero actions for all river cards.
+    """
+    river_deck = _remaining_deck(board_4)
+
+    # Batch river predictions: each river card × hero open actions
+    river_seqs: list[list[Token]] = []
+    river_keys: list[tuple[int, str]] = []
+
+    for ri, rc in enumerate(river_deck):
+        board_5 = board_4 + [rc]
+        rb = _build_sequence_tokens(board_5, action_prefix)
+        for a in HERO_OPEN_ACTIONS:
+            if a == "Fold":
+                continue
+            river_seqs.append(rb + [_hero_token(a, pot_bb, 0.0, stack)])
+            river_keys.append((ri, a))
+
+    river_probs = _batch_predict(model, river_seqs, stack_bb)
+
+    # Index river predictions
+    river_prob_map: dict[int, dict[str, torch.Tensor]] = {}
+    for bi, (ri, a) in enumerate(river_keys):
+        river_prob_map.setdefault(ri, {})[a] = river_probs[bi]
+
+    # Solve each river card
+    ev_sums: dict[tuple[Card, Card], float] = {c: 0.0 for c in valid_combos}
+    ev_counts: dict[tuple[Card, Card], int] = {c: 0 for c in valid_combos}
+
+    for ri, rc in enumerate(river_deck):
+        board_5 = board_4 + [rc]
+        r_range = _remove_card_from_range(villain_range, rc)
+        rp = river_prob_map.get(ri, {})
+
+        card_ev = _solve_turn_card(
+            board_5, pot_bb, stack, r_range,
+            model, action_prefix, stack_bb,
+            valid_combos, equity_cache, rp, rc,
+        )
+
+        for c in valid_combos:
+            if not _card_in_combo(rc, c) and not _card_in_combo(turn_card, c):
+                ev_sums[c] += card_ev[c]
+                ev_counts[c] += 1
+
+    # Average
+    best_ev: dict[tuple[Card, Card], float] = {}
+    for c in valid_combos:
+        if ev_counts[c] > 0:
+            best_ev[c] = ev_sums[c] / ev_counts[c]
+        else:
+            best_ev[c] = 0.0
+
+    # Now combine with turn-level villain response using turn_probs
+    # Hero picks best action on turn, weighted by villain response
+    turn_best: dict[tuple[Card, Card], float] = {c: 0.0 for c in valid_combos}
+
+    for action in HERO_OPEN_ACTIONS:
+        if action == "Fold":
+            continue
+        probs = turn_probs.get(action)
+        if probs is None:
+            continue
+
+        is_agg = action not in ("Check", "Call")
+        fp, cp, rp = _villain_probs(probs, is_agg)
+        bet = _clip(_bet_bb(action, pot_bb, 0.0), stack)
+
+        if action == "Check":
+            # check back → river continuation
+            vb = _clip(VILLAIN_BET_SIZE * pot_bb, stack)
+            for c in valid_combos:
+                check_ev = cp * best_ev.get(c, 0.0)
+                bet_branch = rp * max(0.0, best_ev.get(c, 0.0) - vb) if vb > 0 else 0.0
+                ev = check_ev + bet_branch
+                turn_best[c] = max(turn_best[c], ev)
+        else:
+            if bet <= 0:
+                continue
+            fold_ev = pot_bb + bet
+            vr = _clip(3.0 * bet, stack - bet)
+            hc = (vr - bet) if vr > 0 else 0.0
+            for c in valid_combos:
+                ev = (fp * fold_ev
+                      + cp * best_ev.get(c, 0.0)
+                      + rp * max(0.0, best_ev.get(c, 0.0) - hc)
+                      - bet)
+                turn_best[c] = max(turn_best[c], ev)
+
+    return turn_best
+
+
+# ---------------------------------------------------------------------------
+# Streaming entry point
+# ---------------------------------------------------------------------------
 
 def mc_solve_spot_streaming(
     model: SolverTransformer,
@@ -584,305 +710,141 @@ def mc_solve_spot_streaming(
     hero_actions: list[str],
     villain_range: dict[tuple[Card, Card], float],
     pot_bb: float,
-    effective_stack_bb: float,
+    starting_bb: float,
     valid_combos: list[tuple[Card, Card]],
     hero_is_ip: bool,
 ):
-    """Generator that yields partial results as the tree solve progresses.
-
-    Yields dicts with:
-    - {"type": "progress", "stage": "...", ...} for status updates
-    - {"type": "update", "progress": 0-1, "actions": {...}} for partial EVs
-    - {"type": "complete", "progress": 1.0, ...} for final result
-    """
+    """Generator yielding progress updates during solve."""
     t0 = time.perf_counter()
     equity_cache: dict[tuple, dict] = {}
-
-    # Determine hero's position context
-    last_action = action_prefix[-1].split(":")[-1] if action_prefix else ""
-    is_facing_bet = last_action.startswith("B") or last_action.startswith("R")
-    hero_committed = 0.0
-    villain_committed = 0.0
-
-    if is_facing_bet:
-        bet_pct = ACTION_TO_BET_PCT.get(last_action, 0.0)
-        mult = RAISE_MULTIPLIER.get(last_action, 0.0)
-        if mult > 0:
-            villain_committed = mult * (pot_bb * 0.5)
-        elif bet_pct > 0:
-            pot_before = pot_bb / (1.0 + bet_pct / 100.0)
-            villain_committed = pot_before * bet_pct / 100.0
-        villain_committed = min(villain_committed, effective_stack_bb)
-
-    stack_left = effective_stack_bb
+    facing = _compute_facing_bet(action_prefix, pot_bb)
 
     if street == "river":
-        # No card enumeration needed — solve directly
-        results = mc_solve_spot(
-            model, board, street, action_prefix, hero_actions,
-            villain_range, pot_bb, effective_stack_bb, valid_combos, hero_is_ip,
+        result = _solve_river(
+            board, pot_bb, starting_bb, hero_actions,
+            villain_range, model, action_prefix,
+            starting_bb, valid_combos, equity_cache,
+            facing_bet=facing,
         )
-        elapsed = time.perf_counter() - t0
         yield {
-            "type": "complete",
-            "progress": 1.0,
-            "simsComplete": 1,
-            "solveTime": round(elapsed, 2),
-            "combo_evs": _serialize_combo_evs(results, valid_combos),
+            "type": "complete", "progress": 1.0, "simsComplete": 1,
+            "solveTime": round(time.perf_counter() - t0, 2),
+            "combo_evs": _serialize(result, valid_combos),
         }
         return
 
-    # For flop/turn: enumerate next-street cards with streaming
-    next_street = NEXT_STREET.get(street)
-    if not next_street:
-        return
-
+    next_street = NEXT_STREET.get(street, "river")
     deck = _remaining_deck(board)
-    random.shuffle(deck)  # shuffle for unbiased early updates
+    random.shuffle(deck)
 
-    # Accumulators per hero action per combo
-    ev_sums: dict[str, dict[tuple[Card, Card], float]] = {
-        a: {c: 0.0 for c in valid_combos} for a in hero_actions
-    }
-    combo_counts: dict[str, dict[tuple[Card, Card], int]] = {
-        a: {c: 0 for c in valid_combos} for a in hero_actions
-    }
+    # 1. Batch current-street predictions
+    base = _build_sequence_tokens(board, action_prefix)
+    cur_seqs = []
+    cur_keys = []
+    for a in hero_actions:
+        if a == "Fold":
+            continue
+        cur_seqs.append(base + [_hero_token(a, pot_bb, facing, starting_bb)])
+        cur_keys.append(a)
+
+    cur_probs = _batch_predict(model, cur_seqs, starting_bb)
+    cur_villain: dict[str, tuple[float, float, float]] = {}
+    for idx, a in enumerate(cur_keys):
+        is_agg = a not in ("Check", "Call")
+        cur_villain[a] = _villain_probs(cur_probs[idx], is_agg)
+
+    # 2. Batch next-street predictions for ALL cards
+    future_seqs = []
+    future_keys = []
+    for ci, card in enumerate(deck):
+        fb = _build_sequence_tokens(board + [card], action_prefix)
+        for a in HERO_OPEN_ACTIONS:
+            if a == "Fold":
+                continue
+            future_seqs.append(fb + [_hero_token(a, pot_bb, 0.0, starting_bb)])
+            future_keys.append((ci, a))
+
+    t_pred = time.perf_counter()
+    future_probs = _batch_predict(model, future_seqs, starting_bb)
+    logger.info("Batched %d next-street predictions in %.0fms",
+                len(future_seqs), (time.perf_counter() - t_pred) * 1000)
+
+    card_prob_map: dict[int, dict[str, torch.Tensor]] = {}
+    for bi, (ci, a) in enumerate(future_keys):
+        card_prob_map.setdefault(ci, {})[a] = future_probs[bi]
 
     yield {"type": "progress", "stage": "solving", "totalCards": len(deck)}
 
-    for card_idx, card in enumerate(deck):
+    # 3. Solve each card
+    cont_sums: dict[tuple[Card, Card], float] = {c: 0.0 for c in valid_combos}
+    cont_counts: dict[tuple[Card, Card], int] = {c: 0 for c in valid_combos}
+
+    for ci, card in enumerate(deck):
+        t_card = time.perf_counter()
         new_board = board + [card]
-        card_villain_range = _remove_card_from_range(villain_range, card)
+        card_range = _remove_card_from_range(villain_range, card)
+        cp = card_prob_map.get(ci, {})
 
-        # Solve each hero action for this card
-        for action_key in hero_actions:
-            if action_key == "Fold":
-                for c in valid_combos:
-                    if not _card_in_combo(card, c):
-                        ev_sums[action_key][c] += 0.0
-                        combo_counts[action_key][c] += 1
-                continue
-
-            node = TreeNode(
-                street=street,
-                board=board,
-                pot_bb=pot_bb,
-                hero_committed=hero_committed,
-                villain_committed=villain_committed,
-                stack_left=stack_left,
-                is_hero_turn=True,
-                hero_is_ip=hero_is_ip,
-                villain_range=card_villain_range,
+        if next_street == "river":
+            card_ev = _solve_turn_card(
+                new_board, pot_bb, starting_bb, card_range,
+                model, action_prefix, starting_bb,
+                valid_combos, equity_cache, cp, card,
+            )
+        else:
+            card_ev = _solve_turn_with_river_enum(
+                new_board, pot_bb, starting_bb, card_range,
+                model, action_prefix, starting_bb,
+                valid_combos, equity_cache, cp, card, hero_is_ip,
             )
 
-            # Get model prediction for this hero action
-            facing_bet = villain_committed - hero_committed
-            hero_token = _build_hero_action_token(
-                action_key, pot_bb, facing_bet, stack_left,
-            )
-            probs = _predict_single(
-                model, board, action_prefix, hero_token, effective_stack_bb,
-            )
-            is_hero_aggressive = action_key not in ("Check", "Call")
-            fold_pct, call_pct, raise_pct = _extract_villain_probs(probs, is_hero_aggressive)
-
-            # Compute bet sizing
-            if action_key == "Call":
-                call_cost = villain_committed - hero_committed
-                # After calling, enumerate the SPECIFIC next card
-                next_node = TreeNode(
-                    street=next_street, board=new_board,
-                    pot_bb=pot_bb + call_cost,
-                    hero_committed=0.0, villain_committed=0.0,
-                    stack_left=stack_left - call_cost,
-                    is_hero_turn=not hero_is_ip,
-                    hero_is_ip=hero_is_ip,
-                    villain_range=card_villain_range,
-                )
-                card_evs = _solve_node(
-                    next_node, model, action_prefix,
-                    effective_stack_bb, equity_cache, valid_combos,
-                )
-                for c in valid_combos:
-                    if not _card_in_combo(card, c):
-                        ev_sums[action_key][c] += card_evs.get(c, 0.0) - call_cost
-                        combo_counts[action_key][c] += 1
-
-            elif action_key == "Check":
-                if hero_is_ip and _is_opening(hero_committed, villain_committed):
-                    # IP check closes street — solve next street for this card
-                    next_node = TreeNode(
-                        street=next_street, board=new_board,
-                        pot_bb=pot_bb,
-                        hero_committed=0.0, villain_committed=0.0,
-                        stack_left=stack_left,
-                        is_hero_turn=not hero_is_ip,
-                        hero_is_ip=hero_is_ip,
-                        villain_range=card_villain_range,
-                    )
-                    card_evs = _solve_node(
-                        next_node, model, action_prefix,
-                        effective_stack_bb, equity_cache, valid_combos,
-                    )
-                else:
-                    # OOP check → solve villain's response on CURRENT board,
-                    # then enumerate next cards within villain response
-                    check_node = TreeNode(
-                        street=street, board=board,
-                        pot_bb=pot_bb,
-                        hero_committed=hero_committed,
-                        villain_committed=villain_committed,
-                        stack_left=stack_left,
-                        is_hero_turn=False,
-                        hero_is_ip=hero_is_ip,
-                        villain_range=card_villain_range,
-                    )
-                    card_evs = _solve_villain_node(
-                        check_node, model, action_prefix, "Check",
-                        effective_stack_bb, equity_cache, valid_combos,
-                    )
-                for c in valid_combos:
-                    if not _card_in_combo(card, c):
-                        ev_sums[action_key][c] += card_evs.get(c, 0.0)
-                        combo_counts[action_key][c] += 1
-
-            else:
-                # Bet/Raise: model predicts villain response
-                raw_bet = _compute_bet_bb(action_key, pot_bb, facing_bet)
-                bet_bb = _clip_to_all_in(raw_bet, stack_left)
-                if bet_bb <= 0:
-                    for c in valid_combos:
-                        if not _card_in_combo(card, c):
-                            combo_counts[action_key][c] += 1
-                    continue
-
-                # Compute villain response branches for this specific card
-                # Range narrowing
-                if card_villain_range and board:
-                    raising_range, calling_range, _ = filter_range_by_equity(
-                        card_villain_range, board, street,
-                        raise_pct=raise_pct * 100, call_pct=call_pct * 100,
-                        hard_split=True,
-                    )
-                else:
-                    raising_range = calling_range = card_villain_range
-
-                # Fold: hero wins pot
-                fold_ev_per_combo = pot_bb + bet_bb  # pot before + hero's bet (villain folds)
-                # Actually fold means villain folds, hero wins the pot as-is (pot_bb + bet_bb)
-                # But hero already committed bet_bb, so net = pot_bb + bet_bb - bet_bb = pot_bb
-                # Wait: fold_ev should be hero wins pot (which includes hero's bet that villain
-                # didn't match). So fold_ev = pot_bb (the pot before hero bet). Hero gets their
-                # bet back since villain folded. Net = pot_bb (profit = pot_bb minus nothing).
-                # Actually: hero committed bet_bb. Villain folds. Hero wins pot_bb (the pot
-                # before hero acted). So net EV = pot_bb - bet_bb + pot_bb + bet_bb = pot_bb.
-                # No wait. The pot is pot_bb. Hero bets bet_bb. Villain folds.
-                # Hero wins pot_bb. Hero's cost was bet_bb. Net = pot_bb - bet_bb.
-                # But the caller already subtracts bet_bb. So here we return pot_bb + bet_bb
-                # and the caller does (ev - bet_bb) = pot_bb. That's correct.
-                fold_ev = node.pot_bb + bet_bb  # total pot hero wins (includes their own bet)
-
-                # Call: villain calls, go to next street for this specific card
-                call_child = TreeNode(
-                    street=next_street, board=new_board,
-                    pot_bb=pot_bb + bet_bb + bet_bb,  # hero bet + villain call
-                    hero_committed=0.0, villain_committed=0.0,
-                    stack_left=stack_left - bet_bb - bet_bb,
-                    is_hero_turn=not hero_is_ip,
-                    hero_is_ip=hero_is_ip,
-                    villain_range=calling_range,
-                )
-                call_card_evs = _solve_node(
-                    call_child, model, action_prefix,
-                    effective_stack_bb, equity_cache, valid_combos,
-                )
-
-                # Raise: villain raises, hero calls or folds
-                hero_bet_size = bet_bb
-                v_raise_to = _clip_to_all_in(3.0 * hero_bet_size, stack_left - bet_bb)
-                hero_call_cost = v_raise_to  # hero must put in this much more
-                hero_call_cost = _clip_to_all_in(hero_call_cost, stack_left - bet_bb)
-
-                if v_raise_to > 0 and raise_pct > 0.001:
-                    raise_child = TreeNode(
-                        street=next_street, board=new_board,
-                        pot_bb=pot_bb + bet_bb + bet_bb + v_raise_to + hero_call_cost,
-                        hero_committed=0.0, villain_committed=0.0,
-                        stack_left=stack_left - bet_bb - bet_bb - v_raise_to - hero_call_cost,
-                        is_hero_turn=not hero_is_ip,
-                        hero_is_ip=hero_is_ip,
-                        villain_range=raising_range,
-                    )
-                    raise_call_evs = _solve_node(
-                        raise_child, model, action_prefix,
-                        effective_stack_bb, equity_cache, valid_combos,
-                    )
-                    raise_evs = {
-                        c: max(0.0, raise_call_evs.get(c, 0.0) - hero_call_cost)
-                        for c in valid_combos
-                    }
-                else:
-                    raise_evs = {c: 0.0 for c in valid_combos}
-
-                for c in valid_combos:
-                    if not _card_in_combo(card, c):
-                        total_ev = (fold_pct * fold_ev
-                                    + call_pct * call_card_evs.get(c, 0.0)
-                                    + raise_pct * raise_evs.get(c, 0.0))
-                        ev_sums[action_key][c] += total_ev
-                        combo_counts[action_key][c] += 1
-
-        # Yield periodic updates
-        if (card_idx + 1) % 5 == 0 or card_idx == len(deck) - 1:
-            progress = (card_idx + 1) / len(deck)
-            running_avgs = {}
-            for a in hero_actions:
-                action_avg = 0.0
-                count = 0
-                for c in valid_combos:
-                    if combo_counts[a][c] > 0:
-                        action_avg += ev_sums[a][c] / combo_counts[a][c]
-                        count += 1
-                running_avgs[a] = round(action_avg / max(count, 1), 2)
-
-            yield {
-                "type": "update",
-                "progress": round(progress, 3),
-                "simsComplete": card_idx + 1,
-                "totalCards": len(deck),
-                "actions": running_avgs,
-            }
-
-    # Final result: compute average EVs
-    final_evs: dict[str, dict[tuple[Card, Card], float]] = {}
-    for a in hero_actions:
-        final_evs[a] = {}
         for c in valid_combos:
-            if combo_counts[a][c] > 0:
-                final_evs[a][c] = ev_sums[a][c] / combo_counts[a][c]
-            else:
-                final_evs[a][c] = 0.0
+            if not _card_in_combo(card, c):
+                cont_sums[c] += card_ev[c]
+                cont_counts[c] += 1
 
+        elapsed_card = time.perf_counter() - t_card
+        cs = f"{card.rank.value}{card.suit.value}"
+        logger.info("%s card %d/%d (%s) in %.2fs",
+                    street, ci + 1, len(deck), cs, elapsed_card)
+
+        # Compute running-average continuation and combine with villain probs
+        running_cont = {
+            c: cont_sums[c] / cont_counts[c] if cont_counts[c] > 0 else 0.0
+            for c in valid_combos
+        }
+        running_evs = _combine_continuation(
+            hero_actions, cur_villain, running_cont, valid_combos,
+            pot_bb, facing, starting_bb,
+        )
+
+        progress = (ci + 1) / len(deck)
+        yield {
+            "type": "update",
+            "progress": round(progress, 3),
+            "simsComplete": ci + 1,
+            "totalCards": len(deck),
+            "combo_evs": _serialize(running_evs, valid_combos),
+        }
+
+    # Final result uses the same running EVs (all cards processed)
     elapsed = time.perf_counter() - t0
     yield {
-        "type": "complete",
-        "progress": 1.0,
+        "type": "complete", "progress": 1.0,
         "simsComplete": len(deck),
         "solveTime": round(elapsed, 2),
-        "combo_evs": _serialize_combo_evs(final_evs, valid_combos),
+        "combo_evs": _serialize(running_evs, valid_combos),
     }
 
 
-def _serialize_combo_evs(
+def _serialize(
     evs: dict[str, dict[tuple[Card, Card], float]],
     valid_combos: list[tuple[Card, Card]],
 ) -> dict[str, dict[str, float]]:
-    """Serialize combo EVs to JSON-friendly format."""
-    result = {}
-    for action_key, combo_evs in evs.items():
-        result[action_key] = {}
+    out = {}
+    for a, cev in evs.items():
+        out[a] = {}
         for c in valid_combos:
-            card_str = (f"{c[0].rank.value}{c[0].suit.value}"
-                        f"{c[1].rank.value}{c[1].suit.value}")
-            result[action_key][card_str] = round(combo_evs.get(c, 0.0), 2)
-    return result
+            cs = f"{c[0].rank.value}{c[0].suit.value}{c[1].rank.value}{c[1].suit.value}"
+            out[a][cs] = round(cev.get(c, 0.0), 2)
+    return out

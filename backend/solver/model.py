@@ -56,7 +56,7 @@ class SolverTransformer(nn.Module):
         # Positional encoding
         self.pos_embed = nn.Embedding(MAX_SEQ_LEN, MODEL_DIM)
 
-        # Hand-level context: effective stack (normalized by /100)
+        # Hand-level context: starting stack (normalized by /100)
         self.stack_proj = nn.Linear(1, MODEL_DIM)
 
         # Transformer encoder
