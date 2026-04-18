@@ -60,6 +60,16 @@ export const HandGrid = ({
                 percent: ((counts[opt.key] ?? 0) / total) * 100,
               }));
 
+            if (stops.length <= 1) {
+              const opt = actionOptions.find((a) => a.key === hand.bestAction);
+              return {
+                colour: opt?.colour ?? "bg-muted text-muted-foreground",
+                onClick: () => onSelectHand(key),
+                isSelected: key === selectedHand,
+                title: buildTooltip(key, hand),
+              };
+            }
+
             return {
               gradientStops: stops,
               onClick: () => onSelectHand(key),

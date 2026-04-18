@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback } from "react";
 import type { CardJson } from "@/api";
 import type { SolverSpot, ActionTile, BoardTile } from "./types";
-import { INITIAL_SPOT } from "./types";
+import { INITIAL_SPOT, ALL_IN_OPTION } from "./types";
 import { buildTiles } from "./gameTree";
 import { ActionSequence } from "./components/ActionSequence";
 import { HandGrid } from "./components/HandGrid";
@@ -27,8 +27,8 @@ export const SolverView = () => {
   const effectiveViewId = viewTileId ?? firstPendingTileId;
   const viewedTile = tiles.find((t) => t.id === effectiveViewId) ?? null;
 
-  // The action options for the viewed decision point
-  const viewedActionOptions = useMemo(() => {
+  // The base action options for the viewed decision point (before solver filtering)
+  const tileActionOptions = useMemo(() => {
     if (viewedTile?.type === "action") return viewedTile.options;
     return [];
   }, [viewedTile]);
@@ -81,6 +81,17 @@ export const SolverView = () => {
 
   const { result: solverResult, loading, progress, simsComplete } =
     useSolverStream(solverParams);
+
+  // Filter action options to only those the solver returned, inject All-in
+  const viewedActionOptions = useMemo(() => {
+    if (!solverResult?.actions) return tileActionOptions;
+    const solverKeys = new Set(Object.keys(solverResult.actions));
+    const filtered = tileActionOptions.filter((opt) => solverKeys.has(opt.key));
+    if (solverKeys.has("All-in") && !filtered.some((opt) => opt.key === "All-in")) {
+      filtered.push(ALL_IN_OPTION);
+    }
+    return filtered;
+  }, [tileActionOptions, solverResult]);
 
   const handleNavigate= useCallback((tileId: string) => {
     setViewTileId(tileId);
@@ -230,7 +241,7 @@ export const SolverView = () => {
       )}
 
       {/* Results */}
-      {solverResult && !loading && hasDecisionPoint && (
+      {solverResult && hasDecisionPoint && (
         <div className="flex gap-6 items-start">
           <div className="flex-1 min-w-0 max-w-3xl">
             <HandGrid

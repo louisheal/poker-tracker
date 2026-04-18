@@ -31,6 +31,26 @@ export function useSolverStream(params: SolverParams | null): StreamState {
     for (const a of params.actions) sp.append("actions", a);
     if (params.heroPosition) sp.append("hero_position", params.heroPosition);
 
+    // Preflop: use regular fetch (no tree enumeration needed)
+    if (params.street === "preflop") {
+      const controller = new AbortController();
+      setState((prev) => ({ ...prev, loading: true }));
+
+      fetch(`http://localhost:8000/solver/solve?${sp}`, {
+        signal: controller.signal,
+      })
+        .then((r) => r.json())
+        .then((data) => {
+          setState({ result: data, loading: false, progress: 1, simsComplete: 0 });
+        })
+        .catch(() => {
+          setState((prev) => ({ ...prev, loading: false }));
+        });
+
+      return () => controller.abort();
+    }
+
+    // Postflop: use SSE streaming
     const source = new EventSource(
       `http://localhost:8000/solver/solve-stream?${sp}`,
     );
@@ -42,7 +62,7 @@ export function useSolverStream(params: SolverParams | null): StreamState {
 
       if (data.type === "update") {
         setState({
-          result: null,
+          result: data,
           loading: true,
           progress: data.progress ?? 0,
           simsComplete: data.simsComplete ?? 0,

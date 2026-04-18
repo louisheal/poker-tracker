@@ -37,9 +37,7 @@ export const PREFLOP_BB_CHECK_ACTIONS: ActionOption[] = [
 export const POSTFLOP_OPEN_ACTIONS: ActionOption[] = [
   { key: "Check", label: "Check", colour: "bg-[#22c55e] text-white" },
   { key: "B33", label: "Bet 33%", colour: "bg-[#f87171] text-white" },
-  { key: "B50", label: "Bet 50%", colour: "bg-[#ef4444] text-white" },
   { key: "B66", label: "Bet 66%", colour: "bg-[#ef4444] text-white" },
-  { key: "B100", label: "Bet 100%", colour: "bg-[#dc2626] text-white" },
   { key: "B133", label: "Bet 133%", colour: "bg-[#b91c1c] text-white" },
   { key: "B200", label: "Bet 200%", colour: "bg-[#991b1b] text-white" },
 ];
@@ -48,9 +46,13 @@ export const POSTFLOP_FACING_BET_ACTIONS: ActionOption[] = [
   { key: "Fold", label: "Fold", colour: "bg-[#3c78fa] text-white" },
   { key: "Call", label: "Call", colour: "bg-[#22c55e] text-white" },
   { key: "R3x", label: "Raise 3x", colour: "bg-[#ef4444] text-white" },
-  { key: "R4x", label: "Raise 4x", colour: "bg-[#dc2626] text-white" },
-  { key: "R5x", label: "Raise 5x", colour: "bg-[#b91c1c] text-white" },
 ];
+
+export const ALL_IN_OPTION: ActionOption = {
+  key: "All-in",
+  label: "All-in",
+  colour: "bg-[#581c87] text-white",
+};
 
 export interface ActionTile {
   type: "action";

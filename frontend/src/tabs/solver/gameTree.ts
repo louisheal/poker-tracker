@@ -12,7 +12,88 @@ import {
   PREFLOP_BB_CHECK_ACTIONS,
   POSTFLOP_OPEN_ACTIONS,
   POSTFLOP_FACING_BET_ACTIONS,
+  ALL_IN_OPTION,
 } from "./types";
+
+const STARTING_BB = 100;
+
+const BET_PCT: Record<string, number> = {
+  B33: 0.33,
+  B66: 0.66,
+  B133: 1.33,
+  B200: 2.0,
+};
+
+const RAISE_MULT: Record<string, number> = {
+  R3x: 3.0,
+};
+
+function computeBetSize(
+  action: string,
+  potBB: number,
+  facingBet: number,
+): number {
+  const pct = BET_PCT[action];
+  if (pct !== undefined) return pct * potBB;
+  const mult = RAISE_MULT[action];
+  if (mult !== undefined && facingBet > 0) return mult * facingBet;
+  return 0;
+}
+
+function collapseAllInOptions(
+  options: ActionOption[],
+  potBB: number,
+  facingBet: number,
+  remainingBB: number,
+): ActionOption[] {
+  if (remainingBB <= 0) {
+    return options.filter(
+      (o) => o.key === "Check" || o.key === "Fold" || o.key === "Call",
+    );
+  }
+
+  const result: ActionOption[] = [];
+  let allInAdded = false;
+
+  for (const opt of options) {
+    const betSize = computeBetSize(opt.key, potBB, facingBet);
+    if (betSize > 0 && betSize >= remainingBB) {
+      if (!allInAdded) {
+        result.push(ALL_IN_OPTION);
+        allInAdded = true;
+      }
+    } else {
+      result.push(opt);
+    }
+  }
+
+  return result;
+}
+
+function applyActionToPot(
+  action: string,
+  potBB: number,
+  facingBet: number,
+  remainingBB: number,
+): { potBB: number; facingBet: number } {
+  if (action === "All-in") {
+    return { potBB: potBB + remainingBB, facingBet: remainingBB };
+  }
+  const pct = BET_PCT[action];
+  if (pct !== undefined) {
+    const betAmount = Math.min(pct * potBB, remainingBB);
+    return { potBB: potBB + betAmount, facingBet: betAmount };
+  }
+  const mult = RAISE_MULT[action];
+  if (mult !== undefined && facingBet > 0) {
+    const raiseAmount = Math.min(mult * facingBet, remainingBB);
+    return { potBB: potBB + raiseAmount, facingBet: raiseAmount };
+  }
+  if (action === "Call" && facingBet > 0) {
+    return { potBB: potBB + facingBet, facingBet: 0 };
+  }
+  return { potBB, facingBet: 0 };
+}
 
 /**
  * Determine postflop acting order from the two active players.
@@ -59,6 +140,15 @@ function getPostflopNext(
     return { player: nextPlayer, options: POSTFLOP_OPEN_ACTIONS };
   }
 
+  if (lastAction === "All-in") {
+    return {
+      player: nextPlayer,
+      options: POSTFLOP_FACING_BET_ACTIONS.filter(
+        (o) => o.key === "Fold" || o.key === "Call",
+      ),
+    };
+  }
+
   return { player: nextPlayer, options: POSTFLOP_FACING_BET_ACTIONS };
 }
 
@@ -78,6 +168,8 @@ export function buildTiles(spot: SolverSpot): Tile[] {
   if (!postflopOrder) return tiles;
   const [oopPos, ipPos] = postflopOrder;
 
+  let potBB = preflopResult.potBB;
+
   const flopBoardComplete = spot.flopCards.length >= 3;
   tiles.push({
     type: "board",
@@ -94,9 +186,11 @@ export function buildTiles(spot: SolverSpot): Tile[] {
     spot.flopActions,
     oopPos,
     ipPos,
+    potBB,
   );
   tiles.push(...flopResult.tiles);
   if (!flopResult.complete || flopResult.handOver) return tiles;
+  potBB = flopResult.potBB;
 
   const turnBoardComplete = spot.turnCard !== null;
   tiles.push({
@@ -114,9 +208,11 @@ export function buildTiles(spot: SolverSpot): Tile[] {
     spot.turnActions,
     oopPos,
     ipPos,
+    potBB,
   );
   tiles.push(...turnResult.tiles);
   if (!turnResult.complete || turnResult.handOver) return tiles;
+  potBB = turnResult.potBB;
 
   const riverBoardComplete = spot.riverCard !== null;
   tiles.push({
@@ -134,6 +230,7 @@ export function buildTiles(spot: SolverSpot): Tile[] {
     spot.riverActions,
     oopPos,
     ipPos,
+    potBB,
   );
   tiles.push(...riverResult.tiles);
 
@@ -159,6 +256,7 @@ function buildPreflopTiles(preflopActions: string[]): {
   tiles: ActionTile[];
   complete: boolean;
   activePlayers: Position[];
+  potBB: number;
 } {
   const tiles: ActionTile[] = [];
   const active = new Set<Position>([...POSITIONS]);
@@ -166,6 +264,8 @@ function buildPreflopTiles(preflopActions: string[]): {
   let lastRaiser: Position | null = null;
   let actedSinceLastRaise = new Set<Position>();
   let actionIndex = 0;
+  let potBB = 1.5;
+  let prevRaiseTotal = 0;
 
   const toAct: Position[] = [...POSITIONS];
 
@@ -206,7 +306,7 @@ function buildPreflopTiles(preflopActions: string[]): {
     });
 
     if (selected === null) {
-      return { tiles, complete: false, activePlayers: [...active] };
+      return { tiles, complete: false, activePlayers: [...active], potBB };
     }
 
     actionIndex++;
@@ -216,7 +316,7 @@ function buildPreflopTiles(preflopActions: string[]): {
       active.delete(pos);
       actedSinceLastRaise.delete(pos);
       if (active.size <= 1) {
-        return { tiles, complete: true, activePlayers: [...active] };
+        return { tiles, complete: true, activePlayers: [...active], potBB };
       }
     } else if (selected === "Raise") {
       raiseCount++;
@@ -227,12 +327,17 @@ function buildPreflopTiles(preflopActions: string[]): {
           toAct.push(p);
         }
       }
+      const raiseTotal = Math.max(2.5, prevRaiseTotal * 3);
+      potBB += raiseTotal - prevRaiseTotal;
+      prevRaiseTotal = raiseTotal;
+    } else if (selected === "Call") {
+      potBB += Math.max(prevRaiseTotal - 1.0, 1.0);
     }
 
     if (lastRaiser && allActedSinceRaise()) break;
   }
 
-  return { tiles, complete: true, activePlayers: [...active] };
+  return { tiles, complete: true, activePlayers: [...active], potBB };
 }
 
 // ---------------------------------------------------------------------------
@@ -244,12 +349,16 @@ function buildPostflopTiles(
   streetActions: string[],
   oopPos: Position,
   ipPos: Position,
+  initialPotBB: number,
 ): {
   tiles: ActionTile[];
   complete: boolean;
   handOver: boolean;
+  potBB: number;
 } {
   const tiles: ActionTile[] = [];
+  let potBB = initialPotBB;
+  let facingBet = 0;
 
   for (let i = 0; ; i++) {
     const actionsToThisPoint = streetActions.slice(0, i);
@@ -257,8 +366,16 @@ function buildPostflopTiles(
 
     if (next === null) {
       const handOver = i > 0 && streetActions[i - 1] === "Fold";
-      return { tiles, complete: true, handOver };
+      return { tiles, complete: true, handOver, potBB };
     }
+
+    const remainingBB = STARTING_BB - potBB / 2;
+    const options = collapseAllInOptions(
+      next.options,
+      potBB,
+      facingBet,
+      remainingBB,
+    );
 
     const pos = next.player === "oop" ? oopPos : ipPos;
     const selected = i < streetActions.length ? streetActions[i] : null;
@@ -268,14 +385,18 @@ function buildPostflopTiles(
       id: `${street}-${i}`,
       label: next.player.toUpperCase(),
       sublabel: pos,
-      options: next.options,
+      options,
       selected,
       section: street,
       actionIndex: i,
     });
 
     if (selected === null) {
-      return { tiles, complete: false, handOver: false };
+      return { tiles, complete: false, handOver: false, potBB };
     }
+
+    const updated = applyActionToPot(selected, potBB, facingBet, remainingBB);
+    potBB = updated.potBB;
+    facingBet = updated.facingBet;
   }
 }
