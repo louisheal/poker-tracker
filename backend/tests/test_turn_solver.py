@@ -170,6 +170,30 @@ class TestSolveRiverForAllCards:
         assert abs(result[HERO_QJ] - expected) < 0.1
 
 
+    @patch("solver.streets.turn.solve_river")
+    def test_all_in_on_turn_passes_zero_remaining(self, mock_solve_river):
+        """When pot + remaining forces remaining_bb=0, solve_river receives 0 remaining."""
+        from solver.streets.turn import _solve_river_for_all_cards
+
+        seen = []
+        def tracking_river(**kwargs):
+            seen.append(kwargs["remaining_bb"])
+            combos = kwargs["hero_combos"]
+            pot = kwargs["pot"]
+            return {"Check": {c: pot for c in combos}}, {c: 1.0 for c in combos}
+
+        mock_solve_river.side_effect = tracking_river
+
+        _solve_river_for_all_cards(
+            board=BOARD_TURN, pot=200.0, remaining_bb=0.0,
+            villain_range=VILLAIN_RANGE, model=MagicMock(),
+            action_prefix=[], hero_combos=[HERO_QJ],
+            starting_bb=100.0, hero_is_ip=True,
+        )
+        assert len(seen) > 0, "solve_river should still be called with remaining_bb=0"
+        assert all(r == 0.0 for r in seen), "All river calls should get remaining_bb=0"
+
+
 class TestSolveTurnScenarios:
     """Scenario tests for solve_turn with mocked turn predictions and river outcomes."""
 
