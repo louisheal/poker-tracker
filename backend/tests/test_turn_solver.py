@@ -1,11 +1,18 @@
 """Tests for the recursive turn solver (streets/turn.py)."""
 
 import pytest
+import torch
 from unittest.mock import patch, MagicMock
 
 from playing_cards_lib.core import Card, Rank, Suit
 
 from solver.streets.common import _enumerate_sequences
+
+
+def _fake_batch_predict(model, token_lists, starting_bb, batch_size=1024):
+    """Return uniform (N, 5) tensor so mega-batch doesn't need a real model."""
+    n = len(token_lists)
+    return torch.full((n, 5), 0.2)
 
 
 RANK_MAP = {
@@ -82,6 +89,7 @@ def _river_mock_best_is_pot():
 class TestSolveRiverForAllCards:
     """Unit tests for _solve_river_for_all_cards: river card enumeration and averaging."""
 
+    @patch("solver.streets.turn._batch_predict", _fake_batch_predict)
     @patch("solver.streets.turn.solve_river")
     def test_averages_river_evs_uniformly(self, mock_solve_river):
         """Each river card contributes equally. Constant EV → average = that EV."""
@@ -97,6 +105,7 @@ class TestSolveRiverForAllCards:
         )
         assert abs(result[HERO_AK] - 15.0) < 0.01
 
+    @patch("solver.streets.turn._batch_predict", _fake_batch_predict)
     @patch("solver.streets.turn.solve_river")
     def test_excludes_conflicting_combos_per_card(self, mock_solve_river):
         """Combos sharing a card with the river card are excluded from that card's solve."""
@@ -122,6 +131,7 @@ class TestSolveRiverForAllCards:
                     f"HERO_AK should be excluded when river={entry['river']}"
                 )
 
+    @patch("solver.streets.turn._batch_predict", _fake_batch_predict)
     @patch("solver.streets.turn.solve_river")
     def test_passes_correct_pot_and_remaining(self, mock_solve_river):
         """Pot and remaining_bb passed to solve_river match what was given."""
@@ -144,6 +154,7 @@ class TestSolveRiverForAllCards:
         assert all(s["pot"] == 42.0 for s in seen)
         assert all(s["remaining"] == 79.0 for s in seen)
 
+    @patch("solver.streets.turn._batch_predict", _fake_batch_predict)
     @patch("solver.streets.turn.solve_river")
     def test_varying_evs_across_river_cards(self, mock_solve_river):
         """Different river cards produce different EVs; average reflects the mix."""
@@ -190,6 +201,7 @@ class TestSolveRiverForAllCards:
 class TestSolveTurnScenarios:
     """Scenario tests for solve_turn with mocked turn predictions and river outcomes."""
 
+    @patch("solver.streets.turn._batch_predict", _fake_batch_predict)
     @patch("solver.streets.turn.solve_river")
     @patch("solver.streets.turn._build_prediction_cache")
     def test_fold_ev_is_zero(self, mock_cache, mock_solve_river):
@@ -207,6 +219,7 @@ class TestSolveTurnScenarios:
         )
         assert result["Fold"][HERO_AK] == 0.0
 
+    @patch("solver.streets.turn._batch_predict", _fake_batch_predict)
     @patch("solver.streets.turn.solve_river")
     @patch("solver.streets.turn._build_prediction_cache")
     def test_delayed_value_check_to_trap(self, mock_cache, mock_solve_river):
@@ -236,6 +249,7 @@ class TestSolveTurnScenarios:
             f"Check ({check_ev}) should beat all bets ({bet_evs})"
         )
 
+    @patch("solver.streets.turn._batch_predict", _fake_batch_predict)
     @patch("solver.streets.turn.solve_river")
     @patch("solver.streets.turn._build_prediction_cache")
     def test_max_value_bet_big_when_villain_calls(self, mock_cache, mock_solve_river):
@@ -297,6 +311,7 @@ class TestSolveTurnScenarios:
         call_ev = result["Call"][HERO_AK]
         assert fold_ev > call_ev, f"Fold ({fold_ev}) should beat Call ({call_ev})"
 
+    @patch("solver.streets.turn._batch_predict", _fake_batch_predict)
     @patch("solver.streets.turn.solve_river")
     @patch("solver.streets.turn._build_prediction_cache")
     def test_implied_odds_call_to_bluff_river(self, mock_cache, mock_solve_river):
@@ -331,6 +346,7 @@ class TestSolveTurnScenarios:
         fold_ev = result["Fold"][HERO_AK]
         assert call_ev > fold_ev, f"Call ({call_ev}) should beat Fold ({fold_ev})"
 
+    @patch("solver.streets.turn._batch_predict", _fake_batch_predict)
     @patch("solver.streets.turn.solve_river")
     @patch("solver.streets.turn._build_prediction_cache")
     def test_no_implied_odds_fold_when_river_bluff_fails(self, mock_cache, mock_solve_river):
@@ -381,6 +397,7 @@ class TestSolveTurnScenarios:
         fold_ev = result["Fold"][HERO_AK]
         assert call_ev > fold_ev, f"Call ({call_ev}) should beat Fold ({fold_ev})"
 
+    @patch("solver.streets.turn._batch_predict", _fake_batch_predict)
     @patch("solver.streets.turn.solve_river")
     @patch("solver.streets.turn._build_prediction_cache")
     def test_adequate_pot_odds_call_with_equity(self, mock_cache, mock_solve_river):

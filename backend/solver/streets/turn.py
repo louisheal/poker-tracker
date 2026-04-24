@@ -26,9 +26,13 @@ from solver.streets.common import (
     _make_cache_key,
     _build_prediction_cache,
     _build_ranking_cache,
+    _enumerate_sequences,
+    _villain_response,
     EquityEngine,
     _narrow_range,
 )
+from solver.streets.mc_solver import _batch_predict
+from solver.ev_calculator import _build_sequence_tokens
 from solver.streets.river import solve_river
 
 logger = logging.getLogger(__name__)
@@ -55,8 +59,10 @@ def _solve_river_for_all_cards(
 ) -> dict[tuple[Card, Card], float]:
     """Enumerate all river cards, solve each, average per-combo best EVs.
 
-    When remaining_bb <= 0 (all-in on turn), skips the river solver entirely
-    and computes showdown equity directly — there's no river betting tree.
+    Mega-batches all river cards' prediction caches into one model call,
+    then solves each card analytically (no further model calls needed).
+
+    When remaining_bb <= 0 (all-in on turn), computes showdown equity directly.
 
     on_river_solve is called after each river card is processed (for progress tracking).
     """
@@ -65,11 +71,49 @@ def _solve_river_for_all_cards(
     combo_ev_sum: dict[tuple[Card, Card], float] = {c: 0.0 for c in hero_combos}
     combo_count: dict[tuple[Card, Card], int] = {c: 0 for c in hero_combos}
 
-    all_in = remaining_bb <= 1e-9
+    if remaining_bb <= 1e-9:
+        return _equity_only_river_enum(
+            board, deck, pot, villain_range, hero_combos, on_river_solve,
+        )
 
-    for river_card in deck:
+    is_opener = not hero_is_ip
+    sequences = _enumerate_sequences(
+        pot, 0.0, remaining_bb,
+        cache_key_prefix="", is_opener=is_opener, tokens_so_far=[],
+    )
+
+    if not sequences:
+        return {c: 0.0 for c in hero_combos}
+
+    mega_token_lists = []
+    card_indices: list[int] = []
+
+    for card_idx, river_card in enumerate(deck):
         board_5 = board + [river_card]
+        river_prefix = action_prefix + [
+            f"{river_card.rank.value}{river_card.suit.value}"
+        ]
+        base_tokens = _build_sequence_tokens(board_5, river_prefix)
+        for _, _, _, tokens in sequences:
+            mega_token_lists.append(base_tokens + tokens)
+            card_indices.append(card_idx)
 
+    mega_probs = _batch_predict(model, mega_token_lists, starting_bb)
+
+    num_sequences = len(sequences)
+    card_caches: list[dict[str, tuple[float, float, float]]] = [
+        {} for _ in range(len(deck))
+    ]
+    for batch_idx in range(len(mega_token_lists)):
+        cidx = card_indices[batch_idx]
+        seq_idx = batch_idx % num_sequences
+        cache_key, is_facing, is_all_in_seq, _ = sequences[seq_idx]
+        card_caches[cidx][cache_key] = _villain_response(
+            mega_probs[batch_idx], is_facing, is_all_in_seq,
+        )
+
+    for card_idx, river_card in enumerate(deck):
+        board_5 = board + [river_card]
         valid_combos = [
             c for c in hero_combos
             if river_card != c[0] and river_card != c[1]
@@ -83,22 +127,6 @@ def _solve_river_for_all_cards(
                 on_river_solve()
             continue
 
-        if all_in:
-            all_combos = list(valid_combos) + list(valid_villain.keys())
-            ranking_cache = _build_ranking_cache(board_5, all_combos)
-            engine = EquityEngine(valid_combos, ranking_cache)
-            equity = engine.compute_equity(valid_villain)
-            for combo in valid_combos:
-                combo_ev_sum[combo] += equity[combo] * pot
-                combo_count[combo] += 1
-            if on_river_solve:
-                on_river_solve()
-            continue
-
-        river_prefix = action_prefix + [
-            f"{river_card.rank.value}{river_card.suit.value}"
-        ]
-
         action_evs, _ = solve_river(
             board=board_5,
             pot=pot,
@@ -106,10 +134,11 @@ def _solve_river_for_all_cards(
             remaining_bb=remaining_bb,
             villain_range=valid_villain,
             model=model,
-            action_prefix=river_prefix,
+            action_prefix=action_prefix,
             hero_combos=valid_combos,
             starting_bb=starting_bb,
             hero_is_ip=hero_is_ip,
+            prediction_cache=card_caches[card_idx],
         )
 
         for combo in valid_combos:
@@ -120,6 +149,50 @@ def _solve_river_for_all_cards(
             combo_ev_sum[combo] += best_ev
             combo_count[combo] += 1
 
+        if on_river_solve:
+            on_river_solve()
+
+    return {
+        combo: combo_ev_sum[combo] / combo_count[combo]
+        if combo_count[combo] > 0 else 0.0
+        for combo in hero_combos
+    }
+
+
+def _equity_only_river_enum(
+    board: list[Card],
+    deck: list[Card],
+    pot: float,
+    villain_range: dict[tuple[Card, Card], float],
+    hero_combos: list[tuple[Card, Card]],
+    on_river_solve: Callable[[], None] | None = None,
+) -> dict[tuple[Card, Card], float]:
+    """All-in path: enumerate river cards and compute equity directly."""
+    combo_ev_sum: dict[tuple[Card, Card], float] = {c: 0.0 for c in hero_combos}
+    combo_count: dict[tuple[Card, Card], int] = {c: 0 for c in hero_combos}
+
+    for river_card in deck:
+        board_5 = board + [river_card]
+        valid_combos = [
+            c for c in hero_combos
+            if river_card != c[0] and river_card != c[1]
+        ]
+        valid_villain = {
+            c: f for c, f in villain_range.items()
+            if river_card != c[0] and river_card != c[1]
+        }
+        if not valid_combos or not valid_villain:
+            if on_river_solve:
+                on_river_solve()
+            continue
+
+        all_combos = list(valid_combos) + list(valid_villain.keys())
+        ranking_cache = _build_ranking_cache(board_5, all_combos)
+        engine = EquityEngine(valid_combos, ranking_cache)
+        equity = engine.compute_equity(valid_villain)
+        for combo in valid_combos:
+            combo_ev_sum[combo] += equity[combo] * pot
+            combo_count[combo] += 1
         if on_river_solve:
             on_river_solve()
 

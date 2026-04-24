@@ -183,17 +183,22 @@ def solve_river(
     hero_combos: list[tuple[Card, Card]],
     starting_bb: float,
     hero_is_ip: bool,
+    prediction_cache: dict[str, tuple[float, float, float]] | None = None,
 ) -> tuple[dict[str, dict[tuple[Card, Card], float]], dict[tuple[Card, Card], float]]:
     """Solve river spot.
 
     Returns (action_evs, combo_equity) where:
       action_evs = {action: {combo: ev}} — does NOT pick max (UI shows all actions)
       combo_equity = {combo: equity} — frequency-weighted equity vs villain range
+
+    If prediction_cache is provided, skips the model call (used by turn solver
+    mega-batch to pre-compute all river caches in one call).
     """
-    prediction_cache = _build_prediction_cache(
-        model, board, action_prefix, pot, facing_bet, remaining_bb, starting_bb,
-        hero_is_ip,
-    )
+    if prediction_cache is None:
+        prediction_cache = _build_prediction_cache(
+            model, board, action_prefix, pot, facing_bet, remaining_bb, starting_bb,
+            hero_is_ip,
+        )
     all_combos = hero_combos + list(villain_range.keys())
     ranking_cache = _build_ranking_cache(board, all_combos)
     equity_engine = EquityEngine(hero_combos, ranking_cache)
