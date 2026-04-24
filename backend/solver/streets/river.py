@@ -49,6 +49,7 @@ def _eval_action(
     hero_combos: list[tuple[Card, Card]],
     is_opener: bool,
     street: str = "river",
+    strength_map: dict[tuple[Card, Card], float] | None = None,
 ) -> dict[tuple[Card, Card], float]:
     """Evaluate one hero action. Returns {combo: ev}."""
 
@@ -69,6 +70,7 @@ def _eval_action(
 
         passive_range, aggressive_range = _narrow_range(
             villain_range, board, street, aggressive_pct, passive_pct,
+            strength_map=strength_map,
         )
 
         eq_vs_passive = equity_engine.compute_equity(passive_range)
@@ -80,6 +82,7 @@ def _eval_action(
             _make_cache_key(cache_key, "B"),
             prediction_cache, equity_engine, hero_combos,
             is_opener=False, street=street,
+            strength_map=strength_map,
         )
 
         return {
@@ -96,6 +99,7 @@ def _eval_action(
 
     passive_range, aggressive_range = _narrow_range(
         villain_range, board, street, aggressive_pct, passive_pct,
+        strength_map=strength_map,
     )
 
     fold_evs = {combo: pot + facing_bet for combo in hero_combos}
@@ -132,6 +136,7 @@ def _eval_action(
         _make_cache_key(cache_key, "R"),
         prediction_cache, equity_engine, hero_combos,
         is_opener=False, street=street,
+        strength_map=strength_map,
     )
 
     return {
@@ -154,6 +159,7 @@ def _solve_node(
     hero_combos: list[tuple[Card, Card]],
     is_opener: bool,
     street: str = "river",
+    strength_map: dict[tuple[Card, Card], float] | None = None,
 ) -> dict[tuple[Card, Card], float]:
     """Inner recursion. Hero picks best action per combo."""
     hero_actions = _get_hero_actions(pot, facing_bet, remaining_bb, is_opener)
@@ -164,6 +170,7 @@ def _solve_node(
             action, board, pot, facing_bet, remaining_bb,
             villain_range, action_seq, prediction_cache, equity_engine,
             hero_combos, is_opener, street,
+            strength_map=strength_map,
         )
 
     return {
@@ -204,6 +211,11 @@ def solve_river(
     equity_engine = EquityEngine(hero_combos, ranking_cache)
     is_opener = not hero_is_ip and facing_bet == 0.0
 
+    strength_map = {
+        combo: float(ranking_cache.get(_normalize_combo(combo), 0))
+        for combo in villain_range if villain_range[combo] > 0
+    }
+
     hero_actions = _get_hero_actions(pot, facing_bet, remaining_bb, is_opener)
     results: dict[str, dict[tuple[Card, Card], float]] = {}
     all_in_computed = False
@@ -224,6 +236,7 @@ def solve_river(
             action, board, pot, facing_bet, remaining_bb,
             villain_range, "", prediction_cache, equity_engine,
             hero_combos, is_opener, "river",
+            strength_map=strength_map,
         )
 
     combo_equity = {

@@ -323,9 +323,11 @@ def _narrow_range(
     street: str,
     aggressive_pct: float,
     passive_pct: float,
+    strength_map: dict[tuple[Card, Card], float] | None = None,
 ) -> tuple[dict, dict]:
     """Split villain range into passive and aggressive sub-ranges by equity.
-    Returns (passive_range, aggressive_range)."""
+    Returns (passive_range, aggressive_range).
+    If strength_map is provided, skips the expensive equity recomputation."""
     if aggressive_pct <= 0:
         return villain_range, {}
     if passive_pct <= 0:
@@ -335,6 +337,7 @@ def _narrow_range(
         villain_range, board, street,
         raise_pct=aggressive_pct * 100,
         call_pct=passive_pct * 100,
+        strength_map=strength_map,
         hard_split=False,
     )
     return passive_range, aggressive_range

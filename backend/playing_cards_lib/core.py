@@ -31,10 +31,12 @@ class Suit(Enum):
 
 
 class Card():
+    __slots__ = ('rank', 'suit', '_hash')
 
     def __init__(self, rank: Rank, suit: Suit):
         self.rank = rank
         self.suit = suit
+        self._hash = hash((rank, suit))
 
     def __eq__(self, other):
         if not isinstance(other, Card):
@@ -42,7 +44,7 @@ class Card():
         return self.rank == other.rank and self.suit == other.suit
 
     def __hash__(self):
-        return hash((self.rank, self.suit))
+        return self._hash
 
     def to_json(self):
         return {

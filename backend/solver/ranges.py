@@ -528,7 +528,9 @@ def filter_range_by_equity(
     valid_combos = [c for c, f in range_.items()
                     if f > 0 and not _cards_conflict(c, board)]
 
-    if board and valid_combos:
+    if strength_map:
+        eq_map = strength_map
+    elif board and valid_combos:
         eq_map = all_hands_vs_range(valid_combos, range_, board)
     else:
         eq_map = {}
