@@ -24,6 +24,8 @@ from solver.streets.common import (
     _action_to_cache_token,
     _make_cache_key,
     _build_prediction_cache,
+    _build_ranking_cache,
+    EquityEngine,
     _narrow_range,
 )
 from solver.streets.river import solve_river
@@ -49,11 +51,17 @@ def _solve_river_for_all_cards(
     starting_bb: float,
     hero_is_ip: bool,
 ) -> dict[tuple[Card, Card], float]:
-    """Enumerate all river cards, solve each, average per-combo best EVs."""
+    """Enumerate all river cards, solve each, average per-combo best EVs.
+
+    When remaining_bb <= 0 (all-in on turn), skips the river solver entirely
+    and computes showdown equity directly — there's no river betting tree.
+    """
     deck = _remaining_deck(board)
 
     combo_ev_sum: dict[tuple[Card, Card], float] = {c: 0.0 for c in hero_combos}
     combo_count: dict[tuple[Card, Card], int] = {c: 0 for c in hero_combos}
+
+    all_in = remaining_bb <= 1e-9
 
     for river_card in deck:
         board_5 = board + [river_card]
@@ -67,6 +75,16 @@ def _solve_river_for_all_cards(
             if river_card != c[0] and river_card != c[1]
         }
         if not valid_combos or not valid_villain:
+            continue
+
+        if all_in:
+            all_combos = list(valid_combos) + list(valid_villain.keys())
+            ranking_cache = _build_ranking_cache(board_5, all_combos)
+            engine = EquityEngine(valid_combos, ranking_cache)
+            equity = engine.compute_equity(valid_villain)
+            for combo in valid_combos:
+                combo_ev_sum[combo] += equity[combo] * pot
+                combo_count[combo] += 1
             continue
 
         river_prefix = action_prefix + [

@@ -171,27 +171,20 @@ class TestSolveRiverForAllCards:
 
 
     @patch("solver.streets.turn.solve_river")
-    def test_all_in_on_turn_passes_zero_remaining(self, mock_solve_river):
-        """When pot + remaining forces remaining_bb=0, solve_river receives 0 remaining."""
+    def test_all_in_on_turn_computes_equity_directly(self, mock_solve_river):
+        """When remaining_bb=0 (all-in), equity is computed directly without
+        calling solve_river — there's no river betting tree."""
         from solver.streets.turn import _solve_river_for_all_cards
 
-        seen = []
-        def tracking_river(**kwargs):
-            seen.append(kwargs["remaining_bb"])
-            combos = kwargs["hero_combos"]
-            pot = kwargs["pot"]
-            return {"Check": {c: pot for c in combos}}, {c: 1.0 for c in combos}
-
-        mock_solve_river.side_effect = tracking_river
-
-        _solve_river_for_all_cards(
+        result = _solve_river_for_all_cards(
             board=BOARD_TURN, pot=200.0, remaining_bb=0.0,
             villain_range=VILLAIN_RANGE, model=MagicMock(),
             action_prefix=[], hero_combos=[HERO_QJ],
             starting_bb=100.0, hero_is_ip=True,
         )
-        assert len(seen) > 0, "solve_river should still be called with remaining_bb=0"
-        assert all(r == 0.0 for r in seen), "All river calls should get remaining_bb=0"
+        mock_solve_river.assert_not_called()
+        assert HERO_QJ in result
+        assert result[HERO_QJ] >= 0, "EV should be non-negative (equity × pot)"
 
 
 class TestSolveTurnScenarios:
@@ -276,9 +269,10 @@ class TestSolveTurnScenarios:
             f"A bet should be better than Check. EVs: {action_evs}"
         )
 
+    @patch("solver.streets.turn.EquityEngine")
     @patch("solver.streets.turn.solve_river")
     @patch("solver.streets.turn._build_prediction_cache")
-    def test_never_call_all_in_with_zero_equity(self, mock_cache, mock_solve_river):
+    def test_never_call_all_in_with_zero_equity(self, mock_cache, mock_solve_river, mock_engine_cls):
         """Hero IP, 0% equity, villain shoves. Fold > Call."""
         from solver.streets.turn import solve_turn
 
@@ -286,7 +280,11 @@ class TestSolveTurnScenarios:
         cache = _build_cache(10, 95, 95, is_opener=False)
         mock_cache.return_value = cache
 
-        # River: 0% equity, no chips left → EV = 0 everywhere
+        # Mock equity engine to return 0% equity (all-in path skips solve_river)
+        mock_engine = MagicMock()
+        mock_engine.compute_equity.return_value = {HERO_AK: 0.0}
+        mock_engine_cls.return_value = mock_engine
+
         mock_solve_river.side_effect = _constant_river_mock(0.0)
 
         result, _ = solve_turn(
@@ -356,22 +354,22 @@ class TestSolveTurnScenarios:
         call_ev = result["Call"][HERO_AK]
         assert fold_ev > call_ev, f"Fold ({fold_ev}) should beat Call ({call_ev})"
 
+    @patch("solver.streets.turn.EquityEngine")
     @patch("solver.streets.turn.solve_river")
     @patch("solver.streets.turn._build_prediction_cache")
-    def test_never_fold_100_equity_facing_shove(self, mock_cache, mock_solve_river):
+    def test_never_fold_100_equity_facing_shove(self, mock_cache, mock_solve_river, mock_engine_cls):
         """Hero IP, 100% equity, villain shoves. Call > Fold."""
         from solver.streets.turn import solve_turn
 
         cache = _build_cache(10, 95, 95, is_opener=False)
         mock_cache.return_value = cache
 
-        # River with 100% equity: hero wins entire pot
-        def full_equity_river(**kwargs):
-            combos = kwargs["hero_combos"]
-            pot = kwargs["pot"]
-            return {"Check": {c: pot for c in combos}}, {c: 1.0 for c in combos}
+        # Mock equity engine to return 100% equity (all-in path skips solve_river)
+        mock_engine = MagicMock()
+        mock_engine.compute_equity.return_value = {HERO_AK: 1.0}
+        mock_engine_cls.return_value = mock_engine
 
-        mock_solve_river.side_effect = full_equity_river
+        mock_solve_river.side_effect = _constant_river_mock(0.0)
 
         result, _ = solve_turn(
             board=BOARD_TURN, pot=10.0, facing_bet=95.0, remaining_bb=95.0,
