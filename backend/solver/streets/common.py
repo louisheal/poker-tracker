@@ -259,10 +259,10 @@ def _card_int(c: Card) -> int:
 
 
 class EquityEngine:
-    """Vectorized equity calculator using numpy broadcasting.
+    """Vectorized equity calculator using GPU (CUDA) when available, CPU numpy fallback.
 
-    Built once per street solve. Pre-computes overlap matrix and hero rankings.
-    Each compute_equity call only needs to build villain arrays for the given sub-range.
+    Built once per street solve. Pre-computes hero rankings and card ints.
+    Each compute_equity call builds villain arrays for the given sub-range.
     """
 
     def __init__(
@@ -272,13 +272,25 @@ class EquityEngine:
     ):
         self.hero_combos = hero_combos
         self.n_hero = len(hero_combos)
-        self.hero_rankings = np.array(
+        self._ranking_cache = ranking_cache
+        self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self._use_gpu = self._device.type == "cuda"
+
+        hero_rankings_np = np.array(
             [ranking_cache.get(_normalize_combo(c), 0) for c in hero_combos],
             dtype=np.int64,
         )
-        self.hero_c1 = np.array([_card_int(c[0]) for c in hero_combos], dtype=np.int32)
-        self.hero_c2 = np.array([_card_int(c[1]) for c in hero_combos], dtype=np.int32)
-        self._ranking_cache = ranking_cache
+        hero_c1_np = np.array([_card_int(c[0]) for c in hero_combos], dtype=np.int32)
+        hero_c2_np = np.array([_card_int(c[1]) for c in hero_combos], dtype=np.int32)
+
+        if self._use_gpu:
+            self.hero_rankings = torch.from_numpy(hero_rankings_np).to(self._device)
+            self.hero_c1 = torch.from_numpy(hero_c1_np).to(self._device)
+            self.hero_c2 = torch.from_numpy(hero_c2_np).to(self._device)
+        else:
+            self.hero_rankings = hero_rankings_np
+            self.hero_c1 = hero_c1_np
+            self.hero_c2 = hero_c2_np
 
     def compute_equity(
         self, villain_range: dict[tuple[Card, Card], float],
@@ -287,6 +299,62 @@ class EquityEngine:
         if not villain_combos:
             return {c: 0.5 for c in self.hero_combos}
 
+        if self._use_gpu:
+            return self._compute_equity_gpu(villain_combos, villain_range)
+        return self._compute_equity_cpu(villain_combos, villain_range)
+
+    def _compute_equity_gpu(
+        self,
+        villain_combos: list[tuple[Card, Card]],
+        villain_range: dict[tuple[Card, Card], float],
+    ) -> dict[tuple[Card, Card], float]:
+        vil_rankings = torch.tensor(
+            [self._ranking_cache.get(_normalize_combo(c), 0) for c in villain_combos],
+            dtype=torch.int64, device=self._device,
+        )
+        vil_freqs = torch.tensor(
+            [villain_range[c] for c in villain_combos],
+            dtype=torch.float32, device=self._device,
+        )
+        vil_c1 = torch.tensor(
+            [_card_int(c[0]) for c in villain_combos],
+            dtype=torch.int32, device=self._device,
+        )
+        vil_c2 = torch.tensor(
+            [_card_int(c[1]) for c in villain_combos],
+            dtype=torch.int32, device=self._device,
+        )
+
+        overlap = (
+            (self.hero_c1[:, None] == vil_c1[None, :]) |
+            (self.hero_c1[:, None] == vil_c2[None, :]) |
+            (self.hero_c2[:, None] == vil_c1[None, :]) |
+            (self.hero_c2[:, None] == vil_c2[None, :])
+        )
+
+        wins = (self.hero_rankings[:, None] > vil_rankings[None, :]).float()
+        ties = (self.hero_rankings[:, None] == vil_rankings[None, :]).float() * 0.5
+
+        weighted = (wins + ties) * vil_freqs[None, :]
+        weighted[overlap] = 0.0
+
+        freq_broad = vil_freqs[None, :].expand(self.n_hero, -1).clone()
+        freq_broad[overlap] = 0.0
+
+        total_weight = freq_broad.sum(dim=1)
+        equity = torch.where(
+            total_weight > 0,
+            weighted.sum(dim=1) / total_weight,
+            torch.tensor(0.5, device=self._device),
+        )
+        equity_cpu = equity.cpu().numpy()
+        return {self.hero_combos[i]: float(equity_cpu[i]) for i in range(self.n_hero)}
+
+    def _compute_equity_cpu(
+        self,
+        villain_combos: list[tuple[Card, Card]],
+        villain_range: dict[tuple[Card, Card], float],
+    ) -> dict[tuple[Card, Card], float]:
         vil_rankings = np.array(
             [self._ranking_cache.get(_normalize_combo(c), 0) for c in villain_combos],
             dtype=np.int64,

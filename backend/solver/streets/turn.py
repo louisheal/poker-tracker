@@ -15,7 +15,7 @@ from typing import Callable, Generator
 from playing_cards_lib.core import Card, Rank, Suit
 
 from solver.model.transformer import SolverTransformer
-from solver.eq_calculator import _cards_conflict_with_board
+from solver.eq_calculator import _cards_conflict_with_board, all_hands_vs_range, _normalize_combo
 from solver.streets.common import (
     VILLAIN_BET_FRACTION,
     VILLAIN_RAISE_MULTIPLIER,
@@ -219,6 +219,7 @@ def _eval_action_turn(
     hero_is_ip: bool,
     is_opener: bool,
     on_river_solve: Callable[[], None] | None = None,
+    strength_map: dict[tuple[Card, Card], float] | None = None,
 ) -> dict[tuple[Card, Card], float]:
     """Evaluate one hero action on the turn. Returns {combo: ev}."""
 
@@ -243,6 +244,7 @@ def _eval_action_turn(
 
         passive_range, aggressive_range = _narrow_range(
             villain_range, board, "turn", aggressive_pct, passive_pct,
+            strength_map=strength_map,
         )
 
         river_avg_passive = _solve_river_for_all_cards(
@@ -259,6 +261,7 @@ def _eval_action_turn(
             prediction_cache, model, action_prefix, hero_combos,
             starting_bb, hero_is_ip, is_opener=False,
             on_river_solve=on_river_solve,
+            strength_map=strength_map,
         )
 
         return {
@@ -275,6 +278,7 @@ def _eval_action_turn(
 
     passive_range, aggressive_range = _narrow_range(
         villain_range, board, "turn", aggressive_pct, passive_pct,
+        strength_map=strength_map,
     )
 
     fold_evs = {combo: pot + facing_bet for combo in hero_combos}
@@ -313,6 +317,7 @@ def _eval_action_turn(
         prediction_cache, model, action_prefix, hero_combos,
         starting_bb, hero_is_ip, is_opener=False,
         on_river_solve=on_river_solve,
+        strength_map=strength_map,
     )
 
     return {
@@ -338,6 +343,7 @@ def _solve_node_turn(
     hero_is_ip: bool,
     is_opener: bool,
     on_river_solve: Callable[[], None] | None = None,
+    strength_map: dict[tuple[Card, Card], float] | None = None,
 ) -> dict[tuple[Card, Card], float]:
     """Inner recursion on turn. Hero picks best action per combo."""
     hero_actions = _get_hero_actions(pot, facing_bet, remaining_bb, is_opener)
@@ -350,6 +356,7 @@ def _solve_node_turn(
             model, action_prefix, hero_combos,
             starting_bb, hero_is_ip, is_opener,
             on_river_solve,
+            strength_map=strength_map,
         )
 
     return {
@@ -383,6 +390,13 @@ def solve_turn(
     )
     is_opener = not hero_is_ip and facing_bet == 0.0
 
+    villain_combos = list(villain_range.keys())
+    equity_map = all_hands_vs_range(villain_combos, villain_range, board)
+    strength_map = {
+        combo: equity_map.get(_normalize_combo(combo), 0.5)
+        for combo in villain_combos
+    }
+
     hero_actions = _get_hero_actions(pot, facing_bet, remaining_bb, is_opener)
     results: dict[str, dict[tuple[Card, Card], float]] = {}
     all_in_computed = False
@@ -408,6 +422,7 @@ def solve_turn(
             model, action_prefix, hero_combos,
             starting_bb, hero_is_ip, is_opener,
             on_river_solve,
+            strength_map=strength_map,
         )
 
     return results, None

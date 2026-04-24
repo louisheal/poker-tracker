@@ -27,7 +27,11 @@ def _load_solver_model():
         checkpoint = torch.load(SOLVER_CHECKPOINT, map_location="cpu", weights_only=True)
         model.load_state_dict(checkpoint)
         model.eval()
-        logger.info("Solver model loaded from checkpoint")
+        if torch.cuda.is_available():
+            model = model.to("cuda")
+            logger.info("Solver model loaded on GPU")
+        else:
+            logger.info("Solver model loaded on CPU")
         return model
     except Exception as e:
         logger.warning(f"Failed to load solver model: {e}")

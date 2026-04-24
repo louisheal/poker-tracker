@@ -18,6 +18,7 @@ import logging
 import random
 import time
 
+import numpy as np
 import torch
 
 from playing_cards_lib.core import Card, Rank, Suit
@@ -110,30 +111,37 @@ def _tensorize_many(
     token_lists: list[list[Token]], starting_bb: float,
 ) -> dict[str, torch.Tensor]:
     batch_size = len(token_lists)
-    token_types = torch.zeros(batch_size, MAX_SEQ_LEN, dtype=torch.long)
-    ranks = torch.zeros(batch_size, MAX_SEQ_LEN, dtype=torch.long)
-    suits = torch.zeros(batch_size, MAX_SEQ_LEN, dtype=torch.long)
-    actions = torch.zeros(batch_size, MAX_SEQ_LEN, dtype=torch.long)
-    bet_sizes = torch.zeros(batch_size, MAX_SEQ_LEN, dtype=torch.float)
-    bet_sizes_bb = torch.zeros(batch_size, MAX_SEQ_LEN, dtype=torch.float)
-    street_ids = torch.zeros(batch_size, MAX_SEQ_LEN, dtype=torch.long)
-    padding_mask = torch.ones(batch_size, MAX_SEQ_LEN, dtype=torch.bool)
+    tt = np.zeros((batch_size, MAX_SEQ_LEN), dtype=np.int64)
+    rk = np.zeros((batch_size, MAX_SEQ_LEN), dtype=np.int64)
+    su = np.zeros((batch_size, MAX_SEQ_LEN), dtype=np.int64)
+    ac = np.zeros((batch_size, MAX_SEQ_LEN), dtype=np.int64)
+    bs = np.zeros((batch_size, MAX_SEQ_LEN), dtype=np.float32)
+    bb = np.zeros((batch_size, MAX_SEQ_LEN), dtype=np.float32)
+    si = np.zeros((batch_size, MAX_SEQ_LEN), dtype=np.int64)
+    pm = np.ones((batch_size, MAX_SEQ_LEN), dtype=np.bool_)
 
     for b, tokens in enumerate(token_lists):
-        for i, tok in enumerate(tokens[:MAX_SEQ_LEN]):
-            token_types[b, i] = int(tok.token_type)
-            ranks[b, i] = tok.rank
-            suits[b, i] = tok.suit
-            actions[b, i] = tok.action
-            bet_sizes[b, i] = tok.bet_size_pct
-            bet_sizes_bb[b, i] = tok.bet_size_bb
-            street_ids[b, i] = tok.action if tok.token_type == TokenType.STREET_MARKER else 0
-            padding_mask[b, i] = False
+        n = min(len(tokens), MAX_SEQ_LEN)
+        for i in range(n):
+            tok = tokens[i]
+            tt[b, i] = int(tok.token_type)
+            rk[b, i] = tok.rank
+            su[b, i] = tok.suit
+            ac[b, i] = tok.action
+            bs[b, i] = tok.bet_size_pct
+            bb[b, i] = tok.bet_size_bb
+            si[b, i] = tok.action if tok.token_type == TokenType.STREET_MARKER else 0
+        pm[b, :n] = False
 
     return {
-        "token_types": token_types, "ranks": ranks, "suits": suits, "actions": actions,
-        "bet_sizes": bet_sizes, "bet_sizes_bb": bet_sizes_bb, "street_ids": street_ids,
-        "padding_mask": padding_mask,
+        "token_types": torch.from_numpy(tt),
+        "ranks": torch.from_numpy(rk),
+        "suits": torch.from_numpy(su),
+        "actions": torch.from_numpy(ac),
+        "bet_sizes": torch.from_numpy(bs),
+        "bet_sizes_bb": torch.from_numpy(bb),
+        "street_ids": torch.from_numpy(si),
+        "padding_mask": torch.from_numpy(pm),
         "stack_sizes": torch.full((batch_size,), starting_bb / 100.0, dtype=torch.float),
     }
 
@@ -147,10 +155,12 @@ def _batch_predict(
     """Run model on N sequences, return (N, 5) softmax probs."""
     if not token_lists:
         return torch.empty(0, 5)
+    device = next(model.parameters()).device
     chunks = []
     with torch.no_grad():
         for i in range(0, len(token_lists), batch_size):
             batch = _tensorize_many(token_lists[i:i + batch_size], stack_bb)
+            batch = {k: v.to(device, non_blocking=True) for k, v in batch.items()}
             logits = model(batch)
             chunks.append(torch.softmax(logits, dim=-1).cpu())
     return torch.cat(chunks, dim=0)
