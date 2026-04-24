@@ -310,6 +310,13 @@ def full_solve_spot_streaming(
         )
         return
 
+    if street == "turn":
+        yield from _turn_streaming(
+            model, board, action_prefix, hero_actions, villain_range,
+            pot_bb, starting_bb, valid_combos, hero_is_ip, facing_bet,
+        )
+        return
+
     result, combo_equity = full_solve_spot(
         model, board, street, action_prefix, hero_actions,
         villain_range, pot_bb, starting_bb, valid_combos, hero_is_ip,
@@ -331,3 +338,113 @@ def full_solve_spot_streaming(
             equity_serialized[cs] = round(eq, 4)
         update["combo_equity"] = equity_serialized
     yield update
+
+
+def _turn_streaming(
+    model: SolverTransformer,
+    board: list[Card],
+    action_prefix: list[str],
+    hero_actions: list[str],
+    villain_range: dict[tuple[Card, Card], float],
+    pot_bb: float,
+    starting_bb: float,
+    valid_combos: list[tuple[Card, Card]],
+    hero_is_ip: bool,
+    facing_bet: float,
+) -> Generator:
+    """Stream turn solver progress. Yields updates as river cards are solved."""
+    import queue as queue_mod
+    import threading
+
+    from solver.streets.turn import solve_turn, _remaining_deck
+    from solver.streets.common import _enumerate_sequences, _get_hero_actions
+
+    is_opener = not hero_is_ip and facing_bet == 0.0
+    if facing_bet <= 0 and not is_opener:
+        last_prefix_action = action_prefix[-1].split(":")[-1] if action_prefix else ""
+        if last_prefix_action == "All-in":
+            facing_bet = 2 * starting_bb - pot_bb
+        else:
+            facing_bet = _compute_facing_bet(action_prefix, pot_bb)
+    matched_pot = pot_bb - facing_bet
+    remaining_bb = starting_bb - matched_pot / 2
+
+    deck_size = len(_remaining_deck(board))
+    sequences = _enumerate_sequences(
+        matched_pot, facing_bet, remaining_bb,
+        cache_key_prefix="", is_opener=is_opener, tokens_so_far=[],
+    )
+    river_call_count = sum(1 for _, _, _, _ in sequences)
+    total_river_solves = max(river_call_count * deck_size, 1)
+
+    progress_queue: queue_mod.Queue = queue_mod.Queue()
+    progress_count = [0]
+
+    def on_river_solve():
+        progress_count[0] += 1
+        progress_queue.put(progress_count[0])
+
+    result_holder: list = [None]
+    error_holder: list = [None]
+
+    def _run():
+        try:
+            result_holder[0] = solve_turn(
+                board=board,
+                pot=matched_pot,
+                facing_bet=facing_bet,
+                remaining_bb=remaining_bb,
+                villain_range=villain_range,
+                model=model,
+                action_prefix=action_prefix,
+                hero_combos=valid_combos,
+                starting_bb=starting_bb,
+                hero_is_ip=hero_is_ip,
+                on_river_solve=on_river_solve,
+            )
+        except Exception as e:
+            error_holder[0] = e
+        finally:
+            progress_queue.put(None)
+
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()
+
+    yield {"type": "progress", "stage": "solving", "totalCards": total_river_solves}
+
+    last_yielded = 0
+    while True:
+        try:
+            item = progress_queue.get(timeout=0.5)
+        except queue_mod.Empty:
+            continue
+
+        if item is None:
+            break
+
+        current = item
+        if current - last_yielded >= max(total_river_solves // 20, 1):
+            progress = min(current / total_river_solves, 0.99)
+            yield {
+                "type": "progress",
+                "progress": round(progress, 3),
+                "simsComplete": current,
+                "totalCards": total_river_solves,
+            }
+            last_yielded = current
+
+    thread.join()
+
+    if error_holder[0]:
+        raise error_holder[0]
+
+    result, _ = result_holder[0]
+
+    yield {
+        "type": "complete",
+        "progress": 1.0,
+        "simsComplete": progress_count[0],
+        "totalCards": total_river_solves,
+        "combo_evs": _serialize(result, valid_combos),
+        "action_keys": list(result.keys()),
+    }

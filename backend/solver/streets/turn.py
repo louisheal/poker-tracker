@@ -10,6 +10,7 @@ Same two-phase architecture as the river solver:
 from __future__ import annotations
 
 import logging
+from typing import Callable, Generator
 
 from playing_cards_lib.core import Card, Rank, Suit
 
@@ -50,11 +51,14 @@ def _solve_river_for_all_cards(
     hero_combos: list[tuple[Card, Card]],
     starting_bb: float,
     hero_is_ip: bool,
+    on_river_solve: Callable[[], None] | None = None,
 ) -> dict[tuple[Card, Card], float]:
     """Enumerate all river cards, solve each, average per-combo best EVs.
 
     When remaining_bb <= 0 (all-in on turn), skips the river solver entirely
     and computes showdown equity directly — there's no river betting tree.
+
+    on_river_solve is called after each river card is processed (for progress tracking).
     """
     deck = _remaining_deck(board)
 
@@ -75,6 +79,8 @@ def _solve_river_for_all_cards(
             if river_card != c[0] and river_card != c[1]
         }
         if not valid_combos or not valid_villain:
+            if on_river_solve:
+                on_river_solve()
             continue
 
         if all_in:
@@ -85,6 +91,8 @@ def _solve_river_for_all_cards(
             for combo in valid_combos:
                 combo_ev_sum[combo] += equity[combo] * pot
                 combo_count[combo] += 1
+            if on_river_solve:
+                on_river_solve()
             continue
 
         river_prefix = action_prefix + [
@@ -112,6 +120,9 @@ def _solve_river_for_all_cards(
             combo_ev_sum[combo] += best_ev
             combo_count[combo] += 1
 
+        if on_river_solve:
+            on_river_solve()
+
     return {
         combo: combo_ev_sum[combo] / combo_count[combo]
         if combo_count[combo] > 0 else 0.0
@@ -134,6 +145,7 @@ def _eval_action_turn(
     starting_bb: float,
     hero_is_ip: bool,
     is_opener: bool,
+    on_river_solve: Callable[[], None] | None = None,
 ) -> dict[tuple[Card, Card], float]:
     """Evaluate one hero action on the turn. Returns {combo: ev}."""
 
@@ -148,6 +160,7 @@ def _eval_action_turn(
         river_avg = _solve_river_for_all_cards(
             board, new_pot, new_remaining, villain_range, model,
             action_prefix, hero_combos, starting_bb, hero_is_ip,
+            on_river_solve,
         )
         return {combo: river_avg[combo] - cost for combo in hero_combos}
 
@@ -162,6 +175,7 @@ def _eval_action_turn(
         river_avg_passive = _solve_river_for_all_cards(
             board, pot, remaining_bb, passive_range, model,
             action_prefix, hero_combos, starting_bb, hero_is_ip,
+            on_river_solve,
         )
         ev_vs_passive = {combo: river_avg_passive[combo] for combo in hero_combos}
 
@@ -171,6 +185,7 @@ def _eval_action_turn(
             _make_cache_key(cache_key, "B"),
             prediction_cache, model, action_prefix, hero_combos,
             starting_bb, hero_is_ip, is_opener=False,
+            on_river_solve=on_river_solve,
         )
 
         return {
@@ -197,6 +212,7 @@ def _eval_action_turn(
     river_avg_passive = _solve_river_for_all_cards(
         board, new_pot, new_remaining, passive_range, model,
         action_prefix, hero_combos, starting_bb, hero_is_ip,
+        on_river_solve,
     )
     call_evs = {combo: river_avg_passive[combo] - hero_bet for combo in hero_combos}
 
@@ -223,6 +239,7 @@ def _eval_action_turn(
         _make_cache_key(cache_key, "R"),
         prediction_cache, model, action_prefix, hero_combos,
         starting_bb, hero_is_ip, is_opener=False,
+        on_river_solve=on_river_solve,
     )
 
     return {
@@ -247,6 +264,7 @@ def _solve_node_turn(
     starting_bb: float,
     hero_is_ip: bool,
     is_opener: bool,
+    on_river_solve: Callable[[], None] | None = None,
 ) -> dict[tuple[Card, Card], float]:
     """Inner recursion on turn. Hero picks best action per combo."""
     hero_actions = _get_hero_actions(pot, facing_bet, remaining_bb, is_opener)
@@ -258,6 +276,7 @@ def _solve_node_turn(
             villain_range, action_seq, prediction_cache,
             model, action_prefix, hero_combos,
             starting_bb, hero_is_ip, is_opener,
+            on_river_solve,
         )
 
     return {
@@ -277,6 +296,7 @@ def solve_turn(
     hero_combos: list[tuple[Card, Card]],
     starting_bb: float,
     hero_is_ip: bool,
+    on_river_solve: Callable[[], None] | None = None,
 ) -> tuple[dict[str, dict[tuple[Card, Card], float]], None]:
     """Solve turn spot.
 
@@ -314,6 +334,7 @@ def solve_turn(
             villain_range, "", prediction_cache,
             model, action_prefix, hero_combos,
             starting_bb, hero_is_ip, is_opener,
+            on_river_solve,
         )
 
     return results, None
