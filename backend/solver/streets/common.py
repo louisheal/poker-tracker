@@ -11,7 +11,7 @@ import eval7
 import numpy as np
 import torch
 
-from playing_cards_lib.core import Card
+from playing_cards_lib.core import Card, Rank, Suit
 
 from solver.model.transformer import SolverTransformer
 from solver.ev_calculator import (
@@ -385,6 +385,142 @@ class EquityEngine:
         return {self.hero_combos[i]: float(equity[i]) for i in range(self.n_hero)}
 
 
+_ALL_CARDS = [Card(r, s) for r in Rank for s in Suit]
+
+
+def compute_eq_np(
+    board: list[Card],
+) -> dict[tuple[Card, Card], float]:
+    """Compute EQ (avg strength) and NP (max strength) for all non-conflicting combos.
+
+    For each 2-card combo from the 48 remaining cards (52 minus board):
+      - Evaluate hand strength on every possible river card using eval7
+      - EQ = average eval7 score, normalized to 0-1 by the global max average
+      - NP = max eval7 score across rivers, normalized to 0-1 by the global max
+
+    On a 5-card board (river), there are no remaining cards, so both EQ and NP
+    are the single eval7 score for the 7-card hand.
+
+    Returns dict mapping normalized combo → (eq, np).
+    """
+    from solver.ranges import _ALL_EVAL7_CARDS, _EVAL7_DECK
+
+    e7_board = [_card_to_eval7(c) for c in board]
+    board_keys = {(c.rank.value, c.suit.value) for c in board}
+    e7_to_key = {id(ec): (r, s) for (r, s), ec in _ALL_EVAL7_CARDS.items()}
+
+    remaining_cards = [c for c in _ALL_CARDS if (c.rank.value, c.suit.value) not in board_keys]
+
+    is_river = len(board) == 5
+    remaining_deck = [c for c in _EVAL7_DECK if e7_to_key[id(c)] not in board_keys]
+
+    raw_eq: dict[tuple[Card, Card], float] = {}
+    raw_np: dict[tuple[Card, Card], float] = {}
+
+    for i, c1 in enumerate(remaining_cards):
+        e7_c1 = _card_to_eval7(c1)
+        c1_key = (c1.rank.value, c1.suit.value)
+        for c2 in remaining_cards[i + 1:]:
+            c2_key = (c2.rank.value, c2.suit.value)
+            e7_c2 = _card_to_eval7(c2)
+            combo = _normalize_combo((c1, c2))
+
+            if is_river:
+                score = float(eval7.evaluate(e7_board + [e7_c1, e7_c2]))
+                raw_eq[combo] = score
+                raw_np[combo] = score
+            else:
+                hand_keys = {c1_key, c2_key}
+                total = 0.0
+                best = -1.0
+                count = 0
+                for river_e7 in remaining_deck:
+                    if e7_to_key[id(river_e7)] in hand_keys:
+                        continue
+                    score = float(eval7.evaluate(e7_board + [e7_c1, e7_c2, river_e7]))
+                    total += score
+                    if score > best:
+                        best = score
+                    count += 1
+                raw_eq[combo] = total / count if count > 0 else 0.0
+                raw_np[combo] = best if best >= 0 else 0.0
+
+    max_eq = max(raw_eq.values()) if raw_eq else 1.0
+    max_np = max(raw_np.values()) if raw_np else 1.0
+
+    return {
+        combo: (raw_eq[combo] / max_eq if max_eq > 0 else 0.0,
+                raw_np[combo] / max_np if max_np > 0 else 0.0)
+        for combo in raw_eq
+    }
+
+
+def solve_biases(
+    eq_np_map: dict[tuple[Card, Card], tuple[float, float]],
+    villain_range: dict[tuple[Card, Card], float],
+    target_fold: float,
+    target_passive: float,
+    target_aggressive: float,
+    max_iterations: int = 50,
+    tolerance: float = 0.01,
+) -> tuple[float, float, float]:
+    """Find global biases (b_agg, b_pas, b_fold) via Newton-Raphson.
+
+    Adjusts biases so that the weighted-average action probabilities across
+    villain_range match the target fold/passive/aggressive percentages within
+    tolerance (default 1%).
+
+    Returns (bias_aggressive, bias_passive, bias_fold).
+    """
+    import math
+
+    combos_data: list[tuple[float, float, float]] = []
+    for combo, freq in villain_range.items():
+        if freq <= 0:
+            continue
+        norm = _normalize_combo(combo)
+        if norm not in eq_np_map:
+            continue
+        eq, np_val = eq_np_map[norm]
+        combos_data.append((freq, eq + np_val, eq - np_val))
+
+    if not combos_data:
+        return (0.0, 0.0, 0.0)
+
+    total_weight = sum(f for f, _, _ in combos_data)
+    targets = [target_aggressive, target_passive, target_fold]
+
+    b_agg, b_pas, b_fold = 0.0, 0.0, 0.0
+
+    for _ in range(max_iterations):
+        agg_sum = pas_sum = fold_sum = 0.0
+        for freq, s_agg, s_pas in combos_data:
+            l_agg = s_agg + b_agg
+            l_pas = s_pas + b_pas
+            l_fold = b_fold
+            max_l = max(l_agg, l_pas, l_fold)
+            e_agg = math.exp(l_agg - max_l)
+            e_pas = math.exp(l_pas - max_l)
+            e_fold = math.exp(l_fold - max_l)
+            total = e_agg + e_pas + e_fold
+            agg_sum += freq * (e_agg / total)
+            pas_sum += freq * (e_pas / total)
+            fold_sum += freq * (e_fold / total)
+
+        actual = [agg_sum / total_weight, pas_sum / total_weight, fold_sum / total_weight]
+        errors = [actual[i] - targets[i] for i in range(3)]
+
+        if all(abs(e) < tolerance for e in errors):
+            break
+
+        step_size = 2.0
+        b_agg -= step_size * errors[0]
+        b_pas -= step_size * errors[1]
+        b_fold -= step_size * errors[2]
+
+    return (b_agg, b_pas, b_fold)
+
+
 def _narrow_range(
     villain_range: dict[tuple[Card, Card], float],
     board: list[Card],
@@ -392,14 +528,56 @@ def _narrow_range(
     aggressive_pct: float,
     passive_pct: float,
     strength_map: dict[tuple[Card, Card], float] | None = None,
+    eq_np_map: dict[tuple[Card, Card], tuple[float, float]] | None = None,
 ) -> tuple[dict, dict]:
-    """Split villain range into passive and aggressive sub-ranges by equity.
+    """Split villain range into passive and aggressive sub-ranges.
+
+    When eq_np_map is provided, uses logit-based per-combo action probabilities
+    calibrated to match the given fold/passive/aggressive percentages.
+    Otherwise falls back to the equity-ordered bucket assignment.
+
     Returns (passive_range, aggressive_range).
-    If strength_map is provided, skips the expensive equity recomputation."""
+    """
     if aggressive_pct <= 0:
         return villain_range, {}
     if passive_pct <= 0:
         return {}, villain_range
+
+    if eq_np_map is not None:
+        import math
+
+        fold_pct = max(1.0 - aggressive_pct - passive_pct, 0.0)
+        biases = solve_biases(
+            eq_np_map, villain_range, fold_pct, passive_pct, aggressive_pct,
+        )
+        b_agg, b_pas, b_fold = biases
+
+        passive_range: dict[tuple[Card, Card], float] = {}
+        aggressive_range: dict[tuple[Card, Card], float] = {}
+
+        for combo, freq in villain_range.items():
+            if freq <= 0:
+                continue
+            norm = _normalize_combo(combo)
+            if norm not in eq_np_map:
+                continue
+            eq, np_val = eq_np_map[norm]
+            l_agg = (eq + np_val) + b_agg
+            l_pas = (eq - np_val) + b_pas
+            l_fold = b_fold
+            max_l = max(l_agg, l_pas, l_fold)
+            e_agg = math.exp(l_agg - max_l)
+            e_pas = math.exp(l_pas - max_l)
+            e_fold = math.exp(l_fold - max_l)
+            total = e_agg + e_pas + e_fold
+
+            p_agg = e_agg / total
+            p_pas = e_pas / total
+
+            aggressive_range[combo] = freq * p_agg
+            passive_range[combo] = freq * p_pas
+
+        return passive_range, aggressive_range
 
     _, passive_range, aggressive_range = filter_range_by_equity(
         villain_range, board, street,

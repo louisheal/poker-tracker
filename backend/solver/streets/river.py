@@ -31,6 +31,7 @@ from solver.streets.common import (
     _build_ranking_cache,
     EquityEngine,
     _narrow_range,
+    compute_eq_np,
 )
 
 logger = logging.getLogger(__name__)
@@ -50,6 +51,7 @@ def _eval_action(
     is_opener: bool,
     street: str = "river",
     strength_map: dict[tuple[Card, Card], float] | None = None,
+    eq_np_map: dict[tuple[Card, Card], tuple[float, float]] | None = None,
 ) -> dict[tuple[Card, Card], float]:
     """Evaluate one hero action. Returns {combo: ev}."""
 
@@ -70,7 +72,7 @@ def _eval_action(
 
         passive_range, aggressive_range = _narrow_range(
             villain_range, board, street, aggressive_pct, passive_pct,
-            strength_map=strength_map,
+            strength_map=strength_map, eq_np_map=eq_np_map,
         )
 
         eq_vs_passive = equity_engine.compute_equity(passive_range)
@@ -82,7 +84,7 @@ def _eval_action(
             _make_cache_key(cache_key, "B"),
             prediction_cache, equity_engine, hero_combos,
             is_opener=False, street=street,
-            strength_map=strength_map,
+            strength_map=strength_map, eq_np_map=eq_np_map,
         )
 
         return {
@@ -99,7 +101,7 @@ def _eval_action(
 
     passive_range, aggressive_range = _narrow_range(
         villain_range, board, street, aggressive_pct, passive_pct,
-        strength_map=strength_map,
+        strength_map=strength_map, eq_np_map=eq_np_map,
     )
 
     fold_evs = {combo: pot + facing_bet for combo in hero_combos}
@@ -136,7 +138,7 @@ def _eval_action(
         _make_cache_key(cache_key, "R"),
         prediction_cache, equity_engine, hero_combos,
         is_opener=False, street=street,
-        strength_map=strength_map,
+        strength_map=strength_map, eq_np_map=eq_np_map,
     )
 
     return {
@@ -160,6 +162,7 @@ def _solve_node(
     is_opener: bool,
     street: str = "river",
     strength_map: dict[tuple[Card, Card], float] | None = None,
+    eq_np_map: dict[tuple[Card, Card], tuple[float, float]] | None = None,
 ) -> dict[tuple[Card, Card], float]:
     """Inner recursion. Hero picks best action per combo."""
     hero_actions = _get_hero_actions(pot, facing_bet, remaining_bb, is_opener)
@@ -170,7 +173,7 @@ def _solve_node(
             action, board, pot, facing_bet, remaining_bb,
             villain_range, action_seq, prediction_cache, equity_engine,
             hero_combos, is_opener, street,
-            strength_map=strength_map,
+            strength_map=strength_map, eq_np_map=eq_np_map,
         )
 
     return {
@@ -191,6 +194,7 @@ def solve_river(
     starting_bb: float,
     hero_is_ip: bool,
     prediction_cache: dict[str, tuple[float, float, float]] | None = None,
+    eq_np_map: dict[tuple[Card, Card], tuple[float, float]] | None = None,
 ) -> tuple[dict[str, dict[tuple[Card, Card], float]], dict[tuple[Card, Card], float]]:
     """Solve river spot.
 
@@ -200,6 +204,7 @@ def solve_river(
 
     If prediction_cache is provided, skips the model call (used by turn solver
     mega-batch to pre-compute all river caches in one call).
+    If eq_np_map is provided, uses logit-based range narrowing (v2).
     """
     if prediction_cache is None:
         prediction_cache = _build_prediction_cache(
@@ -211,10 +216,17 @@ def solve_river(
     equity_engine = EquityEngine(hero_combos, ranking_cache)
     is_opener = not hero_is_ip and facing_bet == 0.0
 
-    strength_map = {
-        combo: float(ranking_cache.get(_normalize_combo(combo), 0))
-        for combo in villain_range if villain_range[combo] > 0
-    }
+    if eq_np_map is None:
+        eq_np_map = compute_eq_np(board)
+
+    # Build legacy strength_map as fallback when eq_np_map is explicitly disabled
+    strength_map = None
+    if eq_np_map is False:
+        eq_np_map = None
+        strength_map = {
+            combo: float(ranking_cache.get(_normalize_combo(combo), 0))
+            for combo in villain_range if villain_range[combo] > 0
+        }
 
     hero_actions = _get_hero_actions(pot, facing_bet, remaining_bb, is_opener)
     results: dict[str, dict[tuple[Card, Card], float]] = {}
@@ -236,7 +248,7 @@ def solve_river(
             action, board, pot, facing_bet, remaining_bb,
             villain_range, "", prediction_cache, equity_engine,
             hero_combos, is_opener, "river",
-            strength_map=strength_map,
+            strength_map=strength_map, eq_np_map=eq_np_map,
         )
 
     combo_equity = {
