@@ -276,7 +276,7 @@ class TestSolveTurnScenarios:
             starting_bb=100.0, hero_is_ip=True,
         )
         # Larger bets create bigger pots → higher river pot to win
-        # B200 (or All-in) should be best or near-best
+        # B133 (or All-in) should be best or near-best
         action_evs = {a: result[a][HERO_AK] for a in result if a != "Fold"}
         best_action = max(action_evs, key=action_evs.get)
         assert best_action != "Check", (

@@ -61,7 +61,7 @@ def _get_hero_actions(
     if facing_bet == 0:
         actions = ["Check"]
         all_in_added = False
-        for name in ("B33", "B66", "B133", "B200"):
+        for name in ("B33", "B66", "B133"):
             size = HERO_BET_FRACTIONS[name] * pot
             if size >= remaining_bb:
                 if not all_in_added:

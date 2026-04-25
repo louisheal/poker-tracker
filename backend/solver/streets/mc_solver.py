@@ -37,7 +37,7 @@ from solver.models import Token, TokenType
 
 logger = logging.getLogger(__name__)
 
-HERO_OPEN_ACTIONS = ["Check", "B33", "B66", "B133", "B200"]
+HERO_OPEN_ACTIONS = ["Check", "B33", "B66", "B133"]
 NEXT_STREET = {"flop": "turn", "turn": "river"}
 _ALL_CARDS = [Card(r, s) for r in Rank for s in Suit]
 

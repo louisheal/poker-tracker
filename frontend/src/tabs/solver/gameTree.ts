@@ -21,7 +21,6 @@ const BET_PCT: Record<string, number> = {
   B33: 0.33,
   B66: 0.66,
   B133: 1.33,
-  B200: 2.0,
 };
 
 const RAISE_MULT: Record<string, number> = {

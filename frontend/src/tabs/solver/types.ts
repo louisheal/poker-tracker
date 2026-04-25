@@ -39,7 +39,6 @@ export const POSTFLOP_OPEN_ACTIONS: ActionOption[] = [
   { key: "B33", label: "Bet 33%", colour: "bg-[#f87171] text-white" },
   { key: "B66", label: "Bet 66%", colour: "bg-[#ef4444] text-white" },
   { key: "B133", label: "Bet 133%", colour: "bg-[#b91c1c] text-white" },
-  { key: "B200", label: "Bet 200%", colour: "bg-[#991b1b] text-white" },
 ];
 
 export const POSTFLOP_FACING_BET_ACTIONS: ActionOption[] = [

@@ -156,17 +156,17 @@ class TestRaiseTermination:
 
     def test_villain_raise_guard_prevents_negative_facing(self):
         """When villain can't raise above hero's bet, no deeper recursion."""
-        # Hero bets 2.0 * 10 = 20 BB, remaining after = 5 BB
-        # Villain raise = min(60, 5) = 5 < 20 → no raise enumerated
+        # Hero bets 1.33 * 10 = 13.3 BB, remaining after = 11.7 BB
+        # Villain raise = min(39.9, 11.7) = 11.7 < 13.3 → no raise enumerated
         sequences = _enumerate_sequences(
             pot=10.0, facing_bet=0.0, remaining_bb=25.0,
             cache_key_prefix="", is_opener=False, tokens_so_far=[],
         )
         keys = {k for k, _, _, _ in sequences}
-        # B200 should exist but B200>R should NOT (villain can't raise)
-        assert "B200" in keys
-        assert not any(k.startswith("B200>R") for k in keys), (
-            f"B200 should not have raise continuation: {sorted(keys)}"
+        # B133 should exist but B133>R should NOT (villain can't raise)
+        assert "B133" in keys
+        assert not any(k.startswith("B133>R") for k in keys), (
+            f"B133 should not have raise continuation: {sorted(keys)}"
         )
 
 

@@ -140,7 +140,7 @@ def _detect_action_keys(street: str, actions: list[str]) -> list[str]:
     elif is_facing_bet:
         return ["Fold", "Call", "R3x"]
     else:
-        return ["Check", "B33", "B66", "B133", "B200"]
+        return ["Check", "B33", "B66", "B133"]
 
 
 def _solve_mock(board: list[str], street: str, actions: list[str]) -> dict:

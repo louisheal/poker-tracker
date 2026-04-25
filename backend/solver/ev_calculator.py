@@ -173,7 +173,7 @@ def compute_aggressive_ev(
 
 # Hero action set matching frontend types.ts
 HERO_ACTIONS_PREFLOP = ["Fold", "Call", "Raise"]
-HERO_ACTIONS_OPEN = ["Check", "B33", "B66", "B133", "B200"]
+HERO_ACTIONS_OPEN = ["Check", "B33", "B66", "B133"]
 HERO_ACTIONS_FACING_BET = ["Fold", "Call", "R3x"]
 
 ACTION_TO_BET_PCT: dict[str, float] = {
@@ -510,6 +510,8 @@ def compute_current_ranges(
 
         with torch.no_grad():
             batch = _tensorize_sequence(tokens, starting_bb)
+            device = next(model.parameters()).device
+            batch = {k: v.to(device) for k, v in batch.items()}
             logits = model(batch)
             probs = torch.softmax(logits, dim=-1).cpu()[0]
 
@@ -630,6 +632,8 @@ def _solve_preflop_evs(
 
         with torch.no_grad():
             batch = _tensorize_sequence(full_tokens, starting_bb)
+            device = next(model.parameters()).device
+            batch = {k: v.to(device) for k, v in batch.items()}
             logits = model(batch)
             probs = torch.softmax(logits, dim=-1).cpu()[0]
 
